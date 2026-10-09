@@ -1,0 +1,418 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/android/autofill/manual_filling_view_android.h"
+
+#include <jni.h>
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_array.h"
+#include "base/android/jni_string.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/trace_event/trace_event.h"
+#include "chrome/browser/keyboard_accessory/android/accessory_sheet_data.h"
+#include "chrome/browser/keyboard_accessory/android/accessory_sheet_enums.h"
+#include "chrome/browser/keyboard_accessory/android/manual_filling_controller.h"
+#include "chrome/browser/password_manager/chrome_password_manager_client.h"
+#include "components/affiliations/core/browser/match_type.h"
+#include "components/autofill/content/browser/content_autofill_client.h"
+#include "components/autofill/core/browser/at_memory/at_memory_enablement_util.h"
+#include "components/password_manager/core/browser/credential_cache.h"
+#include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_form_manager.h"
+#include "components/password_manager/core/browser/password_string.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/android/view_android.h"
+#include "ui/android/window_android.h"
+#include "url/android/gurl_android.h"
+
+// Must come after headers that provide symbols used by @JniType.
+#include "chrome/android/features/keyboard_accessory/internal/jni/ManualFillingComponentBridge_jni.h"
+#include "chrome/browser/keyboard_accessory/android/java/jni/UserInfoField_jni.h"
+
+using autofill::AccessorySheetData;
+using autofill::AccessorySheetField;
+using autofill::FooterCommand;
+using autofill::UserInfo;
+using jni_zero::JavaRef;
+using jni_zero::ScopedJavaGlobalRef;
+using jni_zero::ScopedJavaLocalRef;
+using password_manager::PasswordForm;
+using password_manager::PasswordString;
+
+namespace {
+
+AccessorySheetField ConvertJavaUserInfoField(
+    JNIEnv* env,
+    const JavaRef<jobject>& j_field_to_convert) {
+  autofill::AccessorySuggestionType suggestion_type =
+      Java_UserInfoField_getSuggestionType(env, j_field_to_convert);
+  std::u16string display_text =
+      Java_UserInfoField_getDisplayText(env, j_field_to_convert);
+  std::u16string text_to_fill =
+      Java_UserInfoField_getTextToFill(env, j_field_to_convert);
+  std::u16string a11y_description =
+      Java_UserInfoField_getA11yDescription(env, j_field_to_convert);
+  std::string id = Java_UserInfoField_getId(env, j_field_to_convert);
+  bool is_obfuscated = Java_UserInfoField_isObfuscated(env, j_field_to_convert);
+  bool selectable = Java_UserInfoField_isSelectable(env, j_field_to_convert);
+  return AccessorySheetField::Builder()
+      .SetSuggestionType(suggestion_type)
+      .SetDisplayText(std::move(display_text))
+      .SetTextToFill(std::move(text_to_fill))
+      .SetA11yDescription(std::move(a11y_description))
+      .SetId(std::move(id))
+      .SetIsObfuscated(is_obfuscated)
+      .SetSelectable(selectable)
+      .Build();
+}
+
+// The Conversion does not require any actual methods from either side of the
+// bridge — it's only required because it is referenced in callbacks. Therefore,
+// the java_object can always be used, even if the controller has been
+// dismissed.
+// TODO(crbug.com/40858913): Pass a delegate/callback and not the bridge object.
+ScopedJavaGlobalRef<jobject> ConvertAccessorySheetDataToJavaObject(
+    ScopedJavaGlobalRef<jobject> java_object,
+    AccessorySheetData tab_data) {
+  // Keep the ManualFillingViewAndroid:: prefix for easier trace comparison.
+  TRACE_EVENT0(
+      "passwords",
+      "ManualFillingViewAndroid::ConvertAccessorySheetDataToJavaObject");
+  DCHECK(java_object);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  ScopedJavaGlobalRef<jobject> j_tab_data;
+  j_tab_data.Reset(Java_ManualFillingComponentBridge_createAccessorySheetData(
+      env, tab_data.get_sheet_type(), tab_data.user_info_title(),
+      tab_data.warning()));
+
+  if (tab_data.option_toggle().has_value()) {
+    const autofill::OptionToggle& toggle = tab_data.option_toggle().value();
+    Java_ManualFillingComponentBridge_addOptionToggleToAccessorySheetData(
+        env, java_object, j_tab_data, toggle.display_text(),
+        toggle.is_enabled(), toggle.accessory_action());
+  }
+
+  for (const autofill::PasskeySection& passkey_section :
+       tab_data.passkey_section_list()) {
+    Java_ManualFillingComponentBridge_addPasskeySectionToAccessorySheetData(
+        env, java_object, j_tab_data, tab_data.get_sheet_type(),
+        passkey_section.display_name(), passkey_section.passkey_id());
+  }
+
+  for (const UserInfo& user_info : tab_data.user_info_list()) {
+    ScopedJavaLocalRef<jobject> j_user_info =
+        Java_ManualFillingComponentBridge_addUserInfoToAccessorySheetData(
+            env, java_object, j_tab_data, user_info.origin(),
+            user_info.is_exact_match().value(), user_info.icon_url(),
+            user_info.is_backup_credential().value());
+    for (const AccessorySheetField& field : user_info.fields()) {
+      Java_ManualFillingComponentBridge_addFieldToUserInfo(
+          env, java_object, j_user_info, tab_data.get_sheet_type(),
+          field.suggestion_type(), field.display_text(), field.text_to_fill(),
+          field.a11y_description(), field.id(), field.icon_id(),
+          field.is_obfuscated(), field.selectable());
+    }
+  }
+
+  for (const autofill::PromoCodeInfo& promo_code_info :
+       tab_data.promo_code_info_list()) {
+    const AccessorySheetField& promo_code = promo_code_info.promo_code();
+    const std::u16string& detailsText = promo_code_info.details_text();
+    Java_ManualFillingComponentBridge_addPromoCodeInfoToAccessorySheetData(
+        env, java_object, j_tab_data, tab_data.get_sheet_type(),
+        promo_code.suggestion_type(), promo_code.display_text(),
+        promo_code.text_to_fill(), promo_code.a11y_description(),
+        promo_code.id(), promo_code.is_obfuscated(), detailsText);
+  }
+
+  for (const autofill::IbanInfo& iban_info : tab_data.iban_info_list()) {
+    const AccessorySheetField& value = iban_info.value();
+    Java_ManualFillingComponentBridge_addIbanInfoToAccessorySheetData(
+        env, java_object, j_tab_data, tab_data.get_sheet_type(),
+        value.suggestion_type(), value.id(), value.display_text(),
+        value.text_to_fill());
+  }
+
+  for (const autofill::LoyaltyCardInfo& loyalty_card_info :
+       tab_data.loyalty_card_info_list()) {
+    Java_ManualFillingComponentBridge_addLoyaltyCardInfoToAccessorySheetData(
+        env, java_object, j_tab_data, tab_data.get_sheet_type(),
+        loyalty_card_info.value().suggestion_type(),
+        loyalty_card_info.merchant_name(), loyalty_card_info.program_logo_url(),
+        loyalty_card_info.value().display_text());
+  }
+
+  for (const FooterCommand& footer_command : tab_data.footer_commands()) {
+    Java_ManualFillingComponentBridge_addFooterCommandToAccessorySheetData(
+        env, java_object, j_tab_data, footer_command.display_text(),
+        footer_command.accessory_action());
+  }
+  return j_tab_data;
+}
+
+}  // namespace
+
+ManualFillingViewAndroid::ManualFillingViewAndroid(
+    ManualFillingController* controller,
+    content::WebContents* web_contents)
+    : controller_(controller), web_contents_(web_contents) {}
+
+ManualFillingViewAndroid::~ManualFillingViewAndroid() {
+  if (!java_object_internal_) {
+    return;  // No work to do.
+  }
+  Java_ManualFillingComponentBridge_destroy(
+      base::android::AttachCurrentThread(), java_object_internal_);
+  java_object_internal_.Reset();
+}
+
+void ManualFillingViewAndroid::OnItemsAvailable(AccessorySheetData data) {
+  TRACE_EVENT0("passwords", "ManualFillingViewAndroid::OnItemsAvailable");
+  if (auto obj = GetOrCreateJavaObject()) {
+    background_task_runner_->PostTaskAndReplyWithResult(
+        FROM_HERE,
+        base::BindOnce(&ConvertAccessorySheetDataToJavaObject, obj,
+                       std::move(data)),
+        base::BindOnce(&Java_ManualFillingComponentBridge_onItemsAvailable,
+                       base::android::AttachCurrentThread(), obj));
+  }
+}
+
+void ManualFillingViewAndroid::CloseAccessorySheet() {
+  if (auto obj = GetOrCreateJavaObject()) {
+    Java_ManualFillingComponentBridge_closeAccessorySheet(
+        base::android::AttachCurrentThread(), obj);
+  }
+}
+
+void ManualFillingViewAndroid::SwapSheetWithKeyboard() {
+  if (auto obj = GetOrCreateJavaObject()) {
+    Java_ManualFillingComponentBridge_swapSheetWithKeyboard(
+        base::android::AttachCurrentThread(), obj);
+  }
+}
+
+void ManualFillingViewAndroid::Show(
+    WaitForKeyboard wait_for_keyboard,
+    ShouldShowOnLargeFormFactor should_show_on_large_form_factor,
+    IsContentEditable is_content_editable) {
+  TRACE_EVENT0("passwords", "ManualFillingViewAndroid::Show");
+  if (auto obj = GetOrCreateJavaObject()) {
+    Java_ManualFillingComponentBridge_show(
+        base::android::AttachCurrentThread(), obj, wait_for_keyboard.value(),
+        should_show_on_large_form_factor.value(), is_content_editable.value());
+  }
+}
+
+void ManualFillingViewAndroid::Hide() {
+  if (auto obj = GetOrCreateJavaObject()) {
+    Java_ManualFillingComponentBridge_hide(base::android::AttachCurrentThread(),
+                                           obj);
+  }
+}
+
+void ManualFillingViewAndroid::ShowAccessorySheetTab(
+    const autofill::AccessoryTabType& tab_type) {
+  if (auto obj = GetOrCreateJavaObject()) {
+    Java_ManualFillingComponentBridge_showAccessorySheetTab(
+        base::android::AttachCurrentThread(), obj, tab_type);
+  }
+}
+
+void ManualFillingViewAndroid::SetSelectedSuggestion(
+    std::optional<int> suggestion_index) {
+  if (auto obj = GetOrCreateJavaObject()) {
+    Java_ManualFillingComponentBridge_setSelectedSuggestion(
+        base::android::AttachCurrentThread(), obj, suggestion_index);
+  }
+}
+
+bool ManualFillingViewAndroid::Navigate(autofill::NavigationAction action) {
+  if (auto obj = GetOrCreateJavaObject()) {
+    return Java_ManualFillingComponentBridge_navigate(
+        base::android::AttachCurrentThread(), obj, action);
+  }
+  return false;
+}
+
+bool ManualFillingViewAndroid::AcceptFallback() {
+  if (auto obj = GetOrCreateJavaObject()) {
+    return Java_ManualFillingComponentBridge_acceptFallback(
+        base::android::AttachCurrentThread(), obj);
+  }
+  return false;
+}
+
+void ManualFillingViewAndroid::OnAccessoryActionAvailabilityChanged(
+    ShouldShowAction shouldShowAction,
+    autofill::AccessoryAction action) {
+  if (!shouldShowAction && java_object_internal_.is_null()) {
+    return;
+  }
+  if (auto obj = GetOrCreateJavaObject()) {
+    Java_ManualFillingComponentBridge_onAccessoryActionAvailabilityChanged(
+        base::android::AttachCurrentThread(), obj, shouldShowAction.value(),
+        action);
+  }
+}
+
+void ManualFillingViewAndroid::OnFillingTriggered(
+    JNIEnv* env,
+    autofill::AccessoryTabType tab_type,
+    const JavaRef<jobject>& j_user_info_field) {
+  controller_->OnFillingTriggered(
+      tab_type, ConvertJavaUserInfoField(env, j_user_info_field));
+}
+
+void ManualFillingViewAndroid::OnPasskeySelected(
+    autofill::AccessoryTabType tab_type,
+    const std::vector<uint8_t>& passkey) {
+  controller_->OnPasskeySelected(tab_type, passkey);
+}
+
+void ManualFillingViewAndroid::OnOptionSelected(
+    autofill::AccessoryAction selected_action) {
+  controller_->OnOptionSelected(selected_action);
+}
+
+void ManualFillingViewAndroid::OnToggleChanged(
+    autofill::AccessoryAction selected_action,
+    bool enabled) {
+  controller_->OnToggleChanged(selected_action, enabled);
+}
+
+void ManualFillingViewAndroid::RequestAccessorySheet(
+    autofill::AccessoryTabType tab_type) {
+  // controller_ owns this class. Therefore, the callback can't outlive the view
+  // and base::Unretained is always a valid reference.
+  controller_->RequestAccessorySheet(
+      tab_type, base::BindOnce(&ManualFillingViewAndroid::OnItemsAvailable,
+                               base::Unretained(this)));
+}
+
+void ManualFillingViewAndroid::OnViewDestroyed() {
+  java_object_internal_.Reset();
+}
+
+ScopedJavaGlobalRef<jobject> ManualFillingViewAndroid::GetOrCreateJavaObject() {
+  if (java_object_internal_) {
+    return java_object_internal_;
+  }
+  if (controller_->container_view() == nullptr ||
+      controller_->container_view()->GetWindowAndroid() == nullptr) {
+    return nullptr;  // No window attached (yet or anymore).
+  }
+  java_object_internal_.Reset(Java_ManualFillingComponentBridge_create(
+      base::android::AttachCurrentThread(), reinterpret_cast<intptr_t>(this),
+      controller_->container_view()->GetWindowAndroid(), web_contents_));
+  return java_object_internal_;
+}
+
+// static
+static void JNI_ManualFillingComponentBridge_CachePasswordSheetDataForTesting(
+    content::WebContents* web_contents,
+    std::vector<std::u16string>&& usernames,
+    std::vector<std::u16string>&& passwords,
+    bool j_blocklisted) {
+  url::Origin origin =
+      web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin();
+  std::vector<password_manager::PasswordForm> credentials(usernames.size());
+  for (unsigned int i = 0; i < usernames.size(); ++i) {
+    credentials[i].url = origin.GetURL();
+    credentials[i].username_value = std::move(usernames[i]);
+    credentials[i].password_value = PasswordString(std::move(passwords[i]));
+    credentials[i].match_type = affiliations::MatchType::kExact;
+  }
+  return ChromePasswordManagerClient::FromWebContents(web_contents)
+      ->GetCredentialCacheForTesting()
+      ->SaveCredentialsAndBlocklistedForOrigin(
+          credentials,
+          password_manager::CredentialCache::IsOriginBlocklisted(j_blocklisted),
+          std::nullopt, origin);
+}
+
+// static
+static void JNI_ManualFillingComponentBridge_OnOptionSelectedForWebContents(
+    content::WebContents* web_contents,
+    autofill::AccessoryAction selected_action) {
+  if (!web_contents) {
+    return;
+  }
+  if (auto controller = ManualFillingController::GetOrCreate(web_contents)) {
+    controller->OnOptionSelected(selected_action);
+  }
+}
+
+// static
+static void JNI_ManualFillingComponentBridge_NotifyFocusedFieldTypeForTesting(
+    content::WebContents* web_contents,
+    int64_t j_focused_field_id,
+    autofill::mojom::FocusedFieldType focused_field_type) {
+  ManualFillingController::GetOrCreate(web_contents)
+      ->NotifyFocusedInputChanged(autofill::FieldRendererId(j_focused_field_id),
+                                  focused_field_type);
+}
+
+// static
+static void
+JNI_ManualFillingComponentBridge_SignalAutoGenerationStatusForTesting(
+    content::WebContents* web_contents,
+    bool j_available) {
+  // Bypass the generation controller when sending this status to the UI to
+  // avoid setup overhead, since its logic is currently not needed for tests.
+  ManualFillingController::GetOrCreate(web_contents)
+      ->OnAccessoryActionAvailabilityChanged(
+          ManualFillingController::ShouldShowAction(j_available),
+          autofill::AccessoryAction::GENERATE_PASSWORD_AUTOMATIC);
+}
+
+// static
+static void
+JNI_ManualFillingComponentBridge_DisableServerPredictionsForTesting() {
+  password_manager::PasswordFormManager::
+      DisableFillingServerPredictionsForTesting();
+}
+
+// static
+std::unique_ptr<ManualFillingViewInterface> ManualFillingViewInterface::Create(
+    ManualFillingController* controller,
+    content::WebContents* web_contents) {
+  return std::make_unique<ManualFillingViewAndroid>(controller, web_contents);
+}
+
+static bool JNI_ManualFillingComponentBridge_IsAtMemoryEnabled(
+    content::WebContents* web_contents) {
+  autofill::ContentAutofillClient* autofill_client =
+      autofill::ContentAutofillClient::FromWebContents(web_contents);
+  // Not every `WebContents` has a `ContentAutofillClient`.
+  if (!autofill_client) {
+    return false;
+  }
+
+  const GURL& page_url = web_contents->GetLastCommittedURL();
+  return autofill::MayPerformAtMemoryAction(
+      autofill::AtMemoryAction::kTriggerSearchUI, *autofill_client, page_url);
+}
+
+static void JNI_ManualFillingComponentBridge_HideAtMemoryBottomSheet(
+    content::WebContents* web_contents) {
+  autofill::ContentAutofillClient* autofill_client =
+      autofill::ContentAutofillClient::FromWebContents(web_contents);
+  if (autofill_client) {
+    autofill_client->HideSuggestions(
+        autofill::SuggestionHidingReason::kHiddenByCaller,
+        autofill::FillingProduct::kAtMemory);
+  }
+}
+
+DEFINE_JNI(ManualFillingComponentBridge)
+DEFINE_JNI(UserInfoField)

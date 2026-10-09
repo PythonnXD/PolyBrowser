@@ -1,0 +1,115 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "build/build_config.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "ui/base/test/ui_controls.h"
+#include "ui/views/controls/webview/webview.h"
+#include "ui/views/widget/widget.h"
+
+namespace views {
+
+class WebViewInteractiveUiTest : public InProcessBrowserTest {
+ public:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    InProcessBrowserTest::SetUpCommandLine(command_line);
+    // Don't open the default browser window - we're testing a WebView in a
+    // separate widget.
+    command_line->AppendSwitch(switches::kNoStartupWindow);
+  }
+};
+
+// TODO(crbug.com/562393492): Fails on Mac.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_MouseMoveEventDelivered DISABLED_MouseMoveEventDelivered
+#else
+#define MAYBE_MouseMoveEventDelivered MouseMoveEventDelivered
+#endif
+IN_PROC_BROWSER_TEST_F(WebViewInteractiveUiTest,
+                       MAYBE_MouseMoveEventDelivered) {
+  Profile* profile = ProfileManager::GetLastUsedProfile();
+  ASSERT_TRUE(profile);
+
+  // Create a widget with a WebView.
+  auto widget = std::make_unique<Widget>();
+  Widget::InitParams params(Widget::InitParams::CLIENT_OWNS_WIDGET);
+  params.bounds = gfx::Rect(0, 0, 400, 300);
+  widget->Init(std::move(params));
+
+  auto* web_view =
+      widget->SetClientContentsView(std::make_unique<WebView>(profile));
+
+  // Load a simple page with a mousemove listener.
+  GURL url(
+      "data:text/html,"
+      "<html><body><script>"
+      "  window.mouseMoveReceived = false;"
+      "  window.mouseX = -1;"
+      "  window.mouseY = -1;"
+      "  document.addEventListener('mousemove', (e) => {"
+      "    window.mouseMoveReceived = true;"
+      "    window.mouseX = e.clientX;"
+      "    window.mouseY = e.clientY;"
+      "  });"
+      "</script></body></html>");
+  web_view->LoadInitialURL(url);
+
+  widget->Show();
+
+  content::WebContents* web_contents = web_view->GetWebContents();
+  ASSERT_TRUE(web_contents);
+
+  // Wait for load to complete.
+  EXPECT_TRUE(content::WaitForLoadStop(web_contents));
+
+  // Wait for the primary main frame to become ready for input.
+  content::ReadyForInputObserver activation_observer(web_contents);
+  activation_observer.Wait();
+
+  // Move mouse over the WebView.
+  gfx::Point point = web_view->GetBoundsInScreen().CenterPoint();
+
+  base::RunLoop run_loop;
+  ui_controls::SendMouseMoveNotifyWhenDone(
+      point.x(), point.y(), run_loop.QuitClosure(), widget->GetNativeWindow());
+  run_loop.Run();
+
+  // The point we sent was the center of the WebView.
+  // We calculate the expected coordinates using the local bounds of the
+  // WebView.
+  int expected_x = web_view->GetLocalBounds().width() / 2;
+  int expected_y = web_view->GetLocalBounds().height() / 2;
+
+  // Verify listener was triggered at the expected coordinates (ignoring any
+  // initial mousemove event at the cursor's starting position when the window
+  // was shown).
+  EXPECT_EQ(true, content::EvalJs(web_contents, content::JsReplace(
+                                                    R"(
+    new Promise((resolve) => {
+      const isAtExpectedPoint = (x, y) =>
+          Math.abs(x - $1) <= 2 && Math.abs(y - $2) <= 2;
+      if (window.mouseMoveReceived &&
+          isAtExpectedPoint(window.mouseX, window.mouseY)) {
+        resolve(true);
+        return;
+      }
+      document.addEventListener('mousemove', (e) => {
+        if (isAtExpectedPoint(e.clientX, e.clientY)) {
+          resolve(true);
+        }
+      });
+    })
+  )",
+                                                    expected_x, expected_y)));
+
+  widget->CloseNow();
+}
+
+}  // namespace views

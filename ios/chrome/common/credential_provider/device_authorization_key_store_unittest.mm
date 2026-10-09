@@ -1,0 +1,252 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/common/credential_provider/device_authorization_key_store.h"
+
+#import <Foundation/Foundation.h>
+#import <Security/Security.h>
+
+#import <string>
+#import <utility>
+#import <vector>
+
+#import "base/apple/bridging.h"
+#import "base/apple/foundation_util.h"
+#import "base/apple/scoped_cftyperef.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/task/thread_pool.h"
+#import "base/test/protobuf_matchers.h"
+#import "base/test/task_environment.h"
+#import "base/test/test_future.h"
+#import "components/webauthn/core/browser/device_authorization/proto/device_authorization_key.pb.h"
+#import "components/webauthn/core/browser/device_authorization/proto/device_authorization_local_storage.pb.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+
+namespace {
+
+using ::base::apple::CFToNSPtrCast;
+using ::base::apple::NSToCFOwnershipCast;
+using ::base::test::EqualsProto;
+using ::base::test::TestFuture;
+using ::webauthn::CachedDeviceAuthorizationKeys;
+using ::webauthn::DeviceAuthorizationKey;
+
+constexpr char kGaiaId1[] = "123456789012345678901";
+constexpr char kGaiaId2[] = "987654321098765432109";
+constexpr char kTestKey1[] = "device-auth-key-version-1";
+constexpr char kTestKey2[] = "device-auth-key-version-2";
+constexpr char kTestKey3[] = "device-auth-key-version-3";
+constexpr int kKeyVersion1 = 1;
+constexpr int kKeyVersion2 = 2;
+constexpr int kKeyVersion3 = 3;
+constexpr int kCacheVersion1 = 1;
+constexpr int kCacheVersion2 = 2;
+
+CachedDeviceAuthorizationKeys CreateCachedKeys(
+    int cache_version,
+    const std::vector<std::pair<int, std::string>>& version_key_pairs) {
+  CachedDeviceAuthorizationKeys cached_keys;
+  cached_keys.set_cache_version(cache_version);
+  for (const std::pair<int, std::string>& version_key_pair :
+       version_key_pairs) {
+    DeviceAuthorizationKey* key = cached_keys.mutable_keys()->add_keys();
+    key->set_version(version_key_pair.first);
+    key->set_key(version_key_pair.second);
+  }
+  return cached_keys;
+}
+
+// Deletes all device authorization keys stored in the Keychain.
+void WipeAllDeviceAuthorizationKeys() {
+  NSDictionary* query = @{
+    CFToNSPtrCast(kSecClass) : CFToNSPtrCast(kSecClassGenericPassword),
+    CFToNSPtrCast(kSecAttrService) :
+        @"com.google.chrome.DeviceAuthorizationKey",
+    CFToNSPtrCast(kSecAttrSynchronizable) : @NO,
+  };
+  SecItemDelete(NSToCFOwnershipCast(query));
+}
+
+class DeviceAuthorizationKeyStoreTest : public PlatformTest {
+ protected:
+  void SetUp() override {
+    PlatformTest::SetUp();
+    WipeAllDeviceAuthorizationKeys();
+  }
+
+  void TearDown() override {
+    WipeAllDeviceAuthorizationKeys();
+    PlatformTest::TearDown();
+  }
+
+  // Helper methods that dispatch Keychain operations to a background thread
+  // via `base::ThreadPool` to satisfy the `DCHECK(![NSThread isMainThread])`
+  // requirement, since test bodies execute on the main thread.
+  bool StoreKeys(const std::string& gaia_id,
+                 const CachedDeviceAuthorizationKeys& keys) {
+    TestFuture<bool> future;
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE, {base::MayBlock()},
+        base::BindOnce(&StoreDeviceAuthorizationKeys, gaia_id, keys),
+        future.GetCallback());
+    return future.Get();
+  }
+
+  std::optional<CachedDeviceAuthorizationKeys> GetKeys(
+      const std::string& gaia_id) {
+    TestFuture<std::optional<CachedDeviceAuthorizationKeys>> future;
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE, {base::MayBlock()},
+        base::BindOnce(&GetDeviceAuthorizationKeys, gaia_id),
+        future.GetCallback());
+    return future.Take();
+  }
+
+  base::test::TaskEnvironment task_environment_;
+};
+
+// Tests storing and successfully fetching a single device authorization key.
+TEST_F(DeviceAuthorizationKeyStoreTest, StoreAndFetchSingleKeySucceeds) {
+  CachedDeviceAuthorizationKeys expected_keys =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion1, kTestKey1}});
+  EXPECT_TRUE(StoreKeys(kGaiaId1, expected_keys));
+
+  std::optional<CachedDeviceAuthorizationKeys> fetched_keys = GetKeys(kGaiaId1);
+  ASSERT_TRUE(fetched_keys.has_value());
+  EXPECT_THAT(*fetched_keys, EqualsProto(expected_keys));
+}
+
+// Tests storing and fetching multiple key versions in a batch.
+TEST_F(DeviceAuthorizationKeyStoreTest, StoreAndFetchMultipleKeysInBatch) {
+  CachedDeviceAuthorizationKeys expected_keys =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion1, kTestKey1},
+                                        {kKeyVersion2, kTestKey2},
+                                        {kKeyVersion3, kTestKey3}});
+  EXPECT_TRUE(StoreKeys(kGaiaId1, expected_keys));
+
+  std::optional<CachedDeviceAuthorizationKeys> fetched_keys = GetKeys(kGaiaId1);
+  ASSERT_TRUE(fetched_keys.has_value());
+  EXPECT_THAT(*fetched_keys, EqualsProto(expected_keys));
+}
+
+// Tests multi-profile isolation partitioned by Gaia ID.
+TEST_F(DeviceAuthorizationKeyStoreTest, IsolatesKeysByGaiaId) {
+  CachedDeviceAuthorizationKeys keys_account_1 =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion1, kTestKey1}});
+  CachedDeviceAuthorizationKeys keys_account_2 =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion2, kTestKey2}});
+
+  // Store keys for account 1.
+  EXPECT_TRUE(StoreKeys(kGaiaId1, keys_account_1));
+
+  // Account 2 should have no keys initially.
+  EXPECT_FALSE(GetKeys(kGaiaId2).has_value());
+
+  // Store keys for account 2.
+  EXPECT_TRUE(StoreKeys(kGaiaId2, keys_account_2));
+
+  // Both accounts should return their respective distinct keys.
+  std::optional<CachedDeviceAuthorizationKeys> fetched_account_1 =
+      GetKeys(kGaiaId1);
+  ASSERT_TRUE(fetched_account_1.has_value());
+  EXPECT_THAT(*fetched_account_1, EqualsProto(keys_account_1));
+
+  std::optional<CachedDeviceAuthorizationKeys> fetched_account_2 =
+      GetKeys(kGaiaId2);
+  ASSERT_TRUE(fetched_account_2.has_value());
+  EXPECT_THAT(*fetched_account_2, EqualsProto(keys_account_2));
+}
+
+// Tests overwriting/updating existing keys for the same account.
+TEST_F(DeviceAuthorizationKeyStoreTest, OverwritesExistingKeysForAccount) {
+  CachedDeviceAuthorizationKeys initial_keys =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion1, kTestKey1}});
+  EXPECT_TRUE(StoreKeys(kGaiaId1, initial_keys));
+
+  std::optional<CachedDeviceAuthorizationKeys> fetched_initial =
+      GetKeys(kGaiaId1);
+  ASSERT_TRUE(fetched_initial.has_value());
+  EXPECT_THAT(*fetched_initial, EqualsProto(initial_keys));
+
+  // Overwrite with a new set of keys and new cache version.
+  CachedDeviceAuthorizationKeys updated_keys = CreateCachedKeys(
+      kCacheVersion2, {{kKeyVersion2, kTestKey2}, {kKeyVersion3, kTestKey3}});
+  EXPECT_TRUE(StoreKeys(kGaiaId1, updated_keys));
+
+  std::optional<CachedDeviceAuthorizationKeys> fetched_updated =
+      GetKeys(kGaiaId1);
+  ASSERT_TRUE(fetched_updated.has_value());
+  EXPECT_THAT(*fetched_updated, EqualsProto(updated_keys));
+}
+
+// Tests edge cases with empty and invalid arguments.
+TEST_F(DeviceAuthorizationKeyStoreTest, RejectsEmptyAndInvalidArguments) {
+  CachedDeviceAuthorizationKeys valid_keys =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion1, kTestKey1}});
+  CachedDeviceAuthorizationKeys empty_keys;
+  empty_keys.set_cache_version(kCacheVersion1);
+  CachedDeviceAuthorizationKeys empty_key_bytes =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion1, ""}});
+  CachedDeviceAuthorizationKeys negative_version =
+      CreateCachedKeys(kCacheVersion1, {{-1, kTestKey1}});
+
+  EXPECT_FALSE(StoreKeys("", valid_keys));
+  EXPECT_FALSE(StoreKeys(kGaiaId1, empty_keys));
+  EXPECT_FALSE(StoreKeys(kGaiaId1, empty_key_bytes));
+  EXPECT_FALSE(StoreKeys(kGaiaId1, negative_version));
+  EXPECT_FALSE(GetKeys("").has_value());
+}
+
+// Tests that Keychain query attributes (synchronizable, accessible, service,
+// account) and serialized protobuf payload are correctly applied to the stored
+// item.
+TEST_F(DeviceAuthorizationKeyStoreTest, AppliesExpectedKeychainAttributes) {
+  CachedDeviceAuthorizationKeys expected_keys =
+      CreateCachedKeys(kCacheVersion1, {{kKeyVersion1, kTestKey1}});
+  EXPECT_TRUE(StoreKeys(kGaiaId1, expected_keys));
+
+  // Query raw attributes from the iOS Keychain.
+  NSString* expected_account = base::SysUTF8ToNSString(kGaiaId1);
+  NSMutableDictionary* query = [NSMutableDictionary dictionaryWithDictionary:@{
+    CFToNSPtrCast(kSecClass) : CFToNSPtrCast(kSecClassGenericPassword),
+    CFToNSPtrCast(kSecAttrService) :
+        @"com.google.chrome.DeviceAuthorizationKey",
+    CFToNSPtrCast(kSecAttrAccount) : expected_account,
+    CFToNSPtrCast(kSecReturnAttributes) : @YES,
+    CFToNSPtrCast(kSecReturnData) : @YES,
+    CFToNSPtrCast(kSecMatchLimit) : CFToNSPtrCast(kSecMatchLimitOne),
+    CFToNSPtrCast(kSecAttrSynchronizable) : @NO,
+  }];
+
+  base::apple::ScopedCFTypeRef<CFTypeRef> result;
+  OSStatus status =
+      SecItemCopyMatching(NSToCFOwnershipCast(query), result.InitializeInto());
+  ASSERT_EQ(status, errSecSuccess);
+  ASSERT_TRUE(result);
+
+  NSDictionary* dict =
+      CFToNSPtrCast(base::apple::CFCast<CFDictionaryRef>(result.get()));
+  ASSERT_TRUE(dict);
+
+  EXPECT_NSEQ(dict[CFToNSPtrCast(kSecAttrAccount)], expected_account);
+  EXPECT_NSEQ(dict[CFToNSPtrCast(kSecAttrService)],
+              @"com.google.chrome.DeviceAuthorizationKey");
+  EXPECT_NSEQ(dict[CFToNSPtrCast(kSecAttrAccessible)],
+              CFToNSPtrCast(kSecAttrAccessibleWhenUnlockedThisDeviceOnly));
+  if (dict[CFToNSPtrCast(kSecAttrSynchronizable)]) {
+    EXPECT_NSEQ(dict[CFToNSPtrCast(kSecAttrSynchronizable)], @NO);
+  }
+
+  NSData* payload_data = dict[CFToNSPtrCast(kSecValueData)];
+  ASSERT_TRUE(payload_data);
+
+  CachedDeviceAuthorizationKeys parsed_keys;
+  ASSERT_TRUE(parsed_keys.ParseFromArray(
+      payload_data.bytes, static_cast<int>(payload_data.length)));
+  EXPECT_THAT(parsed_keys, EqualsProto(expected_keys));
+}
+
+}  // namespace

@@ -1,0 +1,75 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/media/cast_mirroring_service_host_factory.h"
+
+#include "chrome/browser/media/cast_mirroring_service_host.h"
+#include "components/media_router/common/media_source.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/desktop_media_id.h"
+#include "content/public/browser/web_contents.h"
+
+namespace mirroring {
+
+// static
+CastMirroringServiceHostFactory&
+CastMirroringServiceHostFactory::GetInstance() {
+  static base::NoDestructor<CastMirroringServiceHostFactory> instance;
+  return *instance;
+}
+
+MirroringServiceHost::UniquePtr CastMirroringServiceHostFactory::GetForTab(
+    content::FrameTreeNodeId frame_tree_node_id) {
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  auto* target_contents =
+      content::WebContents::FromFrameTreeNodeId(frame_tree_node_id);
+  if (target_contents) {
+    const content::DesktopMediaID media_id =
+        CastMirroringServiceHost::BuildMediaIdForWebContents(target_contents);
+    return MirroringServiceHost::UniquePtr(
+        new CastMirroringServiceHost(media_id),
+        base::OnTaskRunnerDeleter(content::GetUIThreadTaskRunner({})));
+  }
+  return MirroringServiceHost::UniquePtr(nullptr,
+                                         base::OnTaskRunnerDeleter(nullptr));
+}
+
+MirroringServiceHost::UniquePtr CastMirroringServiceHostFactory::GetForDesktop(
+    const std::optional<std::string>& media_id) {
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  if (!media_id) {
+    return MirroringServiceHost::UniquePtr(nullptr,
+                                           base::OnTaskRunnerDeleter(nullptr));
+  }
+  return MirroringServiceHost::UniquePtr(
+      new CastMirroringServiceHost(content::DesktopMediaID::Parse(*media_id)),
+      base::OnTaskRunnerDeleter(content::GetUIThreadTaskRunner({})));
+}
+
+MirroringServiceHost::UniquePtr
+CastMirroringServiceHostFactory::GetForOffscreenTab(
+    const GURL& presentation_url,
+    const std::string& presentation_id,
+    content::FrameTreeNodeId frame_tree_node_id) {
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  auto* web_contents =
+      content::WebContents::FromFrameTreeNodeId(frame_tree_node_id);
+  if (web_contents && media_router::IsValidPresentationUrl(presentation_url)) {
+    auto host =
+        std::make_unique<CastMirroringServiceHost>(content::DesktopMediaID());
+    host->OpenOffscreenTab(web_contents->GetBrowserContext(), presentation_url,
+                           presentation_id);
+    return MirroringServiceHost::UniquePtr(
+        host.release(),
+        base::OnTaskRunnerDeleter(content::GetUIThreadTaskRunner({})));
+  }
+  return MirroringServiceHost::UniquePtr(nullptr,
+                                         base::OnTaskRunnerDeleter(nullptr));
+}
+
+CastMirroringServiceHostFactory::CastMirroringServiceHostFactory() = default;
+
+CastMirroringServiceHostFactory::~CastMirroringServiceHostFactory() = default;
+
+}  // namespace mirroring

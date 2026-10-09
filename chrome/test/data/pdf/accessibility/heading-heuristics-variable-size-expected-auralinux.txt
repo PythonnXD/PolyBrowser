@@ -1,0 +1,20 @@
+[document frame] name='PDF document containing 1 page'
+++[landmark] name='Page 1'
+++++[heading] name='Large Font Size Heading'
+++++++[static] name='Large Font Size Heading '
+++++[paragraph]
+++++++[static] name='This is body text line one. This is body text line two. '
+++++[heading] name='Medium Bold Heading'
+++++++[static] name='Medium Bold Heading '
+++++[paragraph]
+++++++[static] name='Body text below medium bold heading. '
+++++[heading] name='Medium Font Name Heading'
+++++++[static] name='Medium Font Name Heading '
+++++[paragraph]
+++++++[static] name='Body text below medium name heading. '
+++++[heading] name='MEDIUM ALL CAPS HEADING'
+++++++[static] name='MEDIUM ALL CAPS HEADING '
+++++[paragraph]
+++++++[static] name='Body text with '
+++++++[static] name='inline bold text '
+++++++[static] name='in a paragraph. Body text with INLINE ALL CAPS TEXT in a paragraph. Trailing body text.'

@@ -1,0 +1,115 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=chrome://resources/cr_elements/cr_shared_vars.css.js
+ * #css_wrapper_metadata_end */
+
+.settings-columned-section {
+  display: flex;
+  gap: 16px;
+  padding: 16px var(--cr-section-padding) 0;
+}
+
+settings-collapse-radio-button .settings-columned-section {
+  padding: 4px 0 16px 0;
+}
+
+.settings-columned-section .column {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-columned-section .description-header {
+  color: var(--google-blue-600);
+}
+
+:host-context([webui-refresh-2026]) {
+  .settings-columned-section .description-header {
+    color: var(--color-settings-columned-section-description-header);
+  }
+}
+
+.settings-columned-section h2.description-header,
+.settings-columned-section h3.description-header,
+.settings-columned-section h4.description-header {
+  /* description-header elements should have the same style no matter their
+     programmatic heading role. */
+  font-size: inherit;
+  font-weight: 400;
+  margin: 0;
+  padding: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-columned-section .description-header {
+    color: var(--google-blue-300);
+  }
+}
+
+.settings-columned-section ul {
+  list-style-type: none;
+  padding-inline-start: 0;
+}
+
+.settings-columned-section ul.icon-bulleted-list li {
+  display: flex;
+  gap: 16px;
+}
+
+.settings-columned-section li {
+  margin: 16px 0;
+}
+
+:host-context([settings-refresh-2026]) {
+  .settings-columned-section {
+    padding-bottom: 20px;
+  }
+
+  .settings-columned-section .column {
+    background-color: var(--color-settings-info-card-background);
+    border-radius: var(--cr-card-border-radius);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .settings-columned-section .description-header {
+    font-weight: 500;
+  }
+
+  .settings-columned-section ul:not(.icon-bulleted-list) {
+    list-style-type: disc;
+    padding-inline-start: 20px;
+  }
+
+  /* Use flex gap so hidden dom-if/comment anchors do not add stray spacing. */
+  .settings-columned-section ul {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+  }
+
+  .settings-columned-section li {
+    margin-bottom: 0;
+    margin-top: 0;
+  }
+
+  .settings-columned-section ul.icon-bulleted-list li {
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+@media (forced-colors: active) {
+  :host-context([settings-refresh-2026]) {
+    .settings-columned-section .column {
+      border: 1px solid ButtonBorder;
+    }
+  }
+}

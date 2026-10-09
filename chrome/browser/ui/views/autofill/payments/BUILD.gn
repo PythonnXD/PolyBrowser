@@ -1,0 +1,902 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_win || is_mac || is_linux || is_chromeos)
+
+source_set("dialog_view_ids") {
+  public = [ "dialog_view_ids.h" ]
+  public_deps = [ "//components/autofill/core/browser" ]
+}
+
+source_set("payments_view_util") {
+  public = [ "payments_view_util.h" ]
+  sources = [ "payments_view_util.cc" ]
+  public_deps = [
+    "//base",
+    "//build:branding_buildflags",
+    "//components/autofill/core/browser",
+    "//components/signin/public/identity_manager",
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/views",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    "//chrome/app/vector_icons",
+    "//chrome/browser/profiles:profile_util",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/autofill:autofill_bubble_utils",
+    "//components/autofill/core/common",
+    "//components/resources:components_scaled_resources",
+    "//components/vector_icons",
+    "//ui/color",
+    "//ui/native_theme",
+  ]
+}
+
+source_set("promo_code_label_button") {
+  public = [ "promo_code_label_button.h" ]
+  sources = [ "promo_code_label_button.cc" ]
+  public_deps = [ "//ui/views" ]
+  deps = [
+    "//base",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/vector_icons",
+    "//ui/base",
+  ]
+}
+
+source_set("bnpl_dialog_footnote") {
+  public = [ "bnpl_dialog_footnote.h" ]
+  sources = [ "bnpl_dialog_footnote.cc" ]
+  public_deps = [
+    "//ui/base",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//base",
+    "//chrome/browser/ui/views:layout_provider",
+  ]
+}
+
+source_set("bnpl_tos_dialog") {
+  public = [ "bnpl_tos_dialog.h" ]
+  sources = [ "bnpl_tos_dialog.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/views/autofill/payments:payments_view_util",
+    "//components/tabs:public",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/browser",
+    "//components/strings:components_strings",
+    "//components/vector_icons",
+    "//ui/base",
+    "//ui/gfx",
+  ]
+}
+
+source_set("bnpl_tos_view_desktop") {
+  public = [ "bnpl_tos_view_desktop.h" ]
+  sources = [ "bnpl_tos_view_desktop.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":bnpl_tos_dialog",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//components/tabs:public",
+    "//content/public/browser",
+  ]
+}
+
+source_set("autofill_error_dialog_view_native_views") {
+  public = [ "autofill_error_dialog_view_native_views.h" ]
+  sources = [ "autofill_error_dialog_view_native_views.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/tabs:public",
+    "//components/vector_icons",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/color",
+    "//ui/gfx",
+  ]
+}
+
+source_set("autofill_progress_dialog_views") {
+  public = [ "autofill_progress_dialog_views.h" ]
+  sources = [ "autofill_progress_dialog_views.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/constrained_window",
+    "//components/tabs:public",
+    "//ui/base",
+  ]
+}
+
+source_set("save_iban_bubble_view") {
+  public = [ "save_iban_bubble_view.h" ]
+  sources = [ "save_iban_bubble_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//chrome/browser/ui/views/autofill/payments:payments_view_util",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser:resources",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/autofill/payments:dialog_view_ids",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//components/strings:components_strings",
+    "//content/public/browser",
+    "//ui/base",
+  ]
+}
+
+source_set("manage_saved_iban_bubble_view") {
+  public = [ "manage_saved_iban_bubble_view.h" ]
+  sources = [ "manage_saved_iban_bubble_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//chrome/browser/ui/views/autofill/payments:payments_view_util",
+    "//ui/views",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    "//chrome/browser/ui/dialogs:browser_dialogs",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/browser",
+    "//components/strings:components_strings",
+    "//ui/base",
+  ]
+}
+
+source_set("payments_window_user_consent_dialog_view") {
+  public = [ "payments_window_user_consent_dialog_view.h" ]
+  sources = [ "payments_window_user_consent_dialog_view.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/constrained_window",
+    "//content/public/browser",
+    "//ui/base/mojom:ui_base_types",
+  ]
+}
+
+source_set("mandatory_reauth_opt_in_bubble_view") {
+  public = [ "mandatory_reauth_opt_in_bubble_view.h" ]
+  sources = [ "mandatory_reauth_opt_in_bubble_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//ui/views",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    ":payments_view_util",
+    "//chrome/app/theme:theme_resources",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/accessibility",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+  ]
+}
+
+source_set("mandatory_reauth_confirmation_bubble_view") {
+  public = [ "mandatory_reauth_confirmation_bubble_view.h" ]
+  sources = [ "mandatory_reauth_confirmation_bubble_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//ui/views",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    ":payments_view_util",
+    "//chrome/app/theme:theme_resources",
+    "//chrome/browser/ui:chrome_pages",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/accessibility",
+    "//chrome/common:constants",
+    "//components/autofill/core/browser",
+    "//components/strings:components_strings",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+  ]
+}
+
+source_set("wallet_reminder_notice_bubble_view") {
+  public = [ "wallet_reminder_notice_bubble_view.h" ]
+  sources = [ "wallet_reminder_notice_bubble_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser:resources",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/strings:components_strings",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+  ]
+}
+
+source_set("card_unmask_authentication_selection_dialog_view") {
+  public = [ "card_unmask_authentication_selection_dialog_view.h" ]
+  sources = [ "card_unmask_authentication_selection_dialog_view.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/constrained_window",
+    "//components/strings:components_strings",
+    "//components/tabs:public",
+    "//components/vector_icons",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("card_unmask_otp_input_dialog_views") {
+  public = [ "card_unmask_otp_input_dialog_views.h" ]
+  sources = [ "card_unmask_otp_input_dialog_views.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/constrained_window",
+    "//components/strings:components_strings",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("card_unmask_prompt_views") {
+  public = [ "card_unmask_prompt_views.h" ]
+  sources = [ "card_unmask_prompt_views.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill/payments",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/constrained_window",
+    "//components/strings:components_strings",
+    "//components/vector_icons",
+    "//components/web_modal",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/base/metadata",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/color",
+    "//ui/events",
+    "//ui/gfx",
+    "//ui/gfx/geometry",
+    "//url",
+  ]
+}
+
+source_set("save_and_fill_dialog") {
+  public = [ "save_and_fill_dialog.h" ]
+  sources = [ "save_and_fill_dialog.cc" ]
+  public_deps = [
+    ":payments_view_util",
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/common:credit_card_number_validation",
+    "//components/resources:components_scaled_resources",
+    "//components/strings:components_strings",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/gfx",
+  ]
+}
+
+source_set("filled_card_information_bubble_views") {
+  public = [ "filled_card_information_bubble_views.h" ]
+  sources = [ "filled_card_information_bubble_views.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//ui/base/metadata",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/browser",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/color",
+    "//ui/gfx/geometry",
+    "//ui/views",
+  ]
+}
+
+source_set("offer_notification_bubble_views") {
+  public = [ "offer_notification_bubble_views.h" ]
+  sources = [ "offer_notification_bubble_views.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//chrome/browser/ui/views/controls",
+    "//ui/base",
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/browser",
+    "//components/strings:components_strings",
+    "//net",
+    "//ui/base/mojom:ui_base_types",
+  ]
+}
+
+source_set("payments_churned_users_bubble_view") {
+  public = [ "payments_churned_users_bubble_view.h" ]
+  sources = [ "payments_churned_users_bubble_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    ":payments_view_util",
+    "//chrome/browser:resources",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/signin/public/identity_manager",
+    "//components/strings:components_strings",
+    "//ui/base",
+    "//ui/base/metadata",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/views",
+  ]
+}
+
+source_set("virtual_card_enroll_bubble_views") {
+  public = [ "virtual_card_enroll_bubble_views.h" ]
+  sources = [ "virtual_card_enroll_bubble_views.cc" ]
+  public_deps = [
+    ":payments_view_util",
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    "//chrome/browser:resources",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/dialogs",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common:features",
+    "//components/strings:components_strings",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/views",
+    "//url",
+  ]
+}
+
+source_set("save_and_fill_view_desktop") {
+  public = [ "save_and_fill_view_desktop.h" ]
+  sources = [ "save_and_fill_view_desktop.cc" ]
+  public_deps = [
+    ":save_and_fill_dialog",
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//components/tabs:public",
+    "//content/public/browser",
+  ]
+}
+
+source_set("omnibox_autofill_suggestion_view") {
+  public = [ "omnibox_autofill_suggestion_view.h" ]
+  sources = [ "omnibox_autofill_suggestion_view.cc" ]
+  public_deps = [
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/autofill/popup:popup_row_content_view",
+    "//components/autofill/core/browser",
+    "//components/strings:components_strings",
+    "//components/vector_icons",
+    "//ui/base",
+    "//ui/gfx",
+  ]
+}
+
+source_set("save_card_bubble_views") {
+  public = [ "save_card_bubble_views.h" ]
+  sources = [ "save_card_bubble_views.cc" ]
+  public_deps = [
+    ":dialog_view_ids",
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//components/signin/public/base:signin_buildflags",
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//build:buildflag_header_h",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//components/resources:components_scaled_resources",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set(
+    "save_payment_method_and_virtual_card_enroll_confirmation_bubble_views") {
+  public = [
+    "save_payment_method_and_virtual_card_enroll_confirmation_bubble_views.h",
+  ]
+  sources = [
+    "save_payment_method_and_virtual_card_enroll_confirmation_bubble_views.cc",
+  ]
+  public_deps = [
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//components/autofill/core/browser",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    ":payments_view_util",
+    "//base",
+    "//chrome/browser:resources",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/common",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/views",
+  ]
+}
+
+source_set("webauthn_dialog_view") {
+  public = [ "webauthn_dialog_view.h" ]
+  sources = [ "webauthn_dialog_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/autofill/payments",
+    "//ui/base/metadata",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//chrome/browser/ui/views/webauthn",
+    "//chrome/browser/ui/webauthn",
+    "//components/constrained_window",
+    "//components/tabs:public",
+    "//components/web_modal",
+    "//content/public/browser",
+  ]
+}
+
+source_set("save_card_manage_cards_bubble_views") {
+  public = [ "save_card_manage_cards_bubble_views.h" ]
+  sources = [ "save_card_manage_cards_bubble_views.cc" ]
+  public_deps = [
+    ":save_card_bubble_views",
+    "//ui/base/metadata",
+  ]
+  deps = [
+    "//chrome/browser/ui/dialogs:browser_dialogs",
+    "//components/strings:components_strings",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/views",
+  ]
+}
+
+source_set("save_card_offer_bubble_views") {
+  public = [ "save_card_offer_bubble_views.h" ]
+  sources = [ "save_card_offer_bubble_views.cc" ]
+  public_deps = [
+    ":payments_view_util",
+    ":save_card_bubble_views",
+    "//base",
+    "//chrome/browser/ui/autofill",
+    "//ui/base/metadata",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/views",
+  ]
+  deps = [
+    ":dialog_view_ids",
+    "//chrome/app/theme:theme_resources",
+    "//chrome/app/vector_icons",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/dialogs:browser_dialogs",
+    "//chrome/browser/ui/hats",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//components/strings:components_strings",
+    "//ui/base",
+    "//ui/gfx",
+  ]
+}
+
+source_set("bnpl_issuer_linked_pill") {
+  public = [ "bnpl_issuer_linked_pill.h" ]
+  sources = [ "bnpl_issuer_linked_pill.cc" ]
+  public_deps = [
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/accessibility",
+    "//chrome/browser/ui/views/autofill/popup:popup_badge_constants",
+    "//components/autofill/core/common:features",
+    "//components/strings:components_strings",
+    "//ui/accessibility:ax_enums_mojo",
+    "//ui/base",
+    "//ui/color",
+  ]
+}
+
+source_set("select_bnpl_issuer_dialog") {
+  public = [
+    "bnpl_issuer_view.h",
+    "select_bnpl_issuer_dialog.h",
+  ]
+  sources = [
+    "bnpl_issuer_view.cc",
+    "select_bnpl_issuer_dialog.cc",
+  ]
+  public_deps = [
+    ":payments_view_util",
+    "//base",
+    "//components/autofill/core/browser",
+    "//components/tabs:public",
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+  deps = [
+    ":bnpl_dialog_footnote",
+    ":bnpl_issuer_linked_pill",
+    ":dialog_view_ids",
+    "//chrome/app/vector_icons",
+    "//chrome/browser/ui:chrome_pages",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/controls",
+    "//components/strings:components_strings",
+    "//ui/base",
+  ]
+}
+
+source_set("omnibox_autofill_bubble_view") {
+  public = [ "omnibox_autofill_bubble_view.h" ]
+  sources = [ "omnibox_autofill_bubble_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//ui/base/metadata",
+  ]
+  deps = [
+    ":omnibox_autofill_suggestion_view",
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/autofill/popup:popup_cell_utils",
+    "//chrome/browser/ui/views/autofill/popup:popup_row_content_view",
+    "//chrome/browser/ui/views/autofill/popup:popup_row_factory_utils",
+    "//components/autofill/core/browser",
+    "//content/public/browser",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/display",
+    "//ui/views",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [
+    "autofill_error_dialog_view_native_views_browsertest.cc",
+    "autofill_progress_dialog_views_browsertest.cc",
+    "bnpl_tos_view_desktop_browsertest.cc",
+    "card_unmask_authentication_selection_dialog_browsertest.cc",
+    "card_unmask_otp_input_dialog_browsertest.cc",
+    "credit_card_access_manager_browsertest.cc",
+    "offer_notification_bubble_views_browsertest.cc",
+    "offer_notification_icon_view_browsertest.cc",
+    "omnibox_autofill_bubble_view_browsertest.cc",
+    "payments_churned_users_bubble_views_browsertest.cc",
+    "payments_window_user_consent_dialog_browsertest.cc",
+    "save_card_bubble_views_browsertest.cc",
+    "select_bnpl_issuer_dialog_browsertest.cc",
+    "wallet_reminder_notice_bubble_view_browsertest.cc",
+    "webauthn_dialog_browsertest.cc",
+  ]
+  deps = [
+    ":autofill_error_dialog_view_native_views",
+    ":bnpl_tos_view_desktop",
+    ":card_unmask_authentication_selection_dialog_view",
+    ":card_unmask_otp_input_dialog_views",
+    ":dialog_view_ids",
+    ":omnibox_autofill_bubble_view",
+    ":omnibox_autofill_suggestion_view",
+    ":payments_churned_users_bubble_view",
+    ":payments_view_util",
+    ":payments_window_user_consent_dialog_view",
+    ":save_card_bubble_views",
+    ":save_card_manage_cards_bubble_views",
+    ":select_bnpl_issuer_dialog",
+    ":wallet_reminder_notice_bubble_view",
+    ":webauthn_dialog_view",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/app:generated_resources",
+    "//chrome/browser/autofill",
+    "//chrome/browser/autofill:test_support",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/signin",
+    "//chrome/browser/sync:factories",
+    "//chrome/browser/sync/test/integration:sync_integration_test_support",
+    "//chrome/browser/ui:browser_actions",
+    "//chrome/browser/ui:browser_window_header",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/actions:actions_headers",
+    "//chrome/browser/ui/autofill",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/location_bar",
+    "//chrome/browser/ui/page_action",
+    "//chrome/browser/ui/page_action:icon_type",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//chrome/browser/ui/test:dialog",
+    "//chrome/browser/ui/views/autofill/popup:popup_cell_utils",
+    "//chrome/browser/ui/views/frame:browser_view_header",
+    "//chrome/browser/ui/views/frame:toolbar_button_provider",
+    "//chrome/browser/ui/views/location_bar",
+    "//chrome/browser/ui/views/location_bar:icon_label_bubble",
+    "//chrome/browser/ui/views/page_action",
+    "//chrome/browser/ui/views/page_action:page_action_test_support",
+    "//chrome/browser/ui/views/toolbar",
+    "//chrome/test:test_support_ui",
+    "//chrome/test/base:in_process_browser_test",
+    "//chrome/test/base:ui_test_utils",
+    "//chrome/test/interaction",
+    "//components/autofill/content/browser",
+    "//components/autofill/content/browser:test_support",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/browser:test_support",
+    "//components/autofill/core/common:features",
+    "//components/commerce/core:shopping_service_test_support",
+    "//components/signin/public/base",
+    "//components/signin/public/base:signin_buildflags",
+    "//components/signin/public/identity_manager",
+    "//components/signin/public/identity_manager:test_support",
+    "//components/strings:components_strings",
+    "//components/sync/service",
+    "//components/tabs:public",
+    "//content/test:test_support",
+    "//net:test_support",
+    "//services/device/public/cpp:test_support",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/actions:actions_headers",
+    "//ui/base",
+    "//ui/base/interaction",
+    "//ui/events",
+    "//ui/events:events_base",
+    "//ui/gfx/geometry",
+    "//ui/views",
+    "//ui/views:test_support",
+    "//ui/views/interaction:test_support",
+  ]
+
+  if (is_chromeos) {
+    deps += [
+      "//chrome/browser/ui:settings_window_manager_chromeos",
+      "//chromeos/ash/services/multidevice_setup/public/cpp:prefs",
+    ]
+  }
+}
+
+source_set("interactive_ui_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [
+    "bnpl_tos_view_desktop_interactive_uitest.cc",
+    "filled_card_information_bubble_views_interactive_uitest.cc",
+    "iban_bubble_view_interactive_uitest.cc",
+    "mandatory_reauth_bubble_view_uitest.cc",
+    "offer_notification_bubble_views_interactive_uitest.cc",
+    "save_payment_method_and_virtual_card_enroll_confirmation_bubble_views_interactive_uitest.cc",
+    "select_bnpl_issuer_dialog_interactive_uitest.cc",
+    "virtual_card_enroll_bubble_views_interactive_uitest.cc",
+  ]
+  deps = [
+    ":bnpl_tos_dialog",
+    ":bnpl_tos_view_desktop",
+    ":dialog_view_ids",
+    ":filled_card_information_bubble_views",
+    ":manage_saved_iban_bubble_view",
+    ":mandatory_reauth_confirmation_bubble_view",
+    ":mandatory_reauth_opt_in_bubble_view",
+    ":save_card_bubble_views",
+    ":save_iban_bubble_view",
+    ":save_payment_method_and_virtual_card_enroll_confirmation_bubble_views",
+    ":select_bnpl_issuer_dialog",
+    ":virtual_card_enroll_bubble_views",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser/autofill",
+    "//chrome/browser/autofill:test_support",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/sync:factories",
+    "//chrome/browser/sync/test/integration:sync_integration_test_support",
+    "//chrome/browser/ui:browser_window_header",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/actions:actions_headers",
+    "//chrome/browser/ui/autofill/payments",
+    "//chrome/browser/ui/autofill/payments:test_support",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_enums",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/views/controls",
+    "//chrome/browser/ui/views/frame:browser_view_header",
+    "//chrome/browser/ui/views/frame:toolbar_button_provider",
+    "//chrome/browser/ui/views/location_bar",
+    "//chrome/browser/ui/views/location_bar:icon_label_bubble",
+    "//chrome/browser/ui/views/page_action",
+    "//chrome/browser/ui/views/page_action:page_action_test_support",
+    "//chrome/browser/ui/views/toolbar",
+    "//chrome/common",
+    "//chrome/test:test_support_ui",
+    "//chrome/test/base:in_process_browser_test",
+    "//chrome/test/base:interactive_test_utils",
+    "//chrome/test/base:ui_test_utils",
+    "//chrome/test/interaction",
+    "//components/autofill/content/browser",
+    "//components/autofill/content/browser:test_support",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/browser:legal_message_line",
+    "//components/autofill/core/browser:test_support",
+    "//components/autofill/core/common:credit_card_number_validation",
+    "//components/autofill/core/common:features",
+    "//components/autofill/core/common:test_support",
+    "//components/prefs",
+    "//components/resources:components_scaled_resources",
+    "//components/strike_database",
+    "//components/strings:components_strings",
+    "//content/test:test_support",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/actions:actions_headers",
+    "//ui/base",
+    "//ui/base:test_support",
+    "//ui/base:types",
+    "//ui/base/clipboard",
+    "//ui/base/clipboard:clipboard_test_support",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/events",
+    "//ui/events:events_base",
+    "//ui/gfx:test_support",
+    "//ui/views",
+    "//ui/views:test_support",
+    "//ui/views/interaction:test_support",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "save_and_fill_dialog_unittest.cc" ]
+  deps = [
+    ":save_and_fill_dialog",
+    "//base",
+    "//chrome/test/views",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//testing/gtest",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/views",
+  ]
+}

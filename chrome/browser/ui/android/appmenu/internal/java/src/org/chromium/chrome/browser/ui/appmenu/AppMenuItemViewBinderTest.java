@@ -1,0 +1,901 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ui.appmenu;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+import android.app.Activity;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
+import android.view.InputDevice;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.ImageView;
+import android.widget.RadioButton;
+import android.widget.TextView;
+
+import androidx.annotation.Nullable;
+import androidx.appcompat.content.res.AppCompatResources;
+import androidx.core.widget.ImageViewCompat;
+
+import com.google.android.material.button.MaterialButton;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.Robolectric;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.CallbackHelper;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler.AppMenuItemType;
+import org.chromium.components.browser_ui.util.motion.MotionEventInfo;
+import org.chromium.components.browser_ui.util.motion.MotionEventTestUtils;
+import org.chromium.ui.base.TestActivity;
+import org.chromium.ui.modelutil.MVCListAdapter;
+import org.chromium.ui.modelutil.ModelListAdapter;
+import org.chromium.ui.modelutil.PropertyModel;
+
+/** Tests for {@link AppMenuItemViewBinder}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class AppMenuItemViewBinderTest {
+    static class TestClickHandler implements AppMenuClickHandler {
+        public CallbackHelper onClickCallback = new CallbackHelper();
+        public PropertyModel lastClickedModel;
+
+        public CallbackHelper onLongClickCallback = new CallbackHelper();
+        public PropertyModel lastLongClickedModel;
+
+        @Override
+        public void onItemClick(PropertyModel model, @Nullable MotionEventInfo triggeringMotion) {
+            onClickCallback.notifyCalled();
+            lastClickedModel = model;
+        }
+
+        @Override
+        public boolean onItemLongClick(PropertyModel model, View view) {
+            onLongClickCallback.notifyCalled();
+            lastLongClickedModel = model;
+            return true;
+        }
+    }
+
+    static final int MENU_ID1 = 100;
+    static final int MENU_ID2 = 200;
+    static final int MENU_ID3 = 300;
+    static final int MENU_ID4 = 400;
+    static final int MENU_ID5 = 500;
+    static final int MENU_ID6 = 600;
+    static final int MENU_ID7 = 700;
+    static final int MENU_ID8 = 800;
+    static final String TITLE_1 = "Menu Item One";
+    static final String TITLE_2 = "Menu Item Two";
+    static final String TITLE_3 = "Menu Item Three";
+    static final String TITLE_4 = "Menu Item Four";
+    static final String TITLE_5 = "Menu Item Five";
+    static final String TITLE_6 = "Menu Item Six";
+    static final String TITLE_7 = "Menu Item Seven";
+    static final String TITLE_8 = "Menu Item Eight";
+
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    private Activity mActivity;
+    private MVCListAdapter.ModelList mMenuList;
+    private ModelListAdapter mModelListAdapter;
+    private TestClickHandler mClickHandler;
+
+    @Before
+    public void setUpTest() {
+        mClickHandler = new TestClickHandler();
+        mActivity = Robolectric.buildActivity(TestActivity.class).setup().get();
+        mMenuList = new MVCListAdapter.ModelList();
+        mModelListAdapter = new ModelListAdapter(mMenuList);
+
+        AppMenuHandlerImpl.registerDefaultViewBinders(mModelListAdapter, true);
+    }
+
+    private PropertyModel createStandardMenuItem(int menuId, String title) {
+        PropertyModel model =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, menuId)
+                        .with(AppMenuItemProperties.TITLE, title)
+                        .build();
+        mMenuList.add(new MVCListAdapter.ListItem(AppMenuItemType.STANDARD, model));
+
+        return model;
+    }
+
+    private PropertyModel createTitleMenuItem(
+            int titleMenuId,
+            String title,
+            @Nullable Drawable menuIcon,
+            int buttonMenuId,
+            String buttonTitle,
+            boolean checkable,
+            boolean checked) {
+        PropertyModel titleModel =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, titleMenuId)
+                        .with(AppMenuItemProperties.TITLE, title)
+                        .with(AppMenuItemProperties.ICON, menuIcon)
+                        .build();
+
+        PropertyModel buttonModel =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_ICON_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, buttonMenuId)
+                        .with(AppMenuItemProperties.TITLE, buttonTitle)
+                        .with(AppMenuItemProperties.CHECKABLE, checkable)
+                        .with(AppMenuItemProperties.CHECKED, checked)
+                        .build();
+
+        MVCListAdapter.ModelList subList = new MVCListAdapter.ModelList();
+        subList.add(new MVCListAdapter.ListItem(0, buttonModel));
+
+        titleModel.set(AppMenuItemProperties.ADDITIONAL_ICONS, subList);
+        mMenuList.add(new MVCListAdapter.ListItem(AppMenuItemType.TITLE_BUTTON, titleModel));
+
+        return titleModel;
+    }
+
+    private PropertyModel createIconRowMenuItem(
+            int menuId,
+            int subId1,
+            String titleCondensed1,
+            Drawable icon1,
+            int subId2,
+            String titleCondensed2,
+            Drawable icon2,
+            int subId3,
+            String titleCondensed3,
+            Drawable icon3,
+            int subId4,
+            @Nullable String titleCondensed4,
+            @Nullable Drawable icon4,
+            int subId5,
+            @Nullable String titleCondensed5,
+            @Nullable Drawable icon5) {
+        PropertyModel model =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, menuId)
+                        .build();
+
+        MVCListAdapter.ModelList subList = new MVCListAdapter.ModelList();
+        int menutype = AppMenuItemType.BUTTON_ROW;
+        createIconMenuItem(subList, subId1, titleCondensed1, icon1);
+        createIconMenuItem(subList, subId2, titleCondensed2, icon2);
+        createIconMenuItem(subList, subId3, titleCondensed3, icon3);
+        if (subId4 != View.NO_ID) {
+            createIconMenuItem(subList, subId4, titleCondensed4, icon4);
+            if (subId5 != View.NO_ID) {
+                createIconMenuItem(subList, subId5, titleCondensed5, icon5);
+            }
+        }
+
+        model.set(AppMenuItemProperties.ADDITIONAL_ICONS, subList);
+        mMenuList.add(new MVCListAdapter.ListItem(menutype, model));
+
+        return model;
+    }
+
+    private void createIconMenuItem(
+            MVCListAdapter.ModelList list, int id, String titleCondensed, Drawable icon) {
+        PropertyModel model =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, id)
+                        .with(AppMenuItemProperties.TITLE_CONDENSED, titleCondensed)
+                        .with(AppMenuItemProperties.ICON, icon)
+                        .build();
+        list.add(new MVCListAdapter.ListItem(0, model));
+    }
+
+    @Test
+    public void testStandardMenuItem_WithMenuTitle() {
+        createStandardMenuItem(MENU_ID1, TITLE_1);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        TextView titleView = view.findViewById(R.id.menu_item_text);
+        ImageView itemIcon = view.findViewById(R.id.menu_item_icon);
+
+        assertEquals("Incorrect title text for item 1", TITLE_1, titleView.getText());
+        assertNull("Should not have icon for item 1", itemIcon.getDrawable());
+    }
+
+    @Test
+    public void testStandardMenuItem_WithMenuIcon() {
+        PropertyModel standardModel = createStandardMenuItem(MENU_ID1, TITLE_1);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        ImageView itemIcon = view.findViewById(R.id.menu_item_icon);
+
+        standardModel.set(
+                AppMenuItemProperties.ICON,
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter));
+        assertNotNull("Should have icon for item 1", itemIcon.getDrawable());
+    }
+
+    @Test
+    public void testStandardMenuItem_WithShortcutText() {
+        String shortcut = "Ctrl+T";
+        PropertyModel standardModel = createStandardMenuItem(MENU_ID1, TITLE_1);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        TextView shortcutView = view.findViewById(R.id.menu_item_shortcut);
+
+        assertNotNull("Shortcut view should exist", shortcutView);
+        assertEquals(
+                "Shortcut view should be gone by default", View.GONE, shortcutView.getVisibility());
+
+        standardModel.set(AppMenuItemProperties.SHORTCUT_TEXT, shortcut);
+        assertEquals(
+                "Shortcut view should be visible when shortcut text is set",
+                View.VISIBLE,
+                shortcutView.getVisibility());
+        assertEquals("Incorrect shortcut text", shortcut, shortcutView.getText());
+
+        standardModel.set(AppMenuItemProperties.SHORTCUT_TEXT, null);
+        assertEquals(
+                "Shortcut view should be gone when shortcut text is cleared",
+                View.GONE,
+                shortcutView.getVisibility());
+    }
+
+    @Test
+    public void testStandardMenuItem_WithCheckedAndCheckable() {
+        PropertyModel standardModel = createStandardMenuItem(MENU_ID1, TITLE_1);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+
+        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+        view.onInitializeAccessibilityNodeInfo(info);
+        assertNull("Should not have RadioButton class initially", info.getClassName());
+        assertFalse("Should not be selected initially", info.isSelected());
+        assertNull("Should not have collection item info initially", info.getCollectionItemInfo());
+
+        standardModel.set(AppMenuItemProperties.CHECKABLE, true);
+        standardModel.set(AppMenuItemProperties.CHECKED, true);
+
+        AccessibilityNodeInfo checkedInfo = AccessibilityNodeInfo.obtain();
+        view.onInitializeAccessibilityNodeInfo(checkedInfo);
+        assertEquals(RadioButton.class.getName(), checkedInfo.getClassName());
+        assertTrue("Should be checked", checkedInfo.isChecked());
+        assertNotNull(checkedInfo.getCollectionItemInfo());
+        assertEquals(0, checkedInfo.getCollectionItemInfo().getColumnIndex());
+        assertEquals(0, checkedInfo.getCollectionItemInfo().getRowIndex());
+
+        standardModel.set(AppMenuItemProperties.CHECKED, false);
+        AccessibilityNodeInfo uncheckedInfo = AccessibilityNodeInfo.obtain();
+        view.onInitializeAccessibilityNodeInfo(uncheckedInfo);
+        assertEquals(RadioButton.class.getName(), uncheckedInfo.getClassName());
+        assertFalse("Should not be selected", uncheckedInfo.isSelected());
+        assertNotNull(uncheckedInfo.getCollectionItemInfo());
+    }
+
+    @Test
+    public void testStandardMenuItem_WithClickHandler_OnClickListener() {
+        PropertyModel standardModel = createStandardMenuItem(MENU_ID1, TITLE_1);
+        standardModel.set(AppMenuItemProperties.CLICK_HANDLER, mClickHandler);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view =
+                mModelListAdapter.getView(/* position= */ 0, /* convertView= */ null, parentView);
+        view.performClick();
+        assertEquals(1, mClickHandler.onClickCallback.getCallCount());
+
+        assertEquals(
+                "Incorrect clicked item id",
+                MENU_ID1,
+                mClickHandler.lastClickedModel.get(AppMenuItemProperties.MENU_ITEM_ID));
+    }
+
+    @Test
+    public void testStandardMenuItem_WithClickHandler_OnPeripheralClickListener_TouchScreenClick() {
+        PropertyModel standardModel = createStandardMenuItem(MENU_ID1, TITLE_1);
+        standardModel.set(AppMenuItemProperties.CLICK_HANDLER, mClickHandler);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view =
+                mModelListAdapter.getView(/* position= */ 0, /* convertView= */ null, parentView);
+        simulateClickWithMotionEvents(
+                view, InputDevice.SOURCE_TOUCHSCREEN, MotionEvent.TOOL_TYPE_FINGER);
+
+        // Simulated touch screen motion events should not trigger OnPeripheralClickListener.
+        // As the motion events are simulated using dispatchTouchEvent(), the OnClickListener will
+        // not be triggered either.
+        // Therefore, the onClickCallback should not be called.
+        assertEquals(0, mClickHandler.onClickCallback.getCallCount());
+    }
+
+    @Test
+    public void testStandardMenuItem_WithClickHandler_OnPeripheralClickListener_PeripheralClick() {
+        PropertyModel standardModel = createStandardMenuItem(MENU_ID1, TITLE_1);
+        standardModel.set(AppMenuItemProperties.CLICK_HANDLER, mClickHandler);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view =
+                mModelListAdapter.getView(/* position= */ 0, /* convertView= */ null, parentView);
+        simulateClickWithMotionEvents(view, InputDevice.SOURCE_MOUSE, MotionEvent.TOOL_TYPE_MOUSE);
+
+        // Simulated mouse motion events should trigger OnPeripheralClickListener.
+        assertEquals(1, mClickHandler.onClickCallback.getCallCount());
+        assertEquals(
+                "Incorrect clicked item id",
+                MENU_ID1,
+                mClickHandler.lastClickedModel.get(AppMenuItemProperties.MENU_ITEM_ID));
+    }
+
+    /**
+     * Simulates a click event using {@link View#dispatchTouchEvent(MotionEvent)}.
+     *
+     * <p>This will not trigger {@link View.OnClickListener}.
+     *
+     * @param view the View to receive the click.
+     * @param motionSource see {@link MotionEvent#getSource()}.
+     * @param motionToolType see {@link MotionEvent#getToolType(int)}.
+     */
+    private static void simulateClickWithMotionEvents(
+            View view, int motionSource, int motionToolType) {
+        long downTime = SystemClock.uptimeMillis();
+        view.dispatchTouchEvent(
+                MotionEventTestUtils.createMotionEvent(
+                        downTime,
+                        /* eventTime= */ downTime,
+                        MotionEvent.ACTION_DOWN,
+                        /* x= */ 0,
+                        /* y= */ 0,
+                        motionSource,
+                        motionToolType));
+        view.dispatchTouchEvent(
+                MotionEventTestUtils.createMotionEvent(
+                        downTime,
+                        /* eventTime= */ downTime + 50,
+                        MotionEvent.ACTION_UP,
+                        /* x= */ 0,
+                        /* y= */ 0,
+                        motionSource,
+                        motionToolType));
+    }
+
+    @Test
+    public void testConvertView_Reused_StandardMenuItem() {
+        PropertyModel standardModel1 = createStandardMenuItem(MENU_ID1, TITLE_1);
+        standardModel1.set(AppMenuItemProperties.CLICK_HANDLER, mClickHandler);
+        PropertyModel standardModel2 = createStandardMenuItem(MENU_ID2, TITLE_2);
+        standardModel2.set(AppMenuItemProperties.CLICK_HANDLER, mClickHandler);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view1 = mModelListAdapter.getView(0, null, parentView);
+        TextView titleView = view1.findViewById(R.id.menu_item_text);
+
+        assertEquals("Incorrect title text for item 1", TITLE_1, titleView.getText());
+
+        View view2 = mModelListAdapter.getView(1, view1, parentView);
+        assertEquals("Convert view should have been re-used", view1, view2);
+        assertEquals("Title should have been updated", TITLE_2, titleView.getText());
+
+        view2.performClick();
+        assertEquals(1, mClickHandler.onClickCallback.getCallCount());
+        assertEquals(
+                "Incorrect clicked item id",
+                MENU_ID2,
+                mClickHandler.lastClickedModel.get(AppMenuItemProperties.MENU_ITEM_ID));
+    }
+
+    @Test
+    public void testConvertView_Reused_TitleMenuItem() {
+        createTitleMenuItem(MENU_ID2, TITLE_2, null, MENU_ID3, TITLE_3, true, true);
+        createTitleMenuItem(MENU_ID5, TITLE_5, null, MENU_ID6, TITLE_6, true, false);
+
+        assertEquals(
+                "Wrong item view type",
+                AppMenuItemType.TITLE_BUTTON,
+                mModelListAdapter.getItemViewType(0));
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view1 = mModelListAdapter.getView(0, null, parentView);
+        TextView titleView = view1.findViewById(R.id.menu_item_text);
+
+        assertEquals("Incorrect title text for item 1", TITLE_2, titleView.getText());
+
+        ImageView iconView = view1.findViewById(R.id.menu_item_icon);
+        assertNotNull(iconView);
+        assertNotEquals(View.VISIBLE, iconView.getVisibility());
+
+        View view2 = mModelListAdapter.getView(1, view1, parentView);
+        assertEquals("Convert view should have been re-used", view1, view2);
+        assertEquals("Title should have been updated", TITLE_5, titleView.getText());
+    }
+
+    @Test
+    public void testConvertView_Reused_TitleMenuItem_WithMenuIcon() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        createTitleMenuItem(MENU_ID2, TITLE_2, icon, MENU_ID3, TITLE_3, true, true);
+        createTitleMenuItem(MENU_ID5, TITLE_5, icon, MENU_ID6, TITLE_6, true, false);
+
+        assertEquals(
+                "Wrong item view type",
+                AppMenuItemType.TITLE_BUTTON,
+                mModelListAdapter.getItemViewType(0));
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view1 = mModelListAdapter.getView(0, null, parentView);
+        assertNotNull("Should have icon for item 1", view1.findViewById(R.id.menu_item_icon));
+
+        View view2 = mModelListAdapter.getView(1, view1, parentView);
+        assertEquals("Convert view should have been re-used", view1, view2);
+    }
+
+    @Test
+    public void testConvertView_Reused_IconRow_SameButtonCount() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        createIconRowMenuItem(
+                1,
+                MENU_ID1,
+                TITLE_1,
+                icon,
+                MENU_ID2,
+                TITLE_2,
+                icon,
+                MENU_ID3,
+                TITLE_3,
+                icon,
+                View.NO_ID,
+                null,
+                null,
+                View.NO_ID,
+                null,
+                null);
+        createIconRowMenuItem(
+                1,
+                MENU_ID4,
+                TITLE_4,
+                icon,
+                MENU_ID5,
+                TITLE_5,
+                icon,
+                MENU_ID6,
+                TITLE_6,
+                icon,
+                View.NO_ID,
+                null,
+                null,
+                View.NO_ID,
+                null,
+                null);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view1 = mModelListAdapter.getView(0, null, parentView);
+        View buttonOne = view1.findViewById(R.id.button_one);
+
+        assertEquals(
+                "Incorrect content description for item 1",
+                TITLE_1,
+                buttonOne.getContentDescription());
+
+        View view2 = mModelListAdapter.getView(1, view1, parentView);
+        assertEquals("Convert view should have been re-used", view1, view2);
+        assertEquals(
+                "Content description should have been updated",
+                TITLE_4,
+                buttonOne.getContentDescription());
+    }
+
+    @Test
+    public void testConvertView_Reused_IconRow_IncreasingButtonCount() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        createIconRowMenuItem(
+                1,
+                MENU_ID1,
+                TITLE_1,
+                icon,
+                MENU_ID2,
+                TITLE_2,
+                icon,
+                MENU_ID3,
+                TITLE_3,
+                icon,
+                View.NO_ID,
+                null,
+                null,
+                View.NO_ID,
+                null,
+                null);
+        createIconRowMenuItem(
+                2,
+                MENU_ID4,
+                TITLE_4,
+                icon,
+                MENU_ID5,
+                TITLE_5,
+                icon,
+                MENU_ID6,
+                TITLE_6,
+                icon,
+                MENU_ID7,
+                TITLE_7,
+                icon,
+                View.NO_ID,
+                null,
+                null);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view1 = mModelListAdapter.getView(0, null, parentView);
+        assertEquals(3, countVisibleChildren((ViewGroup) view1));
+
+        View view2 = mModelListAdapter.getView(1, view1, parentView);
+        assertEquals(4, countVisibleChildren((ViewGroup) view2));
+        assertEquals("Convert view should be re-used", view1, view2);
+    }
+
+    @Test
+    public void testConvertView_Reused_IconRow_DecreasingButtonCount() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        createIconRowMenuItem(
+                1, MENU_ID4, TITLE_4, icon, MENU_ID5, TITLE_5, icon, MENU_ID6, TITLE_6, icon,
+                MENU_ID7, TITLE_7, icon, MENU_ID8, TITLE_8, icon);
+        createIconRowMenuItem(
+                2,
+                MENU_ID1,
+                TITLE_1,
+                icon,
+                MENU_ID2,
+                TITLE_2,
+                icon,
+                MENU_ID3,
+                TITLE_3,
+                icon,
+                View.NO_ID,
+                null,
+                null,
+                View.NO_ID,
+                null,
+                null);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view1 = mModelListAdapter.getView(0, null, parentView);
+        assertEquals(5, countVisibleChildren((ViewGroup) view1));
+
+        View view2 = mModelListAdapter.getView(1, view1, parentView);
+        assertEquals(3, countVisibleChildren((ViewGroup) view2));
+        assertEquals("Convert view should be re-used", view1, view2);
+    }
+
+    private static int countVisibleChildren(ViewGroup view) {
+        int visibleChildCount = 0;
+        for (int i = 0; i < view.getChildCount(); i++) {
+            if (view.getChildAt(i).getVisibility() == View.VISIBLE) visibleChildCount++;
+        }
+        return visibleChildCount;
+    }
+
+    @Test
+    public void testConvertView_NotReused() {
+        createStandardMenuItem(MENU_ID1, TITLE_1);
+        createTitleMenuItem(MENU_ID3, TITLE_3, null, MENU_ID4, TITLE_4, true, true);
+
+        assertEquals(
+                "Wrong item view type for item 1",
+                AppMenuItemType.STANDARD,
+                mModelListAdapter.getItemViewType(0));
+        assertEquals(
+                "Wrong item view type for item 2",
+                AppMenuItemType.TITLE_BUTTON,
+                mModelListAdapter.getItemViewType(1));
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view1 = mModelListAdapter.getView(0, null, parentView);
+        TextView titleView = view1.findViewById(R.id.menu_item_text);
+
+        assertEquals("Incorrect title text for item 1", TITLE_1, titleView.getText());
+
+        View view2 = mModelListAdapter.getView(1, view1, parentView);
+        assertNotEquals("Standard view should not have been re-used", view1, view2);
+        assertEquals(
+                "Title for view 1 should have not have been updated", TITLE_1, titleView.getText());
+
+        View view3 = mModelListAdapter.getView(0, view2, parentView);
+        assertNotEquals("Title button view should not have been re-used", view2, view3);
+    }
+
+    @Test
+    public void testTitleMenuItem_Checkbox() {
+        createTitleMenuItem(MENU_ID2, TITLE_2, null, MENU_ID3, TITLE_3, true, true);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        AppMenuItemIcon checkbox = view.findViewById(R.id.checkbox);
+
+        assertTrue("Checkbox should be checked", checkbox.isChecked());
+    }
+
+    @Test
+    public void testTitleMenuItem_ToggleCheckbox() {
+        createTitleMenuItem(MENU_ID2, TITLE_2, null, MENU_ID3, TITLE_3, true, false);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        AppMenuItemIcon checkbox = view.findViewById(R.id.checkbox);
+
+        assertFalse("Checkbox should be unchecked", checkbox.isChecked());
+
+        checkbox.toggle();
+        assertTrue("Checkbox should be checked", checkbox.isChecked());
+
+        checkbox.toggle();
+        assertFalse("Checkbox should be unchecked again", checkbox.isChecked());
+    }
+
+    @Test
+    public void testTitleButtonMenuItem_WithClickHandler_FocusableAndClickable() {
+        PropertyModel titleModel =
+                createTitleMenuItem(MENU_ID2, TITLE_2, null, MENU_ID3, TITLE_3, false, false);
+        titleModel.set(AppMenuItemProperties.CLICK_HANDLER, mClickHandler);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        View titleContainer = view.findViewById(R.id.menu_item_container);
+
+        assertNotNull("Title container should be present", titleContainer);
+        assertTrue("Title container should be focusable", titleContainer.isFocusable());
+
+        titleContainer.performClick();
+        assertEquals(1, mClickHandler.onClickCallback.getCallCount());
+        assertEquals(
+                "Incorrect clicked item id",
+                MENU_ID2,
+                mClickHandler.lastClickedModel.get(AppMenuItemProperties.MENU_ITEM_ID));
+    }
+
+    @Test
+    public void testTitleButtonMenuItem_Disabled() {
+        PropertyModel titleModel =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID2)
+                        .with(AppMenuItemProperties.TITLE, TITLE_2)
+                        .with(AppMenuItemProperties.ENABLED, false)
+                        .with(AppMenuItemProperties.CLICK_HANDLER, mClickHandler)
+                        .build();
+        PropertyModel buttonModel =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID3)
+                        .with(AppMenuItemProperties.TITLE, TITLE_3)
+                        .with(AppMenuItemProperties.ENABLED, false)
+                        .build();
+        MVCListAdapter.ModelList subList = new MVCListAdapter.ModelList();
+        subList.add(new MVCListAdapter.ListItem(AppMenuItemType.BUTTON_ROW, buttonModel));
+        titleModel.set(AppMenuItemProperties.ADDITIONAL_ICONS, subList);
+
+        mMenuList.add(new MVCListAdapter.ListItem(AppMenuItemType.TITLE_BUTTON, titleModel));
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        View titleContainer = view.findViewById(R.id.menu_item_container);
+
+        assertNotNull("Title container should be present", titleContainer);
+        assertFalse("Title container should not be enabled", titleContainer.isEnabled());
+        assertFalse("Title container should not be focusable", titleContainer.isFocusable());
+    }
+
+    @Test
+    public void testIconRowViewBinders() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        createIconRowMenuItem(
+                1, MENU_ID1, TITLE_1, icon, MENU_ID2, TITLE_2, icon, MENU_ID3, TITLE_3, icon,
+                MENU_ID4, TITLE_4, icon, MENU_ID5, TITLE_5, icon);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        MaterialButton button = view.findViewById(R.id.button_one);
+        assertEquals(
+                "Incorrect content description for icon 1",
+                TITLE_1,
+                button.getContentDescription());
+        assertNotNull("Should have an icon for icon 1", button.getIcon());
+
+        button = view.findViewById(R.id.button_two);
+        assertEquals(
+                "Incorrect content description for icon 2",
+                TITLE_2,
+                button.getContentDescription());
+        assertNotNull("Should have an icon for icon 2", button.getIcon());
+
+        button = view.findViewById(R.id.button_three);
+        assertEquals(
+                "Incorrect content description for icon 3",
+                TITLE_3,
+                button.getContentDescription());
+        assertNotNull("Should have an icon for icon 3", button.getIcon());
+
+        button = view.findViewById(R.id.button_four);
+        assertEquals(
+                "Incorrect content description for icon 4",
+                TITLE_4,
+                button.getContentDescription());
+        assertNotNull("Should have an icon for icon 4", button.getIcon());
+
+        button = view.findViewById(R.id.button_five);
+        assertEquals(
+                "Incorrect content description for icon 5",
+                TITLE_5,
+                button.getContentDescription());
+        assertNotNull("Should have an icon for icon 5", button.getIcon());
+    }
+
+    @Test
+    public void testStandardMenuItem_IconNoTint() {
+        PropertyModel model = createStandardMenuItem(MENU_ID1, TITLE_1);
+
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        model.set(AppMenuItemProperties.ICON, icon);
+
+        // We are testing if setting ICON_NO_TINT to true will override the default grey tint that
+        // is set when ICON_COLOR_RES = 0.
+        model.set(AppMenuItemProperties.ICON_NO_TINT, true);
+        model.set(AppMenuItemProperties.ICON_COLOR_RES, 0);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        ImageView itemIcon = view.findViewById(R.id.menu_item_icon);
+
+        ColorStateList tint = ImageViewCompat.getImageTintList(itemIcon);
+        assertNull("Tint should be null when ICON_NO_TINT is set to true", tint);
+    }
+
+    @Test
+    public void testStandardMenuItem_DefaultTint() {
+        PropertyModel model = createStandardMenuItem(MENU_ID1, TITLE_1);
+
+        // Set an icon without the no_tint flag.
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        model.set(AppMenuItemProperties.ICON, icon);
+        // Should trigger the default grey tint.
+        model.set(AppMenuItemProperties.ICON_COLOR_RES, 0);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        ImageView itemIcon = view.findViewById(R.id.menu_item_icon);
+
+        // Assert that the tint list is not null.
+        ColorStateList tint = ImageViewCompat.getImageTintList(itemIcon);
+        assertNotNull("Standard icons should have a default tint", tint);
+    }
+
+    @Test
+    public void testStandardMenuItem_SpecificColorTint() {
+        PropertyModel model = createStandardMenuItem(MENU_ID1, TITLE_1);
+
+        //  Set an icon with a specific color resource.
+        int specificColorRes = android.R.color.holo_blue_light;
+
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        model.set(AppMenuItemProperties.ICON, icon);
+        model.set(AppMenuItemProperties.ICON_COLOR_RES, specificColorRes);
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        ImageView itemIcon = view.findViewById(R.id.menu_item_icon);
+
+        // Assert tint list is present and matches the requested color.
+        ColorStateList tint = ImageViewCompat.getImageTintList(itemIcon);
+        assertNotNull("Specific color icons should have a tint", tint);
+
+        // Check if the tint matches the expected color.
+        int expectedColor = mActivity.getColor(specificColorRes);
+        assertEquals(
+                "Tint should match the requested color resource",
+                expectedColor,
+                tint.getDefaultColor());
+    }
+
+    @Test
+    public void testHeaderPixelHeight() {
+        PropertyModel model = new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS).build();
+        int expectedHeight =
+                mActivity.getResources().getDimensionPixelSize(R.dimen.menu_header_height);
+
+        assertEquals(expectedHeight, AppMenuItemViewBinder.getHeaderPixelHeight(mActivity, model));
+    }
+
+    private MaterialButton getFirstButtonForIconModel(PropertyModel itemModel) {
+        PropertyModel model =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, 1)
+                        .build();
+        MVCListAdapter.ModelList subList = new MVCListAdapter.ModelList();
+        subList.add(new MVCListAdapter.ListItem(0, itemModel));
+        model.set(AppMenuItemProperties.ADDITIONAL_ICONS, subList);
+        mMenuList.add(new MVCListAdapter.ListItem(AppMenuItemType.BUTTON_ROW, model));
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+        View view = mModelListAdapter.getView(0, null, parentView);
+        return view.findViewById(R.id.button_one);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_THEME_MODULE)
+    public void testIconRowViewBinders_DefaultItem_NotCheckableSelected() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        PropertyModel item =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_ICON_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID1)
+                        .with(AppMenuItemProperties.TITLE_CONDENSED, TITLE_1)
+                        .with(AppMenuItemProperties.ICON, icon)
+                        .build();
+
+        MaterialButton button = getFirstButtonForIconModel(item);
+
+        assertFalse("Button should not be checkable", button.isCheckable());
+        assertFalse("Button should not be checked", button.isChecked());
+        assertFalse("Button should not be selected", button.isSelected());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_THEME_MODULE)
+    public void testIconRowViewBinders_ModelCheckableTrue_Ignored() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        PropertyModel item =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_ICON_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID1)
+                        .with(AppMenuItemProperties.TITLE_CONDENSED, TITLE_1)
+                        .with(AppMenuItemProperties.ICON, icon)
+                        .with(AppMenuItemProperties.CHECKABLE, true)
+                        .build();
+
+        MaterialButton button = getFirstButtonForIconModel(item);
+
+        assertFalse("Button should not be checkable", button.isCheckable());
+        assertFalse("Button should not be checked", button.isChecked());
+        assertFalse("Button should not be selected", button.isSelected());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_THEME_MODULE)
+    public void testIconRowViewBinders_ModelCheckedTrue_SelectedButNotAccessibilitySelected() {
+        Drawable icon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.test_ic_vintage_filter);
+        PropertyModel item =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_ICON_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID1)
+                        .with(AppMenuItemProperties.TITLE_CONDENSED, TITLE_1)
+                        .with(AppMenuItemProperties.ICON, icon)
+                        .with(AppMenuItemProperties.CHECKED, true)
+                        .build();
+
+        MaterialButton button = getFirstButtonForIconModel(item);
+
+        assertFalse("Button should not be checkable", button.isCheckable());
+        assertFalse("Button should not be checked", button.isChecked());
+        assertTrue("Button should be selected", button.isSelected());
+
+        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+        button.onInitializeAccessibilityNodeInfo(info);
+        assertFalse("Accessibility should not show selected", info.isSelected());
+    }
+}

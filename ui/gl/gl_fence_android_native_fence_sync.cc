@@ -1,0 +1,96 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/gl/gl_fence_android_native_fence_sync.h"
+
+#include "base/files/scoped_file.h"
+#include "base/logging.h"
+#include "base/memory/ptr_util.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
+#include "ui/gfx/gpu_fence.h"
+#include "ui/gfx/gpu_fence_handle.h"
+#include "ui/gl/gl_surface_egl.h"
+
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+#include <unistd.h>
+
+#include "base/posix/eintr_wrapper.h"
+#endif
+
+namespace gl {
+
+GLFenceAndroidNativeFenceSync::GLFenceAndroidNativeFenceSync() = default;
+
+GLFenceAndroidNativeFenceSync::~GLFenceAndroidNativeFenceSync() = default;
+
+// static
+std::unique_ptr<GLFenceAndroidNativeFenceSync>
+GLFenceAndroidNativeFenceSync::CreateInternal(EGLenum type, EGLint* attribs) {
+  DCHECK(GLSurfaceEGL::GetGLDisplayEGL()->IsAndroidNativeFenceSyncSupported());
+
+  // Can't use MakeUnique, the no-args constructor is private.
+  auto fence = base::WrapUnique(new GLFenceAndroidNativeFenceSync());
+
+  if (!fence->InitializeInternal(type, attribs)) {
+    return nullptr;
+  }
+  return fence;
+}
+
+// static
+std::unique_ptr<GLFenceAndroidNativeFenceSync>
+GLFenceAndroidNativeFenceSync::CreateForGpuFence() {
+  return CreateInternal(EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
+}
+
+// static
+std::unique_ptr<GLFenceAndroidNativeFenceSync>
+GLFenceAndroidNativeFenceSync::CreateFromGpuFenceHandle(
+    gfx::GpuFenceHandle gpu_fence) {
+  base::ScopedFD fence_fd = gpu_fence.Release();
+  if (!fence_fd.is_valid()) {
+    return nullptr;
+  }
+  // Release `fence_fd` ownership before calling `CreateInternal()`:
+  // `eglCreateSyncKHR` assumes ownership of the FD and may close it before
+  // returning, which Android's fdsan requires to be unowned (tag 0).
+  EGLint raw_fd = fence_fd.release();
+  EGLint attribs[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID, raw_fd, EGL_NONE};
+  auto fence = CreateInternal(EGL_SYNC_NATIVE_FENCE_ANDROID, attribs);
+  if (!fence) {
+    base::ScopedFD close_fd(raw_fd);
+  }
+  return fence;
+}
+
+gfx::GpuFenceHandle GLFenceAndroidNativeFenceSync::GetGpuFenceHandle() {
+  DCHECK(GLSurfaceEGL::GetGLDisplayEGL()->IsAndroidNativeFenceSyncSupported());
+
+  const EGLint sync_fd = eglDupNativeFenceFDANDROID(display_, sync_);
+
+  if (sync_fd < 0) {
+    LOG(ERROR)
+        << "eglDupNativeFenceFDANDROID duplication failure. Returned error="
+        << sync_fd;
+    return gfx::GpuFenceHandle();
+  }
+  gfx::GpuFenceHandle handle;
+  handle.Adopt(base::ScopedFD(sync_fd));
+
+  return handle;
+}
+
+base::TimeTicks GLFenceAndroidNativeFenceSync::GetStatusChangeTime() {
+  EGLint sync_fd = eglDupNativeFenceFDANDROID(display_, sync_);
+  if (sync_fd < 0)
+    return base::TimeTicks();
+
+  base::ScopedFD scoped_fd(sync_fd);
+  base::TimeTicks time;
+  gfx::GpuFence::GetStatusChangeTime(sync_fd, &time);
+  return time;
+}
+
+}  // namespace gl

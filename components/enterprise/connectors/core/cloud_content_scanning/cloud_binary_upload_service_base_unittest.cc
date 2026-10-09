@@ -1,0 +1,319 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/enterprise/connectors/core/cloud_content_scanning/cloud_binary_upload_service_base.h"
+
+#include "base/functional/callback_helpers.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "components/enterprise/common/proto/connectors.pb.h"
+#include "components/enterprise/connectors/core/cloud_content_scanning/binary_upload_request.h"
+#include "components/enterprise/connectors/core/features.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace enterprise_connectors {
+
+namespace {
+
+// A fake BinaryUploadRequest for testing.
+class FakeBinaryUploadRequest : public BinaryUploadRequest {
+ public:
+  explicit FakeBinaryUploadRequest(ContentAnalysisCallback callback)
+      : BinaryUploadRequest(
+            std::move(callback),
+            CloudOrLocalAnalysisSettings(CloudAnalysisSettings()),
+            base::NullCallback()) {}
+  void GetRequestData(DataCallback callback) override {
+    std::move(callback).Run(ScanRequestUploadResult::kSuccess, Data());
+  }
+};
+
+// A test class that exposes protected members of CloudBinaryUploadServiceBase.
+class FakeDelegate : public CloudBinaryUploadServiceBase::Delegate {
+ public:
+  void MaybeGetAccessToken(BinaryUploadRequest* request,
+                           base::OnceCallback<void(const std::string&)>
+                               access_token_callback) override {}
+  enterprise_connectors::BinaryUploadRequest::BrowserPolicyConnectorGetter
+  BrowserPolicyConnectorGetter() override {
+    return base::BindRepeating(
+        []() -> policy::BrowserPolicyConnector* { return nullptr; });
+  }
+  bool IsAdvancedProtection() override { return false; }
+  bool IsEnhancedProtection() override { return false; }
+#if BUILDFLAG(IS_CHROMEOS)
+  bool IsManagedGuestSession() override { return false; }
+#endif
+};
+
+class TestCloudBinaryUploadServiceBase : public CloudBinaryUploadServiceBase {
+ public:
+  TestCloudBinaryUploadServiceBase()
+      : CloudBinaryUploadServiceBase(/*url_loader_factory=*/nullptr,
+                                     std::make_unique<FakeDelegate>()) {}
+};
+
+}  // namespace
+
+class CloudBinaryUploadServiceBaseTest : public testing::Test {
+ protected:
+  base::test::TaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+
+  auto& GetActiveRequest(CloudBinaryUploadServiceBase& service,
+                         BinaryUploadRequest::Id id) {
+    return service.active_requests_[id];
+  }
+  void CallRecordRequestMetrics(CloudBinaryUploadServiceBase& service,
+                                BinaryUploadRequest::Id id,
+                                ScanRequestUploadResult result) {
+    service.RecordRequestMetrics(id, result);
+  }
+  void CallRecordRequestMetrics(CloudBinaryUploadServiceBase& service,
+                                BinaryUploadRequest::Id id,
+                                ScanRequestUploadResult result,
+                                const ContentAnalysisResponse& response) {
+    service.RecordRequestMetrics(id, result, response);
+  }
+  bool CallShouldTerminateRequestEarly(CloudBinaryUploadServiceBase& service,
+                                       BinaryUploadRequest* request,
+                                       ScanRequestUploadResult get_data_result,
+                                       size_t data_size) {
+    return service.ShouldTerminateRequestEarly(request, get_data_result,
+                                               data_size);
+  }
+};
+
+// Tests that GetUploadUrl returns the correct URL for enterprise and consumer
+// scans.
+TEST_F(CloudBinaryUploadServiceBaseTest, GetUploadUrl) {
+  EXPECT_EQ(CloudBinaryUploadServiceBase::GetUploadUrl(
+                /*is_consumer_scan_eligible=*/false)
+                .spec(),
+            "https://safebrowsing.google.com/safebrowsing/uploads/scan");
+  EXPECT_EQ(CloudBinaryUploadServiceBase::GetUploadUrl(
+                /*is_consumer_scan_eligible=*/true)
+                .spec(),
+            "https://safebrowsing.google.com/safebrowsing/uploads/consumer");
+}
+
+// Tests that ResponseIsComplete correctly identifies when all expected
+// connector results have been received.
+TEST_F(CloudBinaryUploadServiceBaseTest, ResponseIsComplete) {
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  // Request doesn't exist.
+  EXPECT_FALSE(service.ResponseIsComplete(id));
+
+  auto request = std::make_unique<FakeBinaryUploadRequest>(base::DoNothing());
+  request->add_tag("dlp");
+  request->add_tag("malware");
+  GetActiveRequest(service, id).request = std::move(request);
+
+  // No results yet.
+  EXPECT_FALSE(service.ResponseIsComplete(id));
+
+  // Only DLP result.
+  GetActiveRequest(service, id).received_connector_results["dlp"] =
+      ContentAnalysisResponse::Result();
+  EXPECT_FALSE(service.ResponseIsComplete(id));
+
+  // Both results.
+  GetActiveRequest(service, id).received_connector_results["malware"] =
+      ContentAnalysisResponse::Result();
+  EXPECT_TRUE(service.ResponseIsComplete(id));
+}
+
+// Tests that ResponseIsComplete correctly handles skipped malware scans.
+TEST_F(CloudBinaryUploadServiceBaseTest, ResponseIsComplete_SkipMalware) {
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  auto request = std::make_unique<FakeBinaryUploadRequest>(base::DoNothing());
+  request->add_tag("dlp");
+  request->add_tag("malware");
+  request->set_should_skip_malware_scan(true);
+  GetActiveRequest(service, id).request = std::move(request);
+
+  // No results yet.
+  EXPECT_FALSE(service.ResponseIsComplete(id));
+
+  // Only DLP result, malware is skipped.
+  GetActiveRequest(service, id).received_connector_results["dlp"] =
+      ContentAnalysisResponse::Result();
+  EXPECT_TRUE(service.ResponseIsComplete(id));
+}
+
+// Tests that GetRequest correctly retrieves an active request.
+TEST_F(CloudBinaryUploadServiceBaseTest, GetRequest) {
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  EXPECT_EQ(service.GetRequest(id), nullptr);
+
+  auto request = std::make_unique<FakeBinaryUploadRequest>(base::DoNothing());
+  BinaryUploadRequest* request_ptr = request.get();
+  GetActiveRequest(service, id).request = std::move(request);
+
+  EXPECT_EQ(service.GetRequest(id), request_ptr);
+}
+
+// Tests that RecordRequestMetrics correctly logs basic upload result and
+// duration histograms.
+TEST_F(CloudBinaryUploadServiceBaseTest, RecordRequestMetrics) {
+  base::HistogramTester histograms;
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  GetActiveRequest(service, id).start_time = base::TimeTicks::Now();
+  task_environment_.FastForwardBy(base::Seconds(1));
+
+  CallRecordRequestMetrics(service, id, ScanRequestUploadResult::kSuccess);
+
+  histograms.ExpectUniqueSample("SafeBrowsingBinaryUploadRequest.Result",
+                                ScanRequestUploadResult::kSuccess, 1);
+  histograms.ExpectUniqueTimeSample("SafeBrowsingBinaryUploadRequest.Duration",
+                                    base::Seconds(1), 1);
+}
+
+// Tests that RecordRequestMetrics correctly logs detailed result status from
+// the ContentAnalysisResponse.
+TEST_F(CloudBinaryUploadServiceBaseTest, RecordRequestMetricsWithResponse) {
+  base::HistogramTester histograms;
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  GetActiveRequest(service, id).start_time = base::TimeTicks::Now();
+  task_environment_.FastForwardBy(base::Seconds(2));
+
+  ContentAnalysisResponse response;
+  auto* malware_result = response.add_results();
+  malware_result->set_tag("malware");
+  malware_result->set_status(ContentAnalysisResponse::Result::SUCCESS);
+
+  auto* dlp_result = response.add_results();
+  dlp_result->set_tag("dlp");
+  dlp_result->set_status(ContentAnalysisResponse::Result::FAILURE);
+
+  CallRecordRequestMetrics(service, id, ScanRequestUploadResult::kSuccess,
+                           response);
+
+  histograms.ExpectUniqueSample("SafeBrowsingBinaryUploadRequest.Result",
+                                ScanRequestUploadResult::kSuccess, 1);
+  histograms.ExpectUniqueTimeSample("SafeBrowsingBinaryUploadRequest.Duration",
+                                    base::Seconds(2), 1);
+  histograms.ExpectUniqueSample("SafeBrowsingBinaryUploadRequest.MalwareResult",
+                                true, 1);
+  histograms.ExpectUniqueSample("SafeBrowsingBinaryUploadRequest.DlpResult",
+                                false, 1);
+}
+
+// Tests that RecordRequestMetrics logs the correct enterprise-specific
+// histograms for a resumable file upload.
+TEST_F(CloudBinaryUploadServiceBaseTest,
+       RecordRequestMetrics_EnterpriseFileResumable) {
+  base::HistogramTester histograms;
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  auto request = std::make_unique<FakeBinaryUploadRequest>(base::DoNothing());
+  request->set_device_token("dm_token");
+  request->set_analysis_connector(AnalysisConnector::FILE_DOWNLOADED);
+
+  GetActiveRequest(service, id).request = std::move(request);
+  GetActiveRequest(service, id).start_time = base::TimeTicks::Now();
+  task_environment_.FastForwardBy(base::Seconds(3));
+
+  CallRecordRequestMetrics(service, id, ScanRequestUploadResult::kSuccess);
+
+  histograms.ExpectUniqueSample("Enterprise.ResumableRequest.File.Result",
+                                ScanRequestUploadResult::kSuccess, 1);
+  histograms.ExpectUniqueTimeSample("Enterprise.ResumableRequest.File.Duration",
+                                    base::Seconds(3), 1);
+}
+
+// Tests that RecordRequestMetrics logs the correct enterprise-specific
+// histograms for a multipart text upload.
+TEST_F(CloudBinaryUploadServiceBaseTest,
+       RecordRequestMetrics_EnterpriseTextMultipart) {
+  base::HistogramTester histograms;
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  auto request = std::make_unique<FakeBinaryUploadRequest>(base::DoNothing());
+  request->set_device_token("dm_token");
+  request->set_analysis_connector(AnalysisConnector::BULK_DATA_ENTRY);
+
+  GetActiveRequest(service, id).request = std::move(request);
+  GetActiveRequest(service, id).start_time = base::TimeTicks::Now();
+  task_environment_.FastForwardBy(base::Seconds(4));
+
+  CallRecordRequestMetrics(service, id, ScanRequestUploadResult::kSuccess);
+
+  histograms.ExpectUniqueSample("Enterprise.MultipartRequest.Text.Result",
+                                ScanRequestUploadResult::kSuccess, 1);
+  histograms.ExpectUniqueTimeSample("Enterprise.MultipartRequest.Text.Duration",
+                                    base::Seconds(4), 1);
+}
+
+// Tests that RecordRequestMetrics logs the correct enterprise-specific
+// histograms for a resumable network request upload.
+TEST_F(CloudBinaryUploadServiceBaseTest,
+       RecordRequestMetrics_EnterpriseNetworkRequestResumable) {
+  base::HistogramTester histograms;
+  TestCloudBinaryUploadServiceBase service;
+  BinaryUploadRequest::Id id(1);
+
+  auto request = std::make_unique<FakeBinaryUploadRequest>(base::DoNothing());
+  request->set_device_token("dm_token");
+  request->set_analysis_connector(AnalysisConnector::NETWORK_REQUEST);
+
+  GetActiveRequest(service, id).request = std::move(request);
+  GetActiveRequest(service, id).start_time = base::TimeTicks::Now();
+  task_environment_.FastForwardBy(base::Seconds(5));
+
+  CallRecordRequestMetrics(service, id, ScanRequestUploadResult::kSuccess);
+
+  histograms.ExpectUniqueSample(
+      "Enterprise.ResumableRequest.NetworkRequest.Result",
+      ScanRequestUploadResult::kSuccess, 1);
+  histograms.ExpectUniqueTimeSample(
+      "Enterprise.ResumableRequest.NetworkRequest.Duration", base::Seconds(5),
+      1);
+}
+
+TEST_F(CloudBinaryUploadServiceBaseTest, ShouldTerminateRequestEarly) {
+  TestCloudBinaryUploadServiceBase service;
+
+  auto make_request = [&service, this](BinaryUploadRequest::Id id) {
+    auto request = std::make_unique<FakeBinaryUploadRequest>(base::DoNothing());
+    request->set_id(id);
+    request->set_device_token("dm_token");
+    request->set_analysis_connector(AnalysisConnector::NETWORK_REQUEST);
+    BinaryUploadRequest* raw_request = request.get();
+    GetActiveRequest(service, id).request = std::move(request);
+    GetActiveRequest(service, id).start_time = base::TimeTicks::Now();
+    return raw_request;
+  };
+
+  // Non-empty successful request should not terminate early.
+  BinaryUploadRequest* req1 = make_request(BinaryUploadRequest::Id(1));
+  EXPECT_FALSE(CallShouldTerminateRequestEarly(
+      service, req1, ScanRequestUploadResult::kSuccess, /*data_size=*/100));
+
+  // Resumable request with kFileTooLarge and data_size == 0 (e.g. chunked
+  // network request body) should not terminate early so metadata can be sent.
+  BinaryUploadRequest* req2 = make_request(BinaryUploadRequest::Id(2));
+  EXPECT_FALSE(CallShouldTerminateRequestEarly(
+      service, req2, ScanRequestUploadResult::kFileTooLarge, /*data_size=*/0));
+
+  // Empty successful request (data_size == 0) should terminate early.
+  BinaryUploadRequest* req3 = make_request(BinaryUploadRequest::Id(3));
+  EXPECT_TRUE(CallShouldTerminateRequestEarly(
+      service, req3, ScanRequestUploadResult::kSuccess, /*data_size=*/0));
+}
+
+}  // namespace enterprise_connectors

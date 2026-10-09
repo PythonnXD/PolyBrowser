@@ -1,0 +1,8 @@
+include_rules = [
+  "+components/error_page/common",
+  "+components/tabs/public",
+  "+content/public/browser",
+  "+content/public/test",
+  "+ui/base/l10n",
+  "+ui/base/unowned_user_data",
+]

@@ -1,0 +1,76 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//testing/libfuzzer/fuzzer_test.gni")
+
+declare_args() {
+  # Enables building a development / debugging binary.
+  enable_qr_print = false
+}
+
+source_set("error") {
+  public = [ "error.h" ]
+}
+
+source_set("bitmap_generator") {
+  sources = [
+    "bitmap_generator.cc",
+    "bitmap_generator.h",
+    "dino_image.h",
+  ]
+  public_deps = [ ":error" ]
+  deps = [
+    ":qr_code_generator",
+    "//base",
+    "//components/vector_icons",
+    "//skia",
+    "//ui/base:features",
+    "//ui/gfx",
+  ]
+}
+
+source_set("qr_code_generator") {
+  # Enforces that `qr_code_generator.h` does not #include headers from private
+  # `deps`, which also stops GN from forwarding the Crubit bindings' hard_deps
+  # to targets depending on `:qr_code_generator`.
+  check_includes_strict = true
+  public = [ "qr_code_generator.h" ]
+  sources = [ "qr_code_generator.cc" ]
+  deps = [
+    "//build/rust/crubit",
+    "//third_party/rust/qr_code/v2:cpp_api_from_rust",
+  ]
+  public_deps = [
+    ":error",
+    "//base",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "bitmap_generator_unittest.cc",
+    "qr_code_generator_unittest.cc",
+  ]
+  deps = [
+    ":bitmap_generator",
+    ":qr_code_generator",
+    "//base",
+    "//base/test:test_support",
+    "//skia:skia_core_public_headers",
+    "//testing/gtest",
+  ]
+}
+
+if (enable_qr_print) {
+  executable("qr_print") {
+    sources = [ "qr_print.cc" ]
+    deps = [ ":qr_code_generator" ]
+  }
+}
+
+fuzzer_test("qr_code_generator_fuzzer") {
+  sources = [ "qr_code_generator_fuzzer.cc" ]
+  deps = [ ":qr_code_generator" ]
+}

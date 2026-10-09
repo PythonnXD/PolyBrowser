@@ -1,0 +1,50 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_UTILS_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_UTILS_H_
+
+#include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/dom/node.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
+
+namespace blink {
+class Document;
+class LocalDOMWindow;
+class MediaTiming;
+}  // namespace blink
+
+namespace blink::paint_timing {
+
+// Returns true if `object` will cause an image to be rendered, and false
+// otherwise.
+inline bool CORE_EXPORT IsImageType(const LayoutObject& object) {
+  return object.IsImage() || object.IsSVGImage() || object.IsVideo() ||
+         object.StyleRef().HasBackgroundImage();
+}
+
+// Returns true if `node` is considered text, and false otherwise.
+inline bool CORE_EXPORT IsTextType(const Node& node) {
+  return node.IsTextNode();
+}
+
+// Returns whether or not the `media_timing` should be ignored. Currently only
+// `MediaTiming` objects representing the default poster image are ignored.
+CORE_EXPORT bool ShouldIgnoreImageContentForPaintTiming(
+    const LayoutObject& object,
+    const MediaTiming* media_timing);
+
+// Notifies the document loader that performance timing has changed in some way
+// if the window, document, and loader are non-null. Causes the current
+// performance timing values to be sent to UKM.
+CORE_EXPORT void NotifyLoaderPerformanceTimingChanged(LocalDOMWindow*);
+CORE_EXPORT void NotifyLoaderPerformanceTimingChanged(Document*);
+
+// Returns true if `document`'s document element exists, has a `LayoutObject`,
+// and has `opacity: 0`.
+CORE_EXPORT bool IsDocumentElementInvisible(const Document& document);
+
+}  // namespace blink::paint_timing
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_UTILS_H_

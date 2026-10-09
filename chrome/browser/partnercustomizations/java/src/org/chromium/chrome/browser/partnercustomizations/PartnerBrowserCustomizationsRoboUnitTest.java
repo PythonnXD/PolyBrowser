@@ -1,0 +1,219 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.partnercustomizations;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.shadows.ShadowLog;
+import org.robolectric.shadows.ShadowLog.LogItem;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.FeatureOverrides;
+import org.chromium.base.Log;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.base.version_info.VersionInfo;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.url.JUnitTestGURLs;
+
+import java.util.List;
+import java.util.Locale;
+
+/** Unit tests for {@link PartnerBrowserCustomizations}. */
+@RunWith(BaseRobolectricTestRunner.class)
+@EnableFeatures(ChromeFeatureList.PARTNER_CUSTOMIZATIONS_UMA)
+public class PartnerBrowserCustomizationsRoboUnitTest {
+    private static final Locale DEFAULT_LOCALE = Locale.getDefault();
+
+    @Before
+    public void setup() {
+        ShadowLog.reset();
+        CustomizationProviderDelegateUpstreamImpl.setHomepageForTesting(
+                JUnitTestGURLs.EXAMPLE_URL.getSpec());
+    }
+
+    @After
+    public void tearDown() {
+        ShadowLog.reset();
+        Locale.setDefault(DEFAULT_LOCALE);
+        PartnerBrowserCustomizations.destroy();
+        PartnerCustomizationsUma.resetStaticsForTesting();
+    }
+
+    @Test
+    public void initializeAsyncSkippedOnNonSystemStableBuild() {
+        VersionInfo.setOverridesForTesting(
+                /* official= */ null, /* stable= */ true, /* local= */ null);
+
+        PartnerBrowserCustomizations customizations = PartnerBrowserCustomizations.getInstance();
+        customizations.initializeAsync(ContextUtils.getApplicationContext());
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        assertTrue(customizations.isInitialized());
+        assertNull(customizations.getHomePageUrl());
+        assertLogMessage(
+                Log.normalizeTag("PartnerCustomize"),
+                Log.WARN,
+                "Partner customization skipped: not a system package or pre-stable build.");
+        assertLogMessage(
+                Log.normalizeTag("PartnerCustUma"),
+                Log.WARN,
+                "Async init task skipped. delegate=None, cached=false");
+    }
+
+    private static void assertLogMessage(String tag, int expectedLogLevel, String expectedMessage) {
+        List<LogItem> logs = ShadowLog.getLogsForTag(tag);
+        for (LogItem item : logs) {
+            if (item.type == expectedLogLevel && expectedMessage.equals(item.msg)) {
+                return;
+            }
+        }
+        throw new AssertionError(
+                String.format(
+                        Locale.US,
+                        "Expected log [tag=%s, level=%d, msg=%s] not found in %s",
+                        tag,
+                        expectedLogLevel,
+                        expectedMessage,
+                        logs));
+    }
+
+    @Test
+    public void initializeAsyncOneAtATime() {
+        PartnerBrowserCustomizations.getInstance()
+                .initializeAsync(ContextUtils.getApplicationContext());
+        // Run one task, so AsyncTask#doInBackground is run, but not #onFinalized.
+        RobolectricUtil.runOneBackgroundTask();
+        assertFalse(
+                "The homepage refreshed, but result is not yet posted on UI thread.",
+                PartnerBrowserCustomizations.getInstance().isInitialized());
+
+        // Assuming homepage is changed during 1st #initializeAsync, and another #initializeAsync is
+        // triggered. The 2nd #initializeAsync is ignored since there's one already in the process.
+        CustomizationProviderDelegateUpstreamImpl.setHomepageForTesting(
+                JUnitTestGURLs.GOOGLE_URL.getSpec());
+        PartnerBrowserCustomizations.getInstance()
+                .initializeAsync(ContextUtils.getApplicationContext());
+        assertFalse(
+                "#initializeAsync should be in progress.",
+                PartnerBrowserCustomizations.getInstance().isInitialized());
+
+        RobolectricUtil.runAllBackgroundAndUi();
+        assertTrue(
+                "#initializeAsync should be done.",
+                PartnerBrowserCustomizations.getInstance().isInitialized());
+        assertEquals(
+                "Homepage should be set via 1st initializeAsync.",
+                JUnitTestGURLs.EXAMPLE_URL.getSpec(),
+                PartnerBrowserCustomizations.getInstance().getHomePageUrl().getSpec());
+
+        PartnerBrowserCustomizations.getInstance()
+                .initializeAsync(ContextUtils.getApplicationContext());
+        assertFalse(
+                "3rd #initializeAsync should be in progress.",
+                PartnerBrowserCustomizations.getInstance().isInitialized());
+
+        RobolectricUtil.runAllBackgroundAndUi();
+        assertTrue(
+                "3rd #initializeAsync should be done.",
+                PartnerBrowserCustomizations.getInstance().isInitialized());
+        assertEquals(
+                "Homepage should refreshed by 3rd #initializeAsync.",
+                JUnitTestGURLs.GOOGLE_URL.getSpec(),
+                PartnerBrowserCustomizations.getInstance().getHomePageUrl().getSpec());
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.DISABLE_PARTNER_HOMEPAGE_ANDROID)
+    public void testIsHomepageProviderAvailableAndEnabled_FeatureDisabled() {
+        PartnerBrowserCustomizations customizations = PartnerBrowserCustomizations.getInstance();
+        customizations.initializeAsync(ContextUtils.getApplicationContext());
+        RobolectricUtil.runAllBackgroundAndUi();
+        assertTrue(customizations.isHomepageProviderAvailableAndEnabled());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.DISABLE_PARTNER_HOMEPAGE_ANDROID)
+    @DisableFeatures(ChromeFeatureList.ANDROID_BOTTOM_BAR)
+    public void testIsHomepageProviderAvailableAndEnabled_FeatureEnabled_NoBottomBar() {
+        PartnerBrowserCustomizations customizations = PartnerBrowserCustomizations.getInstance();
+        customizations.initializeAsync(ContextUtils.getApplicationContext());
+        RobolectricUtil.runAllBackgroundAndUi();
+        assertFalse(customizations.isHomepageProviderAvailableAndEnabled());
+    }
+
+    @Test
+    @EnableFeatures({
+        ChromeFeatureList.DISABLE_PARTNER_HOMEPAGE_ANDROID,
+        ChromeFeatureList.ANDROID_BOTTOM_BAR
+    })
+    public void testIsHomepageProviderAvailableAndEnabled_FeatureEnabled_WithBottomBar() {
+        PartnerBrowserCustomizations customizations = PartnerBrowserCustomizations.getInstance();
+        customizations.initializeAsync(ContextUtils.getApplicationContext());
+        RobolectricUtil.runAllBackgroundAndUi();
+        assertTrue(customizations.isHomepageProviderAvailableAndEnabled());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.DISABLE_PARTNER_HOMEPAGE_ANDROID)
+    @DisableFeatures(ChromeFeatureList.ANDROID_BOTTOM_BAR)
+    public void testIsHomepageProviderAvailableAndEnabled_DisablePartnerHomepageEnabled() {
+        Locale.setDefault(Locale.US);
+        PartnerBrowserCustomizations partnerBrowserCustomizations =
+                PartnerBrowserCustomizations.getInstance();
+        partnerBrowserCustomizations.initializeAsync(ContextUtils.getApplicationContext());
+        RobolectricUtil.runAllBackgroundAndUi();
+        assertFalse(partnerBrowserCustomizations.isHomepageProviderAvailableAndEnabled());
+
+        Locale.setDefault(Locale.CANADA);
+        assertTrue(partnerBrowserCustomizations.isHomepageProviderAvailableAndEnabled());
+
+        FeatureOverrides.newBuilder()
+                .param(
+                        ChromeFeatureList.DISABLE_PARTNER_HOMEPAGE_ANDROID,
+                        "apply_to_all_countries",
+                        true)
+                .apply();
+        assertFalse(partnerBrowserCustomizations.isHomepageProviderAvailableAndEnabled());
+    }
+
+    @Test
+    @EnableFeatures({
+        ChromeFeatureList.DISABLE_PARTNER_HOMEPAGE_ANDROID
+                + ":disable_partner_homepage_android_for_zero_tabs/true"
+    })
+    @DisableFeatures(ChromeFeatureList.ANDROID_BOTTOM_BAR)
+    public void
+            testIsHomepageProviderAvailableAndEnabledForZeroTabs_DisablePartnerHomepageEnabled() {
+        Locale.setDefault(Locale.US);
+        PartnerBrowserCustomizations partnerBrowserCustomizations =
+                PartnerBrowserCustomizations.getInstance();
+        partnerBrowserCustomizations.initializeAsync(ContextUtils.getApplicationContext());
+        RobolectricUtil.runAllBackgroundAndUi();
+        assertFalse(
+                partnerBrowserCustomizations.isHomepageProviderAvailableAndEnabledForZeroTabs());
+
+        Locale.setDefault(Locale.CANADA);
+        assertTrue(partnerBrowserCustomizations.isHomepageProviderAvailableAndEnabledForZeroTabs());
+
+        FeatureOverrides.newBuilder()
+                .param(
+                        ChromeFeatureList.DISABLE_PARTNER_HOMEPAGE_ANDROID,
+                        "apply_to_all_countries",
+                        true)
+                .apply();
+        assertFalse(
+                partnerBrowserCustomizations.isHomepageProviderAvailableAndEnabledForZeroTabs());
+    }
+}

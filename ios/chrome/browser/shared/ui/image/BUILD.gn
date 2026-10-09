@@ -1,0 +1,19 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("image") {
+  sources = [
+    "g_with_point_size.h",
+    "g_with_point_size.mm",
+    "image_names.mm",
+  ]
+  deps = [
+    "//base",
+    "//build:branding_buildflags",
+    "//ios/chrome/browser/shared/ui:branded_assets",
+    "//ios/chrome/browser/shared/ui:buildflags",
+    "//ios/chrome/browser/shared/ui/image/resources",
+    "//ios/chrome/browser/shared/ui/image/resources:branded_assets",
+  ]
+}

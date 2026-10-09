@@ -1,0 +1,22 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("first_run") {
+  sources = [
+    "personal_context_first_run_service_factory.cc",
+    "personal_context_first_run_service_factory.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/personal_context",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/signin",
+    "//components/keyed_service/content",
+    "//components/personal_context/core",
+    "//components/personal_context/core:features",
+    "//components/personal_context/first_run",
+    "//content/public/browser",
+  ]
+}

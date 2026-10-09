@@ -1,0 +1,2 @@
+This is a wdspec test.
+Harness: the test ran to completion.

@@ -1,0 +1,544 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.app.tabmodel;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+import static org.chromium.chrome.browser.app.tabmodel.TabPersistentStoreFactory.buildAuthoritativeStore;
+import static org.chromium.chrome.browser.app.tabmodel.TabPersistentStoreFactory.buildShadowStore;
+
+import android.app.Activity;
+import android.util.Pair;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.CallbackController;
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.lifetime.Destroyable;
+import org.chromium.base.supplier.OneshotSupplier;
+import org.chromium.base.task.PostTask;
+import org.chromium.base.task.TaskTraits;
+import org.chromium.build.annotations.EnsuresNonNull;
+import org.chromium.build.annotations.MonotonicNonNull;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.DeferredStartupHandler;
+import org.chromium.chrome.browser.app.tabmodel.ArchivedTabModelOrchestrator.LeaseReason;
+import org.chromium.chrome.browser.app.tabwindow.TabWindowManagerSingleton;
+import org.chromium.chrome.browser.crypto.CipherFactory;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
+import org.chromium.chrome.browser.multiwindow.MultiInstanceManager;
+import org.chromium.chrome.browser.multiwindow.MultiInstanceManager.PersistedInstanceType;
+import org.chromium.chrome.browser.multiwindow.MultiWindowUtils;
+import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.profiles.ProfileProvider;
+import org.chromium.chrome.browser.tab.TabArchiveSettings;
+import org.chromium.chrome.browser.tab.TabDestroyStatus;
+import org.chromium.chrome.browser.tab_ui.TabContentManager;
+import org.chromium.chrome.browser.tabmodel.AccumulatingTabCreator;
+import org.chromium.chrome.browser.tabmodel.MismatchedIndicesHandler;
+import org.chromium.chrome.browser.tabmodel.NextTabPolicy.NextTabPolicySupplier;
+import org.chromium.chrome.browser.tabmodel.RecordingTabCreatorManager;
+import org.chromium.chrome.browser.tabmodel.SupportedProfileType;
+import org.chromium.chrome.browser.tabmodel.TabCreator;
+import org.chromium.chrome.browser.tabmodel.TabCreatorManager;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.tabmodel.TabModelSelectorBase;
+import org.chromium.chrome.browser.tabmodel.TabModelSelectorImpl;
+import org.chromium.chrome.browser.tabmodel.TabModelUtils;
+import org.chromium.chrome.browser.tabmodel.TabOrchestratorType;
+import org.chromium.chrome.browser.tabmodel.TabPersistentStore;
+import org.chromium.chrome.browser.tabmodel.TabPersistentStoreImpl;
+import org.chromium.chrome.browser.tabmodel.TabbedModeTabPersistencePolicy;
+import org.chromium.chrome.browser.tabwindow.TabWindowManager;
+import org.chromium.chrome.browser.tabwindow.WindowId;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.widget.Toast;
+
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+
+/**
+ * Glue-level class that manages lifetime of root .tabmodel objects: {@link TabPersistentStore} and
+ * {@link TabModelSelectorImpl} for tabbed mode.
+ */
+@NullMarked
+public class TabbedModeTabModelOrchestrator extends TabModelOrchestrator {
+    private static final String TAG = "TMTMOrchestrator";
+
+    private final boolean mTabMergingEnabled;
+    private final Supplier<Boolean> mIsRecreatingSupplier;
+    private final boolean mIsFromRecreating;
+    private final ActivityLifecycleDispatcher mActivityLifecycleDispatcher;
+    private final CipherFactory mCipherFactory;
+    private final TabArchiveSettings.Observer mTabArchiveSettingsObserver =
+            this::onTabArchiveSettingsChanged;
+    private final AccumulatingTabCreator mRegularShadowTabCreator = new AccumulatingTabCreator();
+    private final AccumulatingTabCreator mIncognitoShadowTabCreator = new AccumulatingTabCreator();
+    // Effectively final after createTabModels().
+
+    private @MonotonicNonNull OneshotSupplier<ProfileProvider> mProfileProviderSupplier;
+    private @MonotonicNonNull RecordingTabCreatorManager mRecordingTabCreatorManager;
+
+    private @Nullable Supplier<@Nullable TabModel> mArchivedHistoricalObserverSupplier;
+    private @Nullable Destroyable mDeclutterLease;
+    private @Nullable TabContentManager mTabContentManager;
+    private @Nullable CallbackController mCallbackController = new CallbackController();
+    private boolean mDeclutterTimerScheduled;
+    private boolean mIsDestroyed;
+    private @WindowId int mWindowId;
+
+    /**
+     * Constructor.
+     *
+     * @param tabMergingEnabled Whether we are on the platform where tab merging is enabled.
+     * @param activityLifecycleDispatcher Used to determine if the current activity context is still
+     *     valid when running deferred tasks.
+     * @param cipherFactory The {@link CipherFactory} used for encrypting and decrypting files.
+     * @param isRecreatingSupplier A supplier of whether the current activity is recreating.
+     * @param isFromRecreating Whether the activity is launched from recreating.
+     */
+    public TabbedModeTabModelOrchestrator(
+            boolean tabMergingEnabled,
+            ActivityLifecycleDispatcher activityLifecycleDispatcher,
+            CipherFactory cipherFactory,
+            Supplier<Boolean> isRecreatingSupplier,
+            boolean isFromRecreating) {
+        mTabMergingEnabled = tabMergingEnabled;
+        mActivityLifecycleDispatcher = activityLifecycleDispatcher;
+        mCipherFactory = cipherFactory;
+        mIsRecreatingSupplier = isRecreatingSupplier;
+        mIsFromRecreating = isFromRecreating;
+    }
+
+    @Override
+    public @TabDestroyStatus int destroy() {
+        if (mIsDestroyed) return TabDestroyStatus.NO_SHUTDOWN;
+        mIsDestroyed = true;
+
+        if (mCallbackController != null) {
+            mCallbackController.destroy();
+            mCallbackController = null;
+        }
+
+        TabArchiveSettings.getInstance().removeObserver(mTabArchiveSettingsObserver);
+        releaseDeclutterLease();
+        mTabContentManager = null;
+
+        Profile profile = getOriginalProfile();
+        ArchivedTabModelOrchestrator archivedOrchestrator =
+                ArchivedTabModelOrchestrator.getIfInstantiatedForProfile(profile);
+        if (archivedOrchestrator != null) {
+            if (mArchivedHistoricalObserverSupplier != null) {
+                archivedOrchestrator.removeHistoricalTabModelObserver(
+                        mArchivedHistoricalObserverSupplier);
+            }
+        }
+        ArchivedTabModelOrchestrator.unregisterTabModelOrchestrator(this);
+        return super.destroy();
+    }
+
+    @EnsuresNonNull({
+        "mTabPersistentStore",
+        "mTabPersistencePolicy",
+        "mTabModelSelector",
+        "mProfileProviderSupplier",
+        "mRecordingTabCreatorManager"
+    })
+    private void assertCreated() {
+        assert mTabPersistentStore != null;
+        assert mTabPersistencePolicy != null;
+        assert mWindowId != TabWindowManager.INVALID_WINDOW_ID;
+        assert mTabModelSelector != null;
+        assert mProfileProviderSupplier != null;
+        assert mRecordingTabCreatorManager != null;
+    }
+
+    /**
+     * Creates the TabModelSelector and the TabPersistentStore.
+     *
+     * @param activity The activity that hosts this TabModelOrchestrator.
+     * @param modalDialogManager The {@link ModalDialogManager}.
+     * @param profileProviderSupplier Supplies the {@link ProfileProvider} for the activity.
+     * @param tabCreatorManager Manager for the {@link TabCreator} for the {@link TabModelSelector}.
+     * @param nextTabPolicySupplier Policy for what to do when a tab is closed.
+     * @param mismatchedIndicesHandler Handles when indices are mismatched.
+     * @param selectorIndex Which index to use when requesting a selector.
+     * @param supportedProfileType The type of profile supported by the window.
+     * @return Whether the creation was successful. It may fail is we reached the limit of number of
+     *     windows.
+     */
+    public boolean createTabModels(
+            Activity activity,
+            ModalDialogManager modalDialogManager,
+            OneshotSupplier<ProfileProvider> profileProviderSupplier,
+            TabCreatorManager tabCreatorManager,
+            NextTabPolicySupplier nextTabPolicySupplier,
+            MismatchedIndicesHandler mismatchedIndicesHandler,
+            int selectorIndex,
+            @SupportedProfileType int supportedProfileType) {
+        mProfileProviderSupplier = profileProviderSupplier;
+        mRecordingTabCreatorManager = new RecordingTabCreatorManager(tabCreatorManager);
+        boolean mergeTabsOnStartup = shouldMergeTabs(activity);
+        if (mergeTabsOnStartup) {
+            MultiInstanceManager.mergedOnStartup();
+        }
+
+        // Instantiate TabModelSelectorImpl
+        TabWindowManager tabWindowManager = TabWindowManagerSingleton.getInstance();
+        Pair<Integer, TabModelSelector> selectorAssignment =
+                tabWindowManager.requestSelector(
+                        activity,
+                        modalDialogManager,
+                        profileProviderSupplier,
+                        tabCreatorManager,
+                        nextTabPolicySupplier,
+                        mismatchedIndicesHandler,
+                        selectorIndex,
+                        supportedProfileType);
+        if (selectorAssignment == null) {
+            // We will early out and handle this case below.
+            mTabModelSelector = assumeNonNull(null);
+        } else {
+            mTabModelSelector = (TabModelSelectorBase) selectorAssignment.second;
+        }
+
+        if (mTabModelSelector == null) {
+            markTabModelsInitialized();
+            Toast.makeText(
+                            activity,
+                            activity.getString(R.string.unsupported_number_of_windows),
+                            Toast.LENGTH_LONG)
+                    .show();
+            mWindowId = TabWindowManager.INVALID_WINDOW_ID;
+            return false;
+        }
+
+        int assignedIndex = assumeNonNull(selectorAssignment).first;
+        assert assignedIndex != TabWindowManager.INVALID_WINDOW_ID;
+        mWindowId = assignedIndex;
+        String windowTag = Integer.toString(assignedIndex);
+
+        mMigrationManager = new PersistentStoreMigrationManagerImpl(windowTag);
+
+        // Instantiate TabPersistentStore
+        mTabPersistencePolicy =
+                new TabbedModeTabPersistencePolicy(
+                        assignedIndex,
+                        mergeTabsOnStartup,
+                        mTabMergingEnabled,
+                        mIsRecreatingSupplier);
+        mTabPersistentStore =
+                buildAuthoritativeStore(
+                        TabOrchestratorType.TABBED,
+                        mMigrationManager,
+                        mTabPersistencePolicy,
+                        mTabModelSelector,
+                        mRecordingTabCreatorManager,
+                        tabWindowManager,
+                        windowTag,
+                        mCipherFactory,
+                        /* recordLegacyTabCountMetrics= */ true,
+                        mIsFromRecreating);
+
+        wireSelectorAndStore();
+        markTabModelsInitialized();
+        return true;
+    }
+
+    private boolean shouldMergeTabs(Activity activity) {
+        if (isMultiInstanceApi31Enabled()) {
+            // For multi-instance on Android S, this is a restart after the upgrade or fresh
+            // installation. Allow merging tabs from CTA/CTA2 used by the previous version
+            // if present.
+            return MultiWindowUtils.getInstanceCount(PersistedInstanceType.ANY) == 0
+                    && !ChromeSharedPreferences.getInstance()
+                            .readBoolean(
+                                    ChromePreferenceKeys
+                                            .TABMODEL_HAS_RUN_MULTI_INSTANCE_FILE_MIGRATION,
+                                    false);
+        }
+
+        // Merge tabs if this TabModelSelector is for a ChromeTabbedActivity created in
+        // fullscreen mode and there are no TabModelSelector's currently alive. This indicates
+        // that it is a cold start or process restart in fullscreen mode.
+        boolean mergeTabs = mTabMergingEnabled && !activity.isInMultiWindowMode();
+        if (MultiInstanceManager.shouldMergeOnStartup(activity)) {
+            mergeTabs =
+                    mergeTabs
+                            && (!MultiWindowUtils.getInstance().isInMultiDisplayMode(activity)
+                                    || TabWindowManagerSingleton.getInstance()
+                                                    .getNumberOfAssignedTabModelSelectors()
+                                            == 0);
+        } else {
+            mergeTabs =
+                    mergeTabs
+                            && TabWindowManagerSingleton.getInstance()
+                                            .getNumberOfAssignedTabModelSelectors()
+                                    == 0;
+        }
+        return mergeTabs;
+    }
+
+    @VisibleForTesting
+    protected boolean isMultiInstanceApi31Enabled() {
+        return MultiWindowUtils.isMultiInstanceApi31Enabled();
+    }
+
+    @Override
+    public void cleanupInstance(int instanceId) {
+        assertCreated();
+        new PersistentStoreMigrationManagerImpl(String.valueOf(instanceId)).onWindowCleared();
+
+        mTabPersistentStore.cleanupStateFile(instanceId);
+        if (mShadowTabPersistentStore != null) {
+            mShadowTabPersistentStore.cleanupStateFile(instanceId);
+        }
+        Profile profile = getOriginalProfile();
+        // Can be null if we call this before native is initialized.
+        if (profile != null) {
+            PersistentStoreCleanerFactory.getForProfile(profile)
+                    .cleanWindowForUnavailableStores(instanceId, this);
+        }
+    }
+
+    @Override
+    public void onNativeLibraryReady(TabContentManager tabContentManager) {
+        assertCreated();
+        super.onNativeLibraryReady(tabContentManager);
+
+        if (!mTabPersistentStoreDestroyedEarly) {
+            String windowTag = Integer.toString(mWindowId);
+            mShadowTabPersistentStore =
+                    buildShadowStore(
+                            mMigrationManager,
+                            mRegularShadowTabCreator,
+                            mIncognitoShadowTabCreator,
+                            mTabModelSelector,
+                            mRecordingTabCreatorManager,
+                            mTabPersistencePolicy,
+                            mTabPersistentStore,
+                            windowTag,
+                            mCipherFactory,
+                            TabOrchestratorType.TABBED,
+                            /* isNonOtrOnly= */ false,
+                            mIsFromRecreating);
+            if (mShadowTabPersistentStore != null) {
+                mShadowTabPersistentStore.onNativeLibraryReady();
+            }
+            markStoresInitialized();
+        }
+
+        Profile profile = getOriginalProfile();
+        assert profile != null;
+        mTabContentManager = tabContentManager;
+
+        PersistentStoreCleanerFactory.getForProfile(profile)
+                .scheduleCleanUnusedData(tabContentManager);
+
+        TabModelUtils.runOnTabStateInitialized(
+                mTabModelSelector,
+                (selector) -> createArchivedTabModelInDeferredTask(tabContentManager));
+    }
+
+    /** Returns the {@link TabContentManager} if available. */
+    public @Nullable TabContentManager getTabContentManager() {
+        return mTabContentManager;
+    }
+
+    // There is some delay while the local tab group sync databases synchronizes with the
+    // sync service on startup. Archiving is done on startup, although it's loaded as a
+    // deferred task which is only started after the regular tab model is already
+    // initialized. This is done to prevent any noticeable lag when archiving tabs. There
+    // is the chance that tab groups are archived while in the midst of being deleted. This
+    // is much more of an edge case than adding a set delay at startup, and is already
+    // handled by observer events in the relevant UI which mirror the behavior in the tab
+    // groups pane.
+    private void createArchivedTabModelInDeferredTask(TabContentManager tabContentManager) {
+        DeferredStartupHandler.getInstance()
+                .addDeferredTask(
+                        () -> createAndInitArchivedTabModelOrchestrator(tabContentManager));
+        DeferredStartupHandler.getInstance().queueDeferredTasksOnIdleHandler();
+    }
+
+    @Override
+    public void saveState() {
+        if (mIsDestroyed) return;
+        super.saveState();
+        Profile profile = getOriginalProfile();
+        ArchivedTabModelOrchestrator archivedOrchestrator =
+                ArchivedTabModelOrchestrator.getIfInstantiatedForProfile(profile);
+        if (archivedOrchestrator != null
+                && archivedOrchestrator.areTabModelsInitialized()
+                && archivedOrchestrator.isTabStateInitialized()) {
+            archivedOrchestrator.saveState();
+        }
+    }
+
+    private void createAndInitArchivedTabModelOrchestrator(TabContentManager tabContentManager) {
+        if (mActivityLifecycleDispatcher.isActivityFinishingOrDestroyed()) return;
+        ThreadUtils.assertOnUiThread();
+        assertCreated();
+
+        assert tabContentManager != null;
+
+        // The profile will be available because native is initialized.
+        Profile profile = getOriginalProfile();
+        assert profile != null;
+
+        TabArchiveSettings archiveSettings = TabArchiveSettings.getInstance();
+        archiveSettings.addObserver(mTabArchiveSettingsObserver);
+
+        if (ChromeFeatureList.sArchivedTabsTeardown.isEnabled()) {
+            @LeaseReason
+            int leaseReason =
+                    archiveSettings.getArchiveEnabled()
+                            ? LeaseReason.STARTUP_DECLUTTER_PASS
+                            : LeaseReason.RESCUE_ARCHIVED_TABS;
+            mDeclutterLease = ArchivedTabModelOrchestrator.acquireLease(profile, leaseReason);
+        }
+
+        ArchivedTabModelOrchestrator archivedOrchestrator =
+                ArchivedTabModelOrchestrator.getForProfile(profile);
+        archivedOrchestrator.maybeCreateAndInitTabModels(tabContentManager, mCipherFactory);
+        mArchivedHistoricalObserverSupplier =
+                () -> mTabModelSelector.getModel(/* incognito= */ false);
+        archivedOrchestrator.initializeHistoricalTabModelObserver(
+                mArchivedHistoricalObserverSupplier);
+
+        // Registering will automatically do an archive pass.
+        archivedOrchestrator.registerTabModelOrchestrator(this);
+    }
+
+    /** Called when the declutter pass finishes executing. */
+    public void onDeclutterPassCompleted() {
+        cleanUnusedData();
+        releaseDeclutterLease();
+        scheduleNextDeclutterPass();
+    }
+
+    private void onTabArchiveSettingsChanged() {
+        if (mIsDestroyed || mActivityLifecycleDispatcher.isActivityFinishingOrDestroyed()) {
+            return;
+        }
+        TabArchiveSettings archiveSettings = TabArchiveSettings.getInstance();
+        if (archiveSettings.getArchiveEnabled()) {
+            scheduleNextDeclutterPass();
+            return;
+        }
+        Profile profile = getOriginalProfile();
+        if (profile == null || !profile.isNativeInitialized() || profile.shutdownStarted()) {
+            return;
+        }
+        boolean mayHaveArchivedTabs =
+                !archiveSettings.hasArchivedTabCountBeenSet()
+                        || archiveSettings.getArchivedTabCount() > 0
+                        || ArchivedTabModelOrchestrator.isInstantiatedForProfile(profile);
+        if (mayHaveArchivedTabs
+                && ArchivedTabModelOrchestrator.isOrchestratorRegistered(this)
+                && mTabContentManager != null) {
+            releaseDeclutterLease();
+            if (ChromeFeatureList.sArchivedTabsTeardown.isEnabled()) {
+                mDeclutterLease =
+                        ArchivedTabModelOrchestrator.acquireLease(
+                                profile, LeaseReason.RESCUE_ARCHIVED_TABS);
+            }
+            ArchivedTabModelOrchestrator archivedOrchestrator =
+                    ArchivedTabModelOrchestrator.getForProfile(profile);
+            archivedOrchestrator.maybeCreateAndInitTabModels(mTabContentManager, mCipherFactory);
+            archivedOrchestrator.rescueArchivedTabs(this);
+        }
+    }
+
+    private void scheduleNextDeclutterPass() {
+        if (mIsDestroyed || mCallbackController == null || mDeclutterTimerScheduled) return;
+        TabArchiveSettings archiveSettings = TabArchiveSettings.getInstance();
+        if (!archiveSettings.getArchiveEnabled()) return;
+
+        mDeclutterTimerScheduled = true;
+        PostTask.postDelayedTask(
+                TaskTraits.UI_DEFAULT,
+                mCallbackController.makeCancelable(this::runRecurringDeclutterPass),
+                TimeUnit.HOURS.toMillis(archiveSettings.getDeclutterIntervalTimeDeltaHours()));
+    }
+
+    private void runRecurringDeclutterPass() {
+        mDeclutterTimerScheduled = false;
+        if (mIsDestroyed || mActivityLifecycleDispatcher.isActivityFinishingOrDestroyed()) {
+            return;
+        }
+        Profile profile = getOriginalProfile();
+        if (profile == null || !profile.isNativeInitialized() || profile.shutdownStarted()) {
+            return;
+        }
+
+        TabArchiveSettings archiveSettings = TabArchiveSettings.getInstance();
+        if (!archiveSettings.getArchiveEnabled() || mTabContentManager == null) return;
+
+        releaseDeclutterLease();
+        if (ChromeFeatureList.sArchivedTabsTeardown.isEnabled()) {
+            mDeclutterLease =
+                    ArchivedTabModelOrchestrator.acquireLease(
+                            profile, LeaseReason.RECURRING_DECLUTTER_PASS);
+        }
+
+        ArchivedTabModelOrchestrator archivedOrchestrator =
+                ArchivedTabModelOrchestrator.getForProfile(profile);
+        archivedOrchestrator.maybeCreateAndInitTabModels(mTabContentManager, mCipherFactory);
+        archivedOrchestrator.doDeclutterPass(this);
+    }
+
+    /** Called when the rescue pass finishes executing. */
+    public void onRescueArchivedTabsCompleted() {
+        cleanUnusedData();
+        releaseDeclutterLease();
+    }
+
+    private void cleanUnusedData() {
+        @Nullable Profile profile = getOriginalProfile();
+        TabContentManager tabContentManager = mTabContentManager;
+        if (profile != null && tabContentManager != null) {
+            PersistentStoreCleanerFactory.getForProfile(profile)
+                    .scheduleCleanUnusedData(tabContentManager);
+        }
+    }
+
+    private void releaseDeclutterLease() {
+        Destroyable lease = mDeclutterLease;
+        if (lease != null) {
+            lease.destroy();
+            mDeclutterLease = null;
+        }
+    }
+
+    public @Nullable Destroyable getDeclutterLeaseForTesting() {
+        return mDeclutterLease;
+    }
+
+    public TabPersistentStoreImpl getTabPersistentStoreForTesting() {
+        assertCreated();
+        return (TabPersistentStoreImpl) mTabPersistentStore;
+    }
+
+    @Nullable Supplier<@Nullable TabModel> getArchivedHistoricalObserverSupplier() {
+        return mArchivedHistoricalObserverSupplier;
+    }
+
+    /* Should only be called after native is initialized. */
+    @Nullable Profile getOriginalProfile() {
+        if (mProfileProviderSupplier == null) return null;
+
+        ProfileProvider profileProvider = mProfileProviderSupplier.get();
+        if (profileProvider == null) return null;
+
+        Profile profile = profileProvider.getOriginalProfile();
+        assert profile != null;
+        return profile;
+    }
+}

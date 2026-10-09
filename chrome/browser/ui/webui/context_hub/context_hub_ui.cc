@@ -1,0 +1,109 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/context_hub/context_hub_ui.h"
+
+#include <memory>
+#include <utility>
+
+#include "base/feature_list.h"
+#include "build/build_config.h"
+#include "chrome/browser/context_hub/features.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/context_hub/context_hub.mojom-features.h"
+#include "chrome/browser/ui/webui/context_hub/context_hub_page_handler.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/grit/context_hub_resources.h"
+#include "chrome/grit/context_hub_resources_map.h"
+#include "content/public/browser/web_ui.h"
+#include "content/public/browser/web_ui_data_source.h"
+#include "ui/webui/webui_util.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/glic/actor/glic_actor_policy_checker.h"  // nogncheck
+#include "chrome/browser/glic/public/glic_enabling.h"             // nogncheck
+#include "chrome/browser/glic/public/glic_keyed_service.h"        // nogncheck
+#include "chrome/browser/ui/webui/favicon_source.h"  // nogncheck
+#include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"  // nogncheck
+#include "components/favicon_base/favicon_url_parser.h"
+#include "content/public/browser/url_data_source.h"
+#endif
+
+ContextHubUI::ContextHubUI(content::WebUI* web_ui)
+    : ui::MojoWebUIController(web_ui) {
+  Profile* profile = Profile::FromWebUI(web_ui);
+  content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
+      profile, chrome::kChromeUIContextHubHost);
+
+  webui::SetupWebUIDataSource(source, kContextHubResources,
+                              IDR_CONTEXT_HUB_CONTEXT_HUB_HTML);
+
+  source->AddResourcePath("save_to_memory_bank",
+                          IDR_CONTEXT_HUB_SAVE_TO_MEMORY_BANK_HTML);
+  source->AddResourcePath("topic_details", IDR_CONTEXT_HUB_TOPIC_DETAILS_HTML);
+
+  source->AddBoolean("kAutoTabGroups",
+                     base::FeatureList::IsEnabled(
+                         browser::context_hub::mojom::kAutoTabGroups));
+  source->AddBoolean(
+      "kAutoTodos",
+      base::FeatureList::IsEnabled(browser::context_hub::mojom::kAutoTodos));
+  bool can_act_on_web = false;
+#if !BUILDFLAG(IS_ANDROID)
+  if (base::FeatureList::IsEnabled(features::kGlicActor) &&
+      glic::GlicEnabling::IsEnabledForProfile(profile)) {
+    glic::GlicKeyedService* glic_service = glic::GlicKeyedService::Get(profile);
+    can_act_on_web = glic_service && glic_service->HasActorPolicyChecker() &&
+                     glic_service->actor_policy_checker().CanActOnWeb();
+  }
+#endif
+  source->AddBoolean("can_act_on_web", can_act_on_web);
+  source->AddBoolean(
+      "kSmartSearch",
+      base::FeatureList::IsEnabled(browser::context_hub::mojom::kSmartSearch));
+  source->AddBoolean("kTopics", base::FeatureList::IsEnabled(
+                                    browser::context_hub::mojom::kTopics));
+  source->AddBoolean(
+      "kRecordReplay",
+      base::FeatureList::IsEnabled(browser::context_hub::mojom::kRecordReplay));
+  source->AddBoolean(
+      "kTopicsFishfoodFeedback",
+      base::FeatureList::IsEnabled(browser::context_hub::mojom::kTopics) &&
+          context_hub::features::kTopicsFishfoodFeedback.Get());
+  source->AddString("kTopicsFeedbackFormUrl",
+                    context_hub::features::kTopicsFeedbackFormUrl.Get());
+  source->AddInteger("kMaxTabGroupChatHistoryTurns",
+                     context_hub::features::kMaxTabGroupChatHistoryTurns.Get());
+  source->AddInteger(
+      "kMaxMemoryBankChatHistoryTurns",
+      context_hub::features::kMaxMemoryBankChatHistoryTurns.Get());
+
+#if !BUILDFLAG(IS_ANDROID)
+  content::URLDataSource::Add(
+      profile, std::make_unique<FaviconSource>(
+                   profile, chrome::FaviconUrlFormat::kFavicon2));
+  content::URLDataSource::Add(profile,
+                              std::make_unique<SanitizedImageSource>(profile));
+#endif
+}
+
+ContextHubUI::~ContextHubUI() = default;
+
+void ContextHubUI::BindInterface(
+    mojo::PendingReceiver<browser::context_hub::mojom::PageHandlerFactory>
+        receiver) {
+  page_factory_receiver_.reset();
+  page_factory_receiver_.Bind(std::move(receiver));
+}
+
+void ContextHubUI::CreatePageHandler(
+    mojo::PendingRemote<browser::context_hub::mojom::Page> page,
+    mojo::PendingReceiver<browser::context_hub::mojom::PageHandler> handler) {
+  page_handler_ = std::make_unique<ContextHubPageHandler>(
+      std::move(page), std::move(handler), Profile::FromWebUI(web_ui()),
+      web_ui()->GetWebContents());
+}
+
+WEB_UI_CONTROLLER_TYPE_IMPL(ContextHubUI)

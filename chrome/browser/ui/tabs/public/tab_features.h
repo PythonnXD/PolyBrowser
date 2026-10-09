@@ -1,0 +1,1073 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// This class is used to construct and hold tab-scoped state associated with a
+// WebContents. When a WebContents is transformed into a tab, and instance of
+// this class is created. When the tab is destroyed, this instance is destroyed.
+//
+// This class exists for 3 reasons:
+//  (1) It provides explicit construction and destruction ordering.
+//  (2) It allows for dependency-injection at construction time of tab features.
+//  (3) It pairs with the UnownedUserData design pattern to ensure dependencies
+//      are precisely specified by BUILD.gn files. This prevents circular
+//      dependencies.
+//
+// If you want to make a new TabFeature, following these steps:
+//  (1) Make a regular C++ class. It should NOT inherit from SupportsUserData.
+//  (2) Forward declare the class, and add a std::unique_ptr member to this
+//      header file.
+//  (3) Construct the member in tab_features.cc.
+//  (4) If tab-consumers need to access the feature, expose it via TabInterface
+//      and UnownedUserData.
+//
+// For more details on UnownedUserData, see ui/base/unowned_user_data/README.md.
+
+#ifndef CHROME_BROWSER_UI_TABS_PUBLIC_TAB_FEATURES_H_
+#define CHROME_BROWSER_UI_TABS_PUBLIC_TAB_FEATURES_H_
+
+#include <memory>
+#include <vector>
+
+#include "base/callback_list.h"
+#include "base/memory/weak_ptr.h"
+#include "chrome/common/buildflags.h"
+#include "components/compose/buildflags.h"
+#include "components/offline_pages/buildflags/buildflags.h"
+#include "components/safe_browsing/buildflags.h"
+#include "components/signin/public/base/signin_buildflags.h"
+#include "content/public/common/buildflags.h"
+#include "extensions/buildflags/buildflags.h"
+#include "rlz/buildflags/buildflags.h"
+#include "ui/base/unowned_user_data/user_data_factory.h"
+
+class AboutThisSiteTabHelper;
+class AskBeforeHttpDialogController;
+class AutoPictureInPictureTabHelper;
+class BookmarkBarPreloadPipelineManager;
+class BookmarkPageActionController;
+class BrowserSyncedTabDelegate;
+class ChromeFacilitatedPaymentsClient;
+class CollaborationMessagingPageActionController;
+class CommitLimitOOMRecoveryTracker;
+class ConnectionHelpTabHelper;
+class CookieControlsPageActionController;
+class CoreTabHelper;
+class ExternalProtocolObserver;
+class FileSystemAccessPageActionController;
+class FileSystemAccessTabHelper;
+class FocusTabAfterNavigationHelper;
+class FontPrewarmerTabHelper;
+class ChainedBackNavigationTracker;
+class FramebustBlockTabHelper;
+
+class FormInteractionTabHelper;
+class FromGWSNavigationAndKeepAliveRequestObserver;
+class HatsHelper;
+class HistoryEmbeddingsTabHelper;
+class HttpAuthCacheStatus;
+class IntentPickerTabHelper;
+class IntentPickerViewPageActionController;
+class JsOptimizationsPageActionController;
+class LensOverlayController;
+class LensOverlayHomeworkPageActionController;
+class LensSearchController;
+class ManagePasswordsPageActionController;
+class ManagePasswordsUIController;
+class MemorySaverChipTabHelper;
+class MixedContentSettingsTabHelper;
+class NavigationMetricsRecorder;
+class NavigationPredictorPreconnectClient;
+class NewTabPagePreloadPipelineManager;
+class OneTimePermissionsTrackerHelper;
+class PinnedTranslateActionListener;
+class Profile;
+class PwaInstallPageActionController;
+class QwacWebContentsObserver;
+class ReadAnythingController;
+class ReadAnythingSidePanelController;
+class RecentlyAudibleHelper;
+class RecordReplayPageActionController;
+class RevokedPermissionsTabHelper;
+class SadTabHelper;
+class SearchEngineChoiceTabHelper;
+class SearchEngineTabHelper;
+class SearchPromotionNavigationObserver;
+class SearchTabHelper;
+class SecurityStateEventObserver;
+class SharedHighlightingPromo;
+class SidePanelRegistry;
+class SoundContentSettingObserver;
+class StorageAccessAPITabHelper;
+class SupervisedUserNavigationObserver;
+class TabCaptureContentsBorderHelper;
+class TabContextDecryptionTokenTabHelper;
+class TabDialogs;
+class TabResourceUsageTabHelper;
+class TabUIHelper;
+class ThumbnailTabHelper;
+class TranslatePageActionController;
+class UMABrowsingActivityTabHelper;
+class ZeroSuggestPrefetchTabHelper;
+
+namespace skills {
+class SkillsUiTabControllerInterface;
+}  // namespace skills
+
+namespace site_protection {
+class SiteProtectionMetricsObserver;
+}  // namespace site_protection
+
+namespace selection {
+class SuggestionService;
+}  // namespace selection
+
+namespace back_to_opener {
+class BackToOpenerController;
+}  // namespace back_to_opener
+
+namespace blocked_content {
+class PopupOpenerTabHelper;
+}  // namespace blocked_content
+
+namespace autofill {
+class BubbleManager;
+class GmailOtpOptInBubbleController;
+class OmniboxAutofillBubbleController;
+class OmniboxAutofillPageActionController;
+class PaymentsChurnedUsersBubbleController;
+class PaymentsChurnedUsersPageActionController;
+class WalletReminderNoticeBubbleController;
+class WalletReminderNoticePageActionController;
+}  // namespace autofill
+
+namespace actor {
+class ActorSurfaceTabHelper;
+class ActorTabData;
+}  // namespace actor
+
+namespace actor::ui {
+class ActorUiTabControllerInterface;
+}  // namespace actor::ui
+
+namespace chrome_browser_net {
+class NetErrorTabHelper;
+}  // namespace chrome_browser_net
+
+namespace commerce {
+class CommerceTabHelper;
+class CommerceUiTabHelper;
+class DiscountsPageActionViewController;
+class InStockNotificationManager;
+class PriceInsightsPageActionViewController;
+}  // namespace commerce
+
+namespace enterprise_data_protection {
+class DataProtectionNavigationController;
+}  // namespace enterprise_data_protection
+
+namespace enterprise_net {
+class EnterpriseProxyTabHelper;
+}  // namespace enterprise_net
+
+namespace enterprise_reporting {
+class SaasUsageNavigationObserver;
+}  // namespace enterprise_reporting
+
+namespace client_hints {
+class ClientHintsWebContentsObserver;
+}  // namespace client_hints
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+namespace contextual_cueing {
+class ContextualCueingController;
+class ContextualCueingWebContentsObserver;
+}  // namespace contextual_cueing
+
+namespace contextual_search {
+class ContextualSearchCueTabState;
+}  // namespace contextual_search
+
+namespace contextual_tasks {
+class ContextualTasksTabVisitTracker;
+class CopySearchJourneyTabFeature;
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+class SearchAiModePromoTabHelper;
+#endif
+}  // namespace contextual_tasks
+
+namespace customize_chrome {
+class SidePanelController;
+}  // namespace customize_chrome
+
+namespace download {
+class DownloadNavigationObserver;
+}  // namespace download
+
+namespace extensions {
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+class AppTabHelper;
+#endif
+class ExtensionSidePanelManager;
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+class NavigationExtensionEnabler;
+#endif
+}  // namespace extensions
+
+namespace glic {
+class ContextualCueingHelper;
+class GlicCueTabState;
+class GlicInstanceHelper;
+class GlicMarketingPageTabHelper;
+class GlicPromotionSourceNavigationObserver;
+class GlicTabIndicatorHelper;
+class GlicSidePanelCoordinator;
+class GlicSelectionObserver;
+class SelectionOverlayController;
+class SelectionSuggestionTool;
+class GlicPageFeaturesManager;
+}  // namespace glic
+
+namespace history {
+class WebContentsTopSitesObserver;
+}  // namespace history
+
+namespace memory_saver {
+class MemorySaverChipController;
+}  // namespace memory_saver
+
+namespace zoom {
+class ZoomViewController;
+}  // namespace zoom
+
+namespace permissions {
+class PermissionIndicatorsTabData;
+}  // namespace permissions
+
+namespace predictors {
+class LoadingPredictorTabHelper;
+}  // namespace predictors
+
+namespace prerender {
+class NoStatePrefetchTabHelper;
+}  // namespace prerender
+
+namespace v8_compile_hints {
+class V8CompileHintsTabHelper;
+}  // namespace v8_compile_hints
+
+namespace vr {
+class VrTabHelper;
+}  // namespace vr
+
+namespace webapps {
+class AppBannerManagerDesktop;
+class MLInstallabilityPromoter;
+}  // namespace webapps
+
+namespace web_app {
+class WindowManagementContentSettingObserver;
+}  // namespace web_app
+
+#if !BUILDFLAG(IS_ANDROID)
+namespace skills {
+class SkillsUpdateObserver;
+}  // namespace skills
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+namespace sync_sessions {
+class SyncSessionsRouterTabHelper;
+}  // namespace sync_sessions
+
+namespace tab_groups {
+class SavedTabGroupWebContentsListener;
+class SavedTabGroupOnCloseHelper;
+}  // namespace tab_groups
+
+namespace page_actions {
+class PageActionController;
+}  // namespace page_actions
+
+namespace page_content_annotations {
+class PageContentAnnotationsWebContentsObserver;
+}  // namespace page_content_annotations
+
+namespace payments {
+class WebPaymentsObserver;
+}  // namespace payments
+
+namespace tab_groups {
+class CollaborationMessagingTabData;
+}  // namespace tab_groups
+
+namespace tasks {
+class TaskTabHelper;
+}  // namespace tasks
+
+#if !BUILDFLAG(IS_ANDROID)
+namespace record_replay {
+class RecordReplayClient;
+}  // namespace record_replay
+#endif
+
+namespace lens {
+class TabContextualizationController;
+}  // namespace lens
+
+namespace metrics {
+class MetricsServicesWebContentsObserver;
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+class DesktopSessionDurationObserver;
+#endif
+}  // namespace metrics
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_CHROMEOS)
+namespace wallet {
+class ChromeWalletablePassClient;
+}  // namespace wallet
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+class CampaignsManagerSessionTabHelper;
+class GeminiAppTabHelper;
+class GoogleOneOfferIphTabHelper;
+namespace ash {
+class BootTimesRecorderTabHelper;
+class CrosIsolatedWebAppEnabler;
+}  // namespace ash
+namespace ash::app_time {
+class WebTimeNavigationObserver;
+}  // namespace ash::app_time
+namespace mahi {
+class MahiTabHelper;
+}  // namespace mahi
+namespace web_app {
+class ProtocolHandlerPickerCoordinator;
+}  // namespace web_app
+#endif
+
+#if BUILDFLAG(ENABLE_RLZ)
+class ChromeRLZTrackerWebContentsObserver;
+#endif
+
+#if BUILDFLAG(ENABLE_PLUGINS)
+class PluginObserver;
+#endif
+
+#if BUILDFLAG(ENABLE_COMPOSE)
+class ChromeComposeClient;
+#endif
+
+#if BUILDFLAG(ENABLE_OFFLINE_PAGES)
+namespace offline_pages {
+class OfflinePageTabHelper;
+class RecentTabHelper;
+}  // namespace offline_pages
+#endif
+
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+namespace safe_browsing {
+class SafeBrowsingTabObserver;
+class TailoredSecurityUrlObserver;
+class TriggerCreator;
+}  // namespace safe_browsing
+#endif
+
+namespace indigo {
+class IndigoPageActionController;
+}  // namespace indigo
+
+namespace multistep_filter {
+class ChromeFilterNavigationObserver;
+class FilterUiController;
+}  // namespace multistep_filter
+
+namespace tabs {
+
+class ChildTabAlertHelper;
+class ContextHighlightTabFeature;
+class InactiveWindowMouseEventController;
+class PageContextEligibilityHelper;
+class TabAlertController;
+class TabAttachmentTracker;
+class TabCreationMetricsController;
+class TabDialogManager;
+class TabInterface;
+
+// This class owns the core controllers for features that are scoped to a given
+// tab. It can be subclassed by tests to perform dependency injection.
+//
+// Do not add more public accessors. Instead use the UnownedUserData design
+// pattern, see ui/base/unowned_user_data/README.md.
+// TODO(crbug.com/481268779): Remove existing public accessors.
+class TabFeatures {
+ public:
+  TabFeatures();
+  ~TabFeatures();
+
+  TabFeatures(const TabFeatures&) = delete;
+  TabFeatures& operator=(const TabFeatures&) = delete;
+
+  enterprise_data_protection::DataProtectionNavigationController*
+  data_protection_controller() {
+    return data_protection_tab_controller_.get();
+  }
+
+  permissions::PermissionIndicatorsTabData* permission_indicators_tab_data() {
+    return permission_indicators_tab_data_.get();
+  }
+
+  // Note: Temporary until there is a more uniform way to swap out features for
+  // testing.
+  customize_chrome::SidePanelController*
+  SetCustomizeChromeSidePanelControllerForTesting(
+      std::unique_ptr<customize_chrome::SidePanelController>
+          customize_chrome_side_panel_controller);
+
+  commerce::CommerceUiTabHelper* commerce_ui_tab_helper() {
+    return commerce_ui_tab_helper_.get();
+  }
+
+  extensions::ExtensionSidePanelManager* extension_side_panel_manager() {
+    return extension_side_panel_manager_.get();
+  }
+
+  tab_groups::SavedTabGroupWebContentsListener*
+  saved_tab_group_web_contents_listener() const {
+    return saved_tab_group_web_contents_listener_.get();
+  }
+
+  tab_groups::SavedTabGroupOnCloseHelper* saved_tab_group_on_close_helper()
+      const {
+    return saved_tab_group_on_close_helper_.get();
+  }
+
+  TabDialogManager* tab_dialog_manager() { return tab_dialog_manager_.get(); }
+
+  page_actions::PageActionController* page_action_controller() {
+    return page_action_controller_.get();
+  }
+
+  JsOptimizationsPageActionController*
+  js_optimizations_page_action_controller() {
+    return js_optimizations_page_action_controller_.get();
+  }
+
+  FileSystemAccessPageActionController*
+  file_system_access_page_action_controller() {
+    return file_system_access_page_action_controller_.get();
+  }
+
+  ManagePasswordsPageActionController*
+  manage_passwords_page_action_controller() {
+    return manage_passwords_page_action_controller_.get();
+  }
+
+  zoom::ZoomViewController* zoom_view_controller() {
+    return zoom_view_controller_.get();
+  }
+
+  LensOverlayController* lens_overlay_controller();
+  const LensOverlayController* lens_overlay_controller() const;
+
+#if !BUILDFLAG(IS_ANDROID)
+  record_replay::RecordReplayClient* record_replay_client() {
+    return record_replay_client_.get();
+  }
+#endif
+
+  PwaInstallPageActionController* pwa_install_page_action_controller() {
+    return pwa_install_page_action_controller_.get();
+  }
+
+  RecordReplayPageActionController* record_replay_page_action_controller() {
+    return record_replay_page_action_controller_.get();
+  }
+
+  InactiveWindowMouseEventController* inactive_window_mouse_event_controller() {
+    return inactive_window_mouse_event_controller_.get();
+  }
+
+  MemorySaverChipTabHelper* memory_saver_chip_helper() {
+    return memory_saver_chip_helper_.get();
+  }
+
+  TabUIHelper* SetTabUIHelperForTesting(
+      std::unique_ptr<TabUIHelper> tab_ui_helper);
+
+  lens::TabContextualizationController*
+  SetTabContextualizationControllerForTesting(
+      std::unique_ptr<lens::TabContextualizationController>
+          tab_contextualization_controller);
+
+  TabAlertController* SetTabAlertControllerForTesting(
+      std::unique_ptr<TabAlertController> tab_alert_controller);
+
+  TabCreationMetricsController* tab_creation_metrics_controller() {
+    return tab_creation_metrics_controller_.get();
+  }
+
+  autofill::PaymentsChurnedUsersPageActionController*
+  payments_churned_users_page_action_controller() {
+    return payments_churned_users_page_action_controller_.get();
+  }
+
+  autofill::BubbleManager* autofill_bubble_manager() {
+    return autofill_bubble_manager_.get();
+  }
+
+  autofill::BubbleManager* SetBubbleManagerForTesting(
+      std::unique_ptr<autofill::BubbleManager> bubble_manager);
+
+  AskBeforeHttpDialogController* ask_before_http_dialog_controller() {
+    return ask_before_http_dialog_controller_.get();
+  }
+
+  back_to_opener::BackToOpenerController* back_to_opener_controller() {
+    return back_to_opener_controller_.get();
+  }
+
+  BookmarkBarPreloadPipelineManager* bookmarkbar_preload_pipeline_manager() {
+    return bookmarkbar_preload_pipeline_manager_.get();
+  }
+
+  NewTabPagePreloadPipelineManager* new_tab_page_preload_pipeline_manager() {
+    return new_tab_page_preload_pipeline_manager_.get();
+  }
+
+  contextual_cueing::ContextualCueingController*
+  contextual_cueing_controller() {
+    return contextual_cueing_controller_.get();
+  }
+
+  // Called exactly once to initialize features.
+  void Init(TabInterface& tab, Profile* profile);
+
+  static ui::UserDataFactoryWithOwner<TabInterface>&
+  GetUserDataFactoryForTesting();
+
+ private:
+  bool initialized_ = false;
+
+  // Returns the factory used to create owned components.
+  static ui::UserDataFactoryWithOwner<TabInterface>& GetUserDataFactory();
+
+  // TODO(https://crbug.com/347770670): Delete this code when tab-discarding no
+  // longer swizzles WebContents.
+  // Called when the tab's WebContents is discarded.
+  void WillDiscardContents(tabs::TabInterface* tab,
+                           content::WebContents* old_contents,
+                           content::WebContents* new_contents);
+
+  std::unique_ptr<permissions::PermissionIndicatorsTabData>
+      permission_indicators_tab_data_;
+
+  std::unique_ptr<SidePanelRegistry> side_panel_registry_;
+  std::unique_ptr<LensSearchController> lens_search_controller_;
+
+  // Responsible for the customize chrome tab-scoped side panel.
+  std::unique_ptr<customize_chrome::SidePanelController>
+      customize_chrome_side_panel_controller_;
+
+  // Responsible for managing the read anything (Reading mode) feature.
+  std::unique_ptr<ReadAnythingController> read_anything_controller_;
+
+  // Responsible for commerce related features.
+  std::unique_ptr<commerce::CommerceTabHelper> commerce_tab_helper_;
+  std::unique_ptr<commerce::CommerceUiTabHelper> commerce_ui_tab_helper_;
+  std::unique_ptr<commerce::InStockNotificationManager>
+      in_stock_notification_manager_;
+
+  // Responsible for updating status indicator of the pinned translate button.
+  std::unique_ptr<PinnedTranslateActionListener>
+      pinned_translate_action_listener_;
+
+  // The tab-scoped extension side-panel manager. There is a separate
+  // window-scoped extension side-panel manager.
+  std::unique_ptr<extensions::ExtensionSidePanelManager>
+      extension_side_panel_manager_;
+
+  // Security-state-driven side effects (known-interception disclosure,
+  // form-submission UKM).
+  std::unique_ptr<SecurityStateEventObserver> security_state_event_observer_;
+
+  // Forwards tab-related events to sync.
+  std::unique_ptr<sync_sessions::SyncSessionsRouterTabHelper>
+      sync_sessions_router_;
+
+  // Provides this tab's session identity to sync.
+  std::unique_ptr<BrowserSyncedTabDelegate> browser_synced_tab_delegate_;
+
+  // Responsible for keeping a tab within a tab group in sync with its remote
+  // tab counterpart from sync.
+  std::unique_ptr<tab_groups::SavedTabGroupWebContentsListener>
+      saved_tab_group_web_contents_listener_;
+
+  std::unique_ptr<tab_groups::SavedTabGroupOnCloseHelper>
+      saved_tab_group_on_close_helper_;
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Manages the protocol handler picker dialog on ChromeOS. Must be destroyed
+  // after the `tab_dialog_manager_`.
+  std::unique_ptr<web_app::ProtocolHandlerPickerCoordinator>
+      protocol_handler_picker_coordinator_;
+#endif
+
+  // Manages various tab modal dialogs.
+  std::unique_ptr<TabDialogManager> tab_dialog_manager_;
+
+  std::unique_ptr<
+      enterprise_data_protection::DataProtectionNavigationController>
+      data_protection_tab_controller_;
+
+  std::unique_ptr<enterprise_net::EnterpriseProxyTabHelper>
+      enterprise_proxy_tab_helper_;
+
+  // Holds subscriptions for TabInterface callbacks.
+  std::vector<base::CallbackListSubscription> tab_subscriptions_;
+
+  // Responsible for managing the "Intent Picker" page action.
+  std::unique_ptr<IntentPickerViewPageActionController>
+      intent_picker_view_page_action_controller_;
+
+  // Responsible for managing the "File System Access" page action.
+  std::unique_ptr<FileSystemAccessPageActionController>
+      file_system_access_page_action_controller_;
+
+  // Manages web app banners. Null when web apps are not user-installable in
+  // this profile. Declared before the page-action controllers because
+  // PwaInstallPageAction observes the AppBannerManager, so the manager must
+  // outlive it.
+  std::unique_ptr<webapps::AppBannerManagerDesktop> app_banner_manager_;
+
+  std::unique_ptr<webapps::MLInstallabilityPromoter>
+      ml_installability_promoter_;
+
+  // Responsible for managing all page actions of a tab. Other controllers
+  // interact with this to have their feature's page action shown.
+  std::unique_ptr<page_actions::PageActionController> page_action_controller_;
+
+  // Responsible for managing the "Manage Passwords" page action.
+  std::unique_ptr<ManagePasswordsPageActionController>
+      manage_passwords_page_action_controller_;
+
+  // Responsible for managing the "Translate" page action.
+  std::unique_ptr<TranslatePageActionController>
+      translate_page_action_controller_;
+
+  // Responsible for managing the "PWA Install" page action.
+  std::unique_ptr<PwaInstallPageActionController>
+      pwa_install_page_action_controller_;
+
+  // Responsible for managing the "Zoom" page action and bubble.
+  std::unique_ptr<zoom::ZoomViewController> zoom_view_controller_;
+
+  // Responsible for managing the "Record/Replay" page action.
+  std::unique_ptr<RecordReplayPageActionController>
+      record_replay_page_action_controller_;
+
+  // Responsible for managing the "JS Optimizations" page action.
+  std::unique_ptr<JsOptimizationsPageActionController>
+      js_optimizations_page_action_controller_;
+
+  // Responsible for managing the commerce "Price insights" page action.
+  std::unique_ptr<commerce::PriceInsightsPageActionViewController>
+      commerce_price_insights_page_action_view_controller_;
+
+  // Responsible for managing the commerce "Price insights" page action.
+  std::unique_ptr<commerce::DiscountsPageActionViewController>
+      commerce_discounts_page_action_view_controller_;
+
+  // Contains the recent collaboration message for a shared tab.
+  std::unique_ptr<tab_groups::CollaborationMessagingTabData>
+      collaboration_messaging_tab_data_;
+
+  // Responsible for managing the "Show Collaboration History" page action.
+  std::unique_ptr<CollaborationMessagingPageActionController>
+      collaboration_messaging_page_action_controller_;
+
+  // Manages the Cookie Controls page action.
+  std::unique_ptr<CookieControlsPageActionController>
+      cookie_controls_page_action_controller_;
+
+  // Manages the Lens Overlay Homework page action.
+  std::unique_ptr<LensOverlayHomeworkPageActionController>
+      lens_overlay_homework_page_action_controller_;
+
+  // Manages the Bookmark page action.
+  std::unique_ptr<BookmarkPageActionController>
+      bookmark_page_action_controller_;
+
+  std::unique_ptr<glic::GlicInstanceHelper> glic_instance_helper_;
+  std::unique_ptr<glic::GlicTabIndicatorHelper> glic_tab_indicator_helper_;
+  std::unique_ptr<glic::GlicSidePanelCoordinator> glic_side_panel_coordinator_;
+  std::unique_ptr<glic::GlicSelectionObserver> glic_selection_observer_;
+  std::unique_ptr<selection::SuggestionService>
+      selection_suggestion_service_;
+  std::unique_ptr<glic::SelectionSuggestionTool>
+      glic_selection_suggestion_tool_;
+  std::unique_ptr<glic::SelectionOverlayController>
+      glic_selection_overlay_controller_;
+
+  std::unique_ptr<glic::GlicPageFeaturesManager> glic_page_features_manager_;
+  std::unique_ptr<glic::GlicMarketingPageTabHelper>
+      glic_marketing_page_tab_helper_;
+  std::unique_ptr<glic::GlicPromotionSourceNavigationObserver>
+      glic_promotion_source_navigation_observer_;
+
+  // Observes page loads to decide when to offer glic contextual cueing.
+  std::unique_ptr<glic::ContextualCueingHelper> contextual_cueing_helper_;
+
+  // Per-tab eligibility state for the glic contextual cue.
+  std::unique_ptr<glic::GlicCueTabState> glic_cue_tab_state_;
+
+  // Per-tab eligibility state for the contextual search contextual cue.
+  std::unique_ptr<contextual_search::ContextualSearchCueTabState>
+      contextual_search_cue_tab_state_;
+
+  std::unique_ptr<memory_saver::MemorySaverChipController>
+      memory_saver_chip_controller_;
+
+  std::unique_ptr<InactiveWindowMouseEventController>
+      inactive_window_mouse_event_controller_;
+
+  // Focuses the tab contents after browser-initiated and NTP-leaving
+  // navigations.
+  std::unique_ptr<FocusTabAfterNavigationHelper>
+      focus_tab_after_navigation_helper_;
+
+  // Tracks blocked framebusts on the current page for the omnibox UI.
+  std::unique_ptr<FramebustBlockTabHelper> framebust_block_tab_helper_;
+
+  // Redirects cert-error loads of the help center to bundled help content.
+  std::unique_ptr<ConnectionHelpTabHelper> connection_help_tab_helper_;
+
+  // Indicates if the tab contains forms that have been interacted with.
+  std::unique_ptr<FormInteractionTabHelper> form_interaction_tab_helper_;
+
+  std::unique_ptr<FromGWSNavigationAndKeepAliveRequestObserver>
+      from_gws_navigation_and_keep_alive_request_observer_;
+
+  // Records use counters for cross-partition subresource loads that used
+  // server HTTP auth.
+  std::unique_ptr<HttpAuthCacheStatus> http_auth_cache_status_;
+
+  std::unique_ptr<TabResourceUsageTabHelper> resource_usage_helper_;
+
+  std::unique_ptr<MemorySaverChipTabHelper> memory_saver_chip_helper_;
+
+  std::unique_ptr<vr::VrTabHelper> vr_tab_helper_;
+
+  std::unique_ptr<RecentlyAudibleHelper> recently_audible_helper_;
+
+  std::unique_ptr<ChildTabAlertHelper> child_tab_alert_helper_;
+
+  std::unique_ptr<TabAlertController> tab_alert_controller_;
+
+  std::unique_ptr<ContextHighlightTabFeature> context_highlight_tab_feature_;
+
+  std::unique_ptr<contextual_cueing::ContextualCueingController>
+      contextual_cueing_controller_;
+
+  std::unique_ptr<contextual_cueing::ContextualCueingWebContentsObserver>
+      contextual_cueing_web_contents_observer_;
+
+  std::unique_ptr<TabUIHelper> tab_ui_helper_;
+
+  std::unique_ptr<QwacWebContentsObserver> qwac_web_contents_observer_;
+
+  std::unique_ptr<actor::ui::ActorUiTabControllerInterface>
+      actor_ui_tab_controller_;
+
+  std::unique_ptr<TabCreationMetricsController>
+      tab_creation_metrics_controller_;
+
+  std::unique_ptr<autofill::BubbleManager> autofill_bubble_manager_;
+
+  // Responsible for managing the "Payments Churned Users" page action.
+  std::unique_ptr<autofill::PaymentsChurnedUsersPageActionController>
+      payments_churned_users_page_action_controller_;
+
+  // Responsible for managing the "Autofill payment" page action.
+  std::unique_ptr<autofill::OmniboxAutofillPageActionController>
+      omnibox_autofill_page_action_controller_;
+
+  // Responsible for managing the bubble that displays after the
+  // "Autofill payment" chip is clicked.
+  std::unique_ptr<autofill::OmniboxAutofillBubbleController>
+      omnibox_autofill_bubble_controller_;
+
+  // Responsible for managing the bubble that prompts a user to turn on payments
+  // autofill if they have turned it off.
+  std::unique_ptr<autofill::PaymentsChurnedUsersBubbleController>
+      payments_churned_users_bubble_controller_;
+
+  // Responsible for managing the bubble that displays the Wallet reminder
+  // notice.
+  std::unique_ptr<autofill::WalletReminderNoticeBubbleController>
+      wallet_reminder_notice_bubble_controller_;
+
+  // Responsible for managing the "Wallet Reminder Notice" page action.
+  std::unique_ptr<autofill::WalletReminderNoticePageActionController>
+      wallet_reminder_notice_page_action_controller_;
+
+  // Responsible for managing the bubble that asks the user to opt in to
+  // fetching one-time verification codes from Gmail.
+  std::unique_ptr<autofill::GmailOtpOptInBubbleController>
+      gmail_otp_opt_in_bubble_controller_;
+
+  std::unique_ptr<AskBeforeHttpDialogController>
+      ask_before_http_dialog_controller_;
+
+  std::unique_ptr<actor::ActorTabData> actor_tab_data_;
+  std::unique_ptr<actor::ActorSurfaceTabHelper> actor_surface_tab_helper_;
+
+#if !BUILDFLAG(IS_ANDROID)
+  std::unique_ptr<record_replay::RecordReplayClient> record_replay_client_;
+#endif
+
+  std::unique_ptr<lens::TabContextualizationController>
+      tab_contextualization_controller_;
+
+  // Manages the sad tab view shown when the tab's main frame has crashed.
+  // Null when the WebUI browser is enabled.
+  std::unique_ptr<SadTabHelper> sad_tab_helper_;
+
+  // Watches for an opportunity to show the search engine choice dialog.
+  // Only created when SearchEngineChoiceTabHelper::IsHelperNeeded().
+  std::unique_ptr<SearchEngineChoiceTabHelper> search_engine_choice_tab_helper_;
+
+  std::unique_ptr<BookmarkBarPreloadPipelineManager>
+      bookmarkbar_preload_pipeline_manager_;
+
+  std::unique_ptr<NewTabPagePreloadPipelineManager>
+      new_tab_page_preload_pipeline_manager_;
+
+  std::unique_ptr<back_to_opener::BackToOpenerController>
+      back_to_opener_controller_;
+
+  std::unique_ptr<skills::SkillsUiTabControllerInterface>
+      skills_ui_tab_controller_;
+
+  std::unique_ptr<tabs::PageContextEligibilityHelper>
+      page_context_eligibility_helper_;
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_CHROMEOS)
+  std::unique_ptr<wallet::ChromeWalletablePassClient> walletable_pass_client_;
+#endif
+
+  std::unique_ptr<contextual_tasks::ContextualTasksTabVisitTracker>
+      contextual_tasks_tab_visit_tracker_;
+  std::unique_ptr<contextual_tasks::CopySearchJourneyTabFeature>
+      copy_search_journey_tab_feature_;
+
+#if !BUILDFLAG(IS_ANDROID)
+  std::unique_ptr<skills::SkillsUpdateObserver> skills_update_observer_;
+#endif  //  !BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  std::unique_ptr<metrics::DesktopSessionDurationObserver>
+      desktop_session_duration_observer_;
+#endif
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_CHROMEOS)
+  std::unique_ptr<enterprise_reporting::SaasUsageNavigationObserver>
+      saas_usage_navigation_observer_;
+  std::unique_ptr<HatsHelper> hats_helper_;
+  std::unique_ptr<SharedHighlightingPromo> shared_highlighting_promo_;
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_WIN)
+  std::unique_ptr<SearchPromotionNavigationObserver>
+      search_promotion_navigation_observer_;
+  std::unique_ptr<CommitLimitOOMRecoveryTracker>
+      commit_limit_oom_recovery_tracker_;
+  std::unique_ptr<FontPrewarmerTabHelper> font_prewarmer_tab_helper_;
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+  std::unique_ptr<GoogleOneOfferIphTabHelper> google_one_offer_iph_tab_helper_;
+  std::unique_ptr<CampaignsManagerSessionTabHelper>
+      campaigns_manager_session_tab_helper_;
+  std::unique_ptr<ash::CrosIsolatedWebAppEnabler>
+      cros_isolated_web_app_enabler_;
+  std::unique_ptr<GeminiAppTabHelper> gemini_app_tab_helper_;
+  std::unique_ptr<mahi::MahiTabHelper> mahi_tab_helper_;
+  std::unique_ptr<ash::app_time::WebTimeNavigationObserver>
+      web_time_navigation_observer_;
+  std::unique_ptr<ash::BootTimesRecorderTabHelper>
+      boot_times_recorder_tab_helper_;
+#endif
+
+#if BUILDFLAG(ENABLE_RLZ)
+  std::unique_ptr<ChromeRLZTrackerWebContentsObserver>
+      chrome_rlz_tracker_web_contents_observer_;
+#endif
+
+#if BUILDFLAG(ENABLE_PLUGINS)
+  std::unique_ptr<PluginObserver> plugin_observer_;
+#endif
+
+#if BUILDFLAG(ENABLE_COMPOSE)
+  std::unique_ptr<ChromeComposeClient> compose_client_;
+#endif
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  std::unique_ptr<contextual_tasks::SearchAiModePromoTabHelper>
+      search_ai_mode_promo_tab_helper_;
+#endif
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+  std::unique_ptr<extensions::AppTabHelper> app_tab_helper_;
+#endif
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  std::unique_ptr<extensions::NavigationExtensionEnabler>
+      navigation_extension_enabler_;
+#endif
+
+#if !BUILDFLAG(IS_ANDROID)
+  std::unique_ptr<indigo::IndigoPageActionController>
+      indigo_page_action_controller_;
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+  std::unique_ptr<multistep_filter::FilterUiController> filter_ui_controller_;
+  std::unique_ptr<multistep_filter::ChromeFilterNavigationObserver>
+      filter_navigation_observer_;
+
+  std::unique_ptr<TabAttachmentTracker> tab_attachment_tracker_;
+
+  // Prefetches zero-prefix suggestions on opening or switching to an NTP.
+  std::unique_ptr<ZeroSuggestPrefetchTabHelper>
+      zero_suggest_prefetch_tab_helper_;
+
+  // Controls the visibility of the intent picker page action.
+  std::unique_ptr<IntentPickerTabHelper> intent_picker_tab_helper_;
+
+  // Maintains the thumbnail shown in e.g. tab hover cards. Null when no
+  // feature that needs thumbnails is enabled.
+  std::unique_ptr<ThumbnailTabHelper> thumbnail_tab_helper_;
+
+  // Observes changes in web contents for web payments.
+  std::unique_ptr<payments::WebPaymentsObserver> web_payments_observer_;
+
+  std::unique_ptr<UMABrowsingActivityTabHelper>
+      uma_browsing_activity_tab_helper_;
+
+  std::unique_ptr<web_app::WindowManagementContentSettingObserver>
+      window_management_content_setting_observer_;
+
+  std::unique_ptr<TabCaptureContentsBorderHelper>
+      tab_capture_contents_border_helper_;
+
+  std::unique_ptr<TabContextDecryptionTokenTabHelper>
+      tab_context_decryption_token_tab_helper_;
+
+  std::unique_ptr<v8_compile_hints::V8CompileHintsTabHelper>
+      v8_compile_hints_tab_helper_;
+
+  std::unique_ptr<StorageAccessAPITabHelper> storage_access_api_tab_helper_;
+
+  std::unique_ptr<RevokedPermissionsTabHelper> revoked_permissions_tab_helper_;
+
+  std::unique_ptr<ExternalProtocolObserver> external_protocol_observer_;
+
+  std::unique_ptr<prerender::NoStatePrefetchTabHelper>
+      no_state_prefetch_tab_helper_;
+
+  std::unique_ptr<NavigationPredictorPreconnectClient>
+      navigation_predictor_preconnect_client_;
+
+  std::unique_ptr<NavigationMetricsRecorder> navigation_metrics_recorder_;
+
+  std::unique_ptr<site_protection::SiteProtectionMetricsObserver>
+      site_protection_metrics_observer_;
+
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+  std::unique_ptr<safe_browsing::SafeBrowsingTabObserver>
+      safe_browsing_tab_observer_;
+  std::unique_ptr<safe_browsing::TailoredSecurityUrlObserver>
+      tailored_security_url_observer_;
+  std::unique_ptr<safe_browsing::TriggerCreator> trigger_creator_;
+#endif
+
+  std::unique_ptr<AboutThisSiteTabHelper> about_this_site_tab_helper_;
+
+  std::unique_ptr<SoundContentSettingObserver> sound_content_setting_observer_;
+
+  std::unique_ptr<tasks::TaskTabHelper> task_tab_helper_;
+
+  std::unique_ptr<HistoryEmbeddingsTabHelper> history_embeddings_tab_helper_;
+
+  std::unique_ptr<download::DownloadNavigationObserver>
+      download_navigation_observer_;
+
+  std::unique_ptr<history::WebContentsTopSitesObserver>
+      web_contents_top_sites_observer_;
+
+  std::unique_ptr<client_hints::ClientHintsWebContentsObserver>
+      client_hints_web_contents_observer_;
+
+  std::unique_ptr<ChainedBackNavigationTracker>
+      chained_back_navigation_tracker_;
+
+  std::unique_ptr<FileSystemAccessTabHelper> file_system_access_tab_helper_;
+
+  std::unique_ptr<SearchEngineTabHelper> search_engine_tab_helper_;
+
+  std::unique_ptr<chrome_browser_net::NetErrorTabHelper> net_error_tab_helper_;
+
+  std::unique_ptr<SupervisedUserNavigationObserver>
+      supervised_user_navigation_observer_;
+
+#if BUILDFLAG(ENABLE_OFFLINE_PAGES)
+  std::unique_ptr<offline_pages::OfflinePageTabHelper> offline_page_tab_helper_;
+  std::unique_ptr<offline_pages::RecentTabHelper> recent_tab_helper_;
+#endif
+
+  std::unique_ptr<SearchTabHelper> search_tab_helper_;
+
+  std::unique_ptr<AutoPictureInPictureTabHelper>
+      auto_picture_in_picture_tab_helper_;
+
+  std::unique_ptr<TabDialogs> tab_dialogs_;
+
+  std::unique_ptr<ManagePasswordsUIController> manage_passwords_ui_controller_;
+
+  std::unique_ptr<ChromeFacilitatedPaymentsClient>
+      chrome_facilitated_payments_client_;
+
+  std::unique_ptr<metrics::MetricsServicesWebContentsObserver>
+      metrics_services_web_contents_observer_;
+
+  std::unique_ptr<blocked_content::PopupOpenerTabHelper>
+      popup_opener_tab_helper_;
+
+  std::unique_ptr<
+      page_content_annotations::PageContentAnnotationsWebContentsObserver>
+      page_content_annotations_web_contents_observer_;
+
+  std::unique_ptr<CoreTabHelper> core_tab_helper_;
+
+  std::unique_ptr<MixedContentSettingsTabHelper>
+      mixed_content_settings_tab_helper_;
+
+  std::unique_ptr<OneTimePermissionsTrackerHelper>
+      one_time_permissions_tracker_helper_;
+
+  std::unique_ptr<predictors::LoadingPredictorTabHelper>
+      loading_predictor_tab_helper_;
+
+  // Must be the last member.
+  base::WeakPtrFactory<TabFeatures> weak_factory_{this};
+};
+
+}  // namespace tabs
+
+#endif  // CHROME_BROWSER_UI_TABS_PUBLIC_TAB_FEATURES_H_

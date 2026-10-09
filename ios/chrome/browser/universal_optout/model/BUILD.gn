@@ -1,0 +1,61 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("model") {
+  sources = [
+    "universal_optout_service_factory.h",
+    "universal_optout_service_factory.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/prefs",
+    "//components/universal_optout",
+    "//components/universal_optout:features",
+    "//components/variations/service",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/model/profile:profile_keyed_service_factory",
+    "//ios/chrome/browser/signin/model",
+    "//ios/web/public",
+  ]
+}
+
+source_set("constants") {
+  sources = [ "constants.h" ]
+}
+
+source_set("eligibility_utils") {
+  sources = [
+    "eligibility_utils.h",
+    "eligibility_utils.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/prefs",
+    "//components/universal_optout",
+    "//components/universal_optout:features",
+    "//ios/chrome/browser/shared/public/features:system_flags",
+    "//ios/web/public",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "eligibility_utils_unittest.mm" ]
+  deps = [
+    ":eligibility_utils",
+    "//base",
+    "//base/test:test_support",
+    "//components/metrics",
+    "//components/metrics:test_support",
+    "//components/prefs:test_support",
+    "//components/signin/public/identity_manager:test_support",
+    "//components/universal_optout",
+    "//components/universal_optout:features",
+    "//components/variations:test_support",
+    "//ios/chrome/browser/shared/public/features:system_flags",
+    "//ios/web/public",
+    "//testing/gtest",
+  ]
+}

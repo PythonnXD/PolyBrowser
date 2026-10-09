@@ -1,0 +1,16 @@
+Extensions:
+  caption: Extensions
+  policies:
+  - ExtensionInstallAllowlist
+  - ExtensionInstallBlocklist
+  - ExtensionInstallForcelist
+  - ExtensionInstallSources
+  - ExtensionAllowedTypes
+  - ExtensionAllowInsecureUpdates
+  - ExtensionSettings
+  - ExtensionManifestV2Availability
+  - ExtensionUnpublishedAvailability
+  - ExtensionExtendedBackgroundLifetimeForPortConnectionsToUrls
+  - ExtensionDOMActivityLoggingEnabled
+  - ExtensionReviewPromptsEnabled
+  - ExtensionForceInstallWithSearchOrNewTabOverridesEnabled

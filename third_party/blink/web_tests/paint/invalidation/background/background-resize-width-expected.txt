@@ -1,0 +1,133 @@
+{
+  "layers": [
+    {
+      "name": "Scrolling background of LayoutView #document",
+      "bounds": [800, 600],
+      "contentsOpaque": true,
+      "backgroundColor": "#FFFFFF"
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test image'",
+      "position": [8, 8],
+      "bounds": [105, 40],
+      "invalidations": [
+        [50, 0, 55, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test image size-contain'",
+      "position": [108, 8],
+      "bounds": [105, 40],
+      "invalidations": [
+        [0, 0, 60, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test image percent-width'",
+      "position": [208, 8],
+      "bounds": [105, 40],
+      "invalidations": [
+        [0, 0, 60, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test image right'",
+      "position": [308, 8],
+      "bounds": [105, 40],
+      "invalidations": [
+        [0, 0, 60, 40],
+        [50, 0, 55, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test image no-repeat'",
+      "position": [408, 8],
+      "bounds": [105, 40],
+      "invalidations": [
+        [50, 0, 55, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test image repeat-round'",
+      "bounds": [55, 40],
+      "backfaceVisibility": "hidden",
+      "invalidations": [
+        [0, 0, 55, 40]
+      ],
+      "transform": 1
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test generated'",
+      "position": [8, 108],
+      "bounds": [55, 40],
+      "invalidations": [
+        [0, 0, 55, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test generated contain'",
+      "position": [8, 108],
+      "bounds": [205, 40],
+      "invalidations": [
+        [0, 0, 60, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test generated percent-width'",
+      "position": [208, 108],
+      "bounds": [105, 40],
+      "invalidations": [
+        [0, 0, 60, 40],
+        [50, 0, 55, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test generated right'",
+      "position": [308, 108],
+      "bounds": [105, 40],
+      "invalidations": [
+        [0, 0, 60, 40],
+        [50, 0, 55, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test generated no-repeat'",
+      "position": [408, 108],
+      "bounds": [105, 40],
+      "invalidations": [
+        [0, 0, 60, 40],
+        [50, 0, 55, 40]
+      ]
+    },
+    {
+      "name": "LayoutBlockFlow (positioned) DIV class='test generated repeat-round'",
+      "bounds": [55, 40],
+      "backfaceVisibility": "hidden",
+      "invalidations": [
+        [0, 0, 55, 40]
+      ],
+      "transform": 2
+    }
+  ],
+  "transforms": [
+    {
+      "id": 1,
+      "transform": [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [508, 8, 0, 1]
+      ]
+    },
+    {
+      "id": 2,
+      "transform": [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [508, 108, 0, 1]
+      ]
+    }
+  ]
+}
+

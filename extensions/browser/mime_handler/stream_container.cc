@@ -1,0 +1,72 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "extensions/browser/mime_handler/stream_container.h"
+
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/task/sequenced_task_runner.h"
+#include "extensions/browser/mime_handler/mime_handler_body_cache.h"
+#include "net/http/http_response_headers.h"
+
+namespace extensions {
+
+StreamContainer::StreamContainer(
+    int tab_id,
+    bool embedded,
+    const GURL& handler_url,
+    const ExtensionId& extension_id,
+    blink::mojom::TransferrableURLLoaderPtr transferrable_loader,
+    const GURL& original_url)
+    : embedded_(embedded),
+      tab_id_(tab_id),
+      handler_url_(handler_url),
+      extension_id_(extension_id),
+      transferrable_loader_(std::move(transferrable_loader)),
+      mime_type_(transferrable_loader_->head->mime_type),
+      original_url_(original_url),
+      stream_url_(transferrable_loader_->url),
+      response_head_(transferrable_loader_->head->Clone()) {
+  // Clone() above shares this HttpResponseHeaders object rather than
+  // deep-copying it, so later reducing the handler's copy to what a third
+  // party may see would reduce this one too. Rebuild an independent copy.
+  if (response_head_->headers) {
+    response_head_->headers = base::MakeRefCounted<net::HttpResponseHeaders>(
+        response_head_->headers->raw_headers());
+  }
+}
+
+StreamContainer::~StreamContainer() = default;
+
+base::WeakPtr<StreamContainer> StreamContainer::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
+
+blink::mojom::TransferrableURLLoaderPtr
+StreamContainer::TakeTransferrableURLLoader() {
+  return std::move(transferrable_loader_);
+}
+
+void StreamContainer::SetBodyCache(scoped_refptr<MimeHandlerBodyCache> cache) {
+  body_cache_ = std::move(cache);
+}
+
+void StreamContainer::GetFallbackDataPipeAsync(
+    FallbackDataPipeCallback callback) {
+  if (!body_cache_) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback),
+                                  mojo::ScopedDataPipeConsumerHandle()));
+    return;
+  }
+  body_cache_->CreatePipeAsync(std::move(callback));
+}
+
+size_t StreamContainer::GetCachedBodySize() const {
+  return body_cache_ ? body_cache_->cached_size() : 0u;
+}
+
+}  // namespace extensions

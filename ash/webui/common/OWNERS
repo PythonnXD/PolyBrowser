@@ -1,0 +1,6 @@
+# Primary OWNERS
+jimmyxgong@chromium.org
+ashleydp@google.com
+xiangdongkong@google.com
+
+per-file sea_pen_*=file://ash/webui/personalization_app/OWNERS

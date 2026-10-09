@@ -1,0 +1,69 @@
+/* Copyright 2022 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=vars
+ * #import=chrome://resources/ash/common/cr_elements/cr_shared_vars.css.js
+ * #css_wrapper_metadata_end */
+
+html {
+  --print-preview-row-height: 38px;
+  --print-preview-sidebar-width: 384px;
+  --print-preview-title-width: 120px;
+  --print-preview-sidebar-margin: 24px;
+  /* Controls width = total width - title width - start/middle/end margin */
+  --print-preview-dropdown-width: calc(var(--print-preview-sidebar-width)
+      - var(--print-preview-title-width)
+      - 3 * var(--print-preview-sidebar-margin));
+
+  --print-preview-settings-border: 1px solid var(--google-grey-200);
+  --print-preview-dialog-margin: 34px;
+  --cr-form-field-label-height: initial;
+  --cr-form-field-label-line-height: .75rem;
+  --cr-scrollable-border-color: var(--google-grey-300);
+  --destination-item-height: 32px;
+  --preview-area-background-color: var(--google-grey-300);
+  --iron-icon-fill-color: var(--google-grey-700);
+  --iron-icon-height: var(--cr-icon-size);
+  --iron-icon-width: var(--cr-icon-size);
+  --search-icon-size: 32px;
+  --throbber-size: 16px;
+
+  /* TODO(b/290239226): Remove hard-coded and google colors after print-preview
+                        is configured to use dynamic colors. */
+  --cros-sys-app-elevation-3-shadow: 0 0 16px rgba(0, 0, 0, 0.12),
+      0 16px 16px rgba(0, 0, 0, 0.24);
+  --cros-sys-base_elevated: white;
+  --cros-sys-dialog_container: white;
+  --cros-sys-highlight_text: rgba(var(--google-blue-600-rgb), 0.3);
+  --cros-sys-input_field_on_base: var(--google-grey-100);
+  --cros-sys-on_surface: var(--cr-primary-text-color);
+  --cros-sys-on_surface_variant: var(--cr-secondary-text-color);
+  --cros-sys-primary: var(--cr-focus-outline-color);
+  --cros-tooltip-background-color: rgba(var(--google-grey-900-rgb), 0.8);
+  --cros-tooltip-label-color: white;
+  --cros-tooltip-link-color: var(--cr-link-color);
+  --error-status-alert: var(--google-red-600);
+  --error-status-warning: #e37400;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    --cr-scrollable-border-color: var(--google-grey-700);
+    --preview-area-background-color: var(--google-grey-700);
+    --print-preview-settings-border: var(--cr-separator-line);
+    --iron-icon-fill-color: var(--google-grey-500);
+
+    /* TODO(b/290239226): Remove hard-coded and google colors after
+                          print-preview is configured to use dynamic colors. */
+    --cros-sys-base_elevated: var(--google-grey-900-white-4-percent);
+    --cros-sys-dialog_container: var(--google-grey-900-white-4-percent);
+    --cros-sys-highlight_text: rgba(var(--google-blue-300-rgb), 0.3);
+    --cros-sys-input_field_on_base: rgba(0, 0, 0, 0.3);
+    --cros-tooltip-background-color: rgba(255, 255, 255, 0.8);
+    --cros-tooltip-label-color: var(--google-grey-900);
+    --error-status-alert: var(--google-red-300);
+    --error-status-warning: #fdd663;
+  }
+}

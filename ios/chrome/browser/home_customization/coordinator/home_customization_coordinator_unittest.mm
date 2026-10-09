@@ -1,0 +1,214 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/home_customization/coordinator/home_customization_coordinator.h"
+
+#import "base/strings/sys_string_conversions.h"
+#import "base/test/scoped_feature_list.h"
+#import "components/feature_engagement/public/feature_constants.h"
+#import "components/feature_engagement/test/mock_tracker.h"
+#import "components/segmentation_platform/embedder/home_modules/tips_manager/signal_constants.h"
+#import "components/sync/base/features.h"
+#import "components/sync/test/fake_sync_change_processor.h"
+#import "ios/chrome/browser/discover_feed/model/discover_feed_visibility_browser_agent.h"
+#import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/home_customization/coordinator/home_customization_coordinator+Testing.h"
+#import "ios/chrome/browser/home_customization/model/home_background_customization_service.h"
+#import "ios/chrome/browser/home_customization/model/home_background_customization_service_factory.h"
+#import "ios/chrome/browser/home_customization/model/home_customization_seed_colors.h"
+#import "ios/chrome/browser/home_customization/model/theme_syncable_service_ios.h"
+#import "ios/chrome/browser/home_customization/ui/home_customization_background_picker_presentation_delegate.h"
+#import "ios/chrome/browser/home_customization/ui/home_customization_main_view_controller.h"
+#import "ios/chrome/browser/home_customization/utils/home_customization_constants.h"
+#import "ios/chrome/browser/ntp/ui_bundled/new_tab_page_feature.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/tips_manager/model/tips_manager_ios.h"
+#import "ios/chrome/browser/tips_manager/model/tips_manager_ios_factory.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_variations_service.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gmock/include/gmock/gmock.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+
+namespace {
+
+std::unique_ptr<KeyedService> CreateMockTracker(ProfileIOS* context) {
+  return std::make_unique<
+      testing::NiceMock<feature_engagement::test::MockTracker>>();
+}
+
+}  // namespace
+
+// Tests for the Home Customization coordinator.
+class HomeCustomizationCoordinatorUnitTest : public PlatformTest {
+ public:
+  void SetUp() override {
+    scoped_feature_list_.InitAndEnableFeature(syncer::kSyncThemesIos);
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(feature_engagement::TrackerFactory::GetInstance(),
+                              base::BindOnce(&CreateMockTracker));
+    builder.AddTestingFactory(TipsManagerIOSFactory::GetInstance(),
+                              TipsManagerIOSFactory::GetDefaultFactory());
+    profile_ = std::move(builder).Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+    DiscoverFeedVisibilityBrowserAgent::CreateForBrowser(browser_.get());
+    base_view_controller_ = [[UIViewController alloc] init];
+
+    mock_snackbar_commands_handler_ =
+        OCMStrictProtocolMock(@protocol(SnackbarCommands));
+    CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
+    [dispatcher startDispatchingToTarget:mock_snackbar_commands_handler_
+                             forProtocol:@protocol(SnackbarCommands)];
+
+    coordinator_ = [[HomeCustomizationCoordinator alloc]
+        initWithBaseViewController:base_view_controller_
+                           browser:browser_.get()];
+  }
+
+  void TearDown() override {
+    EXPECT_OCMOCK_VERIFY((id)mock_snackbar_commands_handler_);
+    PlatformTest::TearDown();
+  }
+
+ protected:
+  base::test::ScopedFeatureList scoped_feature_list_;
+  web::WebTaskEnvironment task_environment_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<TestBrowser> browser_;
+  HomeCustomizationCoordinator* coordinator_;
+  id<SnackbarCommands> mock_snackbar_commands_handler_;
+  UIViewController* base_view_controller_;
+};
+
+// Tests that the coordinator is successfully started and presents the right
+// page, then stopped when it's dismissed.
+TEST_F(HomeCustomizationCoordinatorUnitTest, TestPresentMenuPage) {
+  // Test that the VCs and mediator are nil, indicating that the coordinator has
+  // not been started.
+  EXPECT_EQ(nil, coordinator_.mainViewController);
+  EXPECT_EQ(nil, coordinator_.magicStackViewController);
+  EXPECT_EQ(nil, coordinator_.mediator);
+
+  // Present the menu at the main page and check that its VC and mediator exist,
+  // but not the Magic Stack page VC.
+  [coordinator_ start];
+  [coordinator_ presentCustomizationMenuPage:CustomizationMenuPage::kMain];
+  EXPECT_NE(nil, coordinator_.mainViewController);
+  EXPECT_EQ(nil, coordinator_.magicStackViewController);
+  EXPECT_NE(nil, coordinator_.mediator);
+
+  // Open the Magic Stack pagee and check that its VC now exists.
+  [coordinator_
+      presentCustomizationMenuPage:CustomizationMenuPage::kMagicStack];
+  EXPECT_NE(nil, coordinator_.magicStackViewController);
+
+  // Stop the coordinator and check that the VCs and mediator have been set back
+  // to nil.
+  OCMExpect([mock_snackbar_commands_handler_ dismissAllSnackbars]);
+  [coordinator_ stop];
+  EXPECT_EQ(nil, coordinator_.mainViewController);
+  EXPECT_EQ(nil, coordinator_.magicStackViewController);
+  EXPECT_EQ(nil, coordinator_.mediator);
+}
+
+// Tests that scheduling the 'photo not synced across devices' snackbar
+// correctly updates the property.
+TEST_F(HomeCustomizationCoordinatorUnitTest,
+       TestSchedulePhotoNotSyncedSnackbar) {
+  [coordinator_ start];
+
+  HomeBackgroundCustomizationService* backgroundService =
+      HomeBackgroundCustomizationServiceFactory::GetForProfile(profile_.get());
+  auto processor = std::make_unique<syncer::FakeSyncChangeProcessor>();
+  backgroundService->GetThemeSyncableService()->MergeDataAndStartSyncing(
+      syncer::THEMES_IOS, syncer::SyncDataList(), std::move(processor));
+
+  // The property should default to NO.
+  EXPECT_FALSE(coordinator_.shouldShowPhotoNotSyncedSnackbarOnDismiss);
+
+  // Call the delegate method to schedule the snackbar.
+  id<HomeCustomizationBackgroundPickerPresentationDelegate> delegate =
+      (id<HomeCustomizationBackgroundPickerPresentationDelegate>)coordinator_;
+  [delegate schedulePhotoNotSyncedSnackbarOnDismiss];
+
+  // The property should now be YES.
+  EXPECT_TRUE(coordinator_.shouldShowPhotoNotSyncedSnackbarOnDismiss);
+
+  OCMExpect([mock_snackbar_commands_handler_ dismissAllSnackbars]);
+  [coordinator_ stop];
+}
+
+// Test that presenting the main customization menu page when the ephemeral
+// theme feature is enabled notifies the Feature Engagement Tracker.
+TEST_F(HomeCustomizationCoordinatorUnitTest,
+       TestPresentMenuPageNotifiesEphemeralThemePromoUsedWhenEnabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kNewTabPageEphemeralTheme);
+
+  auto* mock_tracker = static_cast<feature_engagement::test::MockTracker*>(
+      feature_engagement::TrackerFactory::GetForProfile(profile_.get()));
+  ASSERT_TRUE(mock_tracker);
+
+  EXPECT_CALL(
+      *mock_tracker,
+      NotifyUsedEvent(testing::Ref(
+          feature_engagement::kIPHiOSPromoBackgroundCustomizationFeature)))
+      .Times(1);
+  EXPECT_CALL(*mock_tracker,
+              NotifyUsedEvent(testing::Ref(
+                  feature_engagement::kIPHiOSPromoEphemeralThemeFeature)))
+      .Times(1);
+
+  [coordinator_ start];
+  [coordinator_ presentCustomizationMenuPage:CustomizationMenuPage::kMain];
+
+  OCMExpect([mock_snackbar_commands_handler_ dismissAllSnackbars]);
+  [coordinator_ stop];
+}
+
+// Tests that stopping the coordinator after selecting a background notifies
+// `TipsManagerIOS` with `kNTPBackgroundSelected`.
+TEST_F(HomeCustomizationCoordinatorUnitTest,
+       TestStopNotifiesTipsManagerWhenBackgroundSelected) {
+  [coordinator_ start];
+  TipsManagerIOS* tips_manager =
+      TipsManagerIOSFactory::GetForProfile(profile_.get());
+  ASSERT_TRUE(tips_manager);
+  EXPECT_FALSE(tips_manager->WasSignalFired(
+      segmentation_platform::tips_manager::signals::kNTPBackgroundSelected));
+  HomeBackgroundCustomizationService* background_service =
+      HomeBackgroundCustomizationServiceFactory::GetForProfile(profile_.get());
+  ASSERT_TRUE(background_service);
+  background_service->SetBackgroundColor(
+      kSeedColors[0].color,
+      sync_pb::UserColorTheme_BrowserColorVariant_TONAL_SPOT);
+  OCMExpect([mock_snackbar_commands_handler_ dismissAllSnackbars]);
+  [coordinator_ stop];
+  EXPECT_TRUE(tips_manager->WasSignalFired(
+      segmentation_platform::tips_manager::signals::kNTPBackgroundSelected));
+}
+
+// Tests that stopping the coordinator without selecting a background does not
+// notify `TipsManagerIOS`.
+TEST_F(HomeCustomizationCoordinatorUnitTest,
+       TestStopDoesNotNotifyTipsManagerWithoutBackgroundChange) {
+  [coordinator_ start];
+  TipsManagerIOS* tips_manager =
+      TipsManagerIOSFactory::GetForProfile(profile_.get());
+  ASSERT_TRUE(tips_manager);
+  OCMExpect([mock_snackbar_commands_handler_ dismissAllSnackbars]);
+  [coordinator_ stop];
+  EXPECT_FALSE(tips_manager->WasSignalFired(
+      segmentation_platform::tips_manager::signals::kNTPBackgroundSelected));
+}

@@ -1,0 +1,628 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.bookmarks;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+import static org.chromium.components.browser_ui.widget.ListItemBuilder.buildSimpleMenuItem;
+
+import android.app.Activity;
+import android.content.pm.ApplicationInfo;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
+import android.view.View;
+import android.view.View.MeasureSpec;
+import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import androidx.test.ext.junit.rules.ActivityScenarioRule;
+
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.Callback;
+import org.chromium.base.supplier.LazyOneshotSupplier;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowProperties.ImageVisibility;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.components.browser_ui.widget.BrowserUiListMenuUtils;
+import org.chromium.ui.base.TestActivity;
+import org.chromium.ui.listmenu.BasicListMenu;
+import org.chromium.ui.listmenu.ListMenu;
+import org.chromium.ui.listmenu.ListMenuDelegate;
+import org.chromium.ui.listmenu.ListMenuItemProperties;
+import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
+import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
+import org.chromium.ui.modelutil.ModelListAdapter;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+
+/** Unit tests for {@link ImprovedBookmarkRow}. */
+@RunWith(BaseRobolectricTestRunner.class)
+@DisableFeatures({
+    ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_LAYOUT,
+    ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_DIALOG,
+})
+public class ImprovedBookmarkRowTest {
+    private static final String TITLE = "Test title";
+    private static final String DESCRIPTION = "Test description";
+
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Rule
+    public ActivityScenarioRule<TestActivity> mActivityScenarioRule =
+            new ActivityScenarioRule<>(TestActivity.class);
+
+    @Mock ListMenuDelegate mListMenuDelegate;
+    @Mock Runnable mPopupListener;
+    @Mock Runnable mOpenBookmarkCallback;
+    @Mock LazyOneshotSupplier<Drawable> mMockDrawableSupplier;
+
+    @Captor ArgumentCaptor<Callback<Drawable>> mDrawableCallbackCaptor;
+
+    Activity mActivity;
+    ImprovedBookmarkRow mImprovedBookmarkRow;
+    PropertyModel mModel;
+    BitmapDrawable mDrawable;
+    LazyOneshotSupplier<Drawable> mDrawableSupplier;
+    LazyOneshotSupplier<Drawable> mNullDrawableSupplier;
+
+    @Before
+    public void setUp() {
+        mActivityScenarioRule.getScenario().onActivity((activity) -> mActivity = activity);
+        // The junit manifest doesn't declare android:supportsRtl, and without it View resolves
+        // every text direction to the legacy FIRST_STRONG default instead of the direction set on
+        // the view. Chrome's manifest does declare it.
+        mActivity.getApplicationInfo().flags |= ApplicationInfo.FLAG_SUPPORTS_RTL;
+        mDrawable =
+                new BitmapDrawable(
+                        mActivity.getResources(),
+                        Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888));
+        mDrawableSupplier = LazyOneshotSupplier.fromValue(mDrawable);
+        mNullDrawableSupplier = LazyOneshotSupplier.fromValue(null);
+        mImprovedBookmarkRow = ImprovedBookmarkRow.buildView(mActivity, /* isVisual= */ true);
+
+        mModel =
+                new PropertyModel.Builder(ImprovedBookmarkRowProperties.ALL_KEYS)
+                        .with(ImprovedBookmarkRowProperties.TITLE, TITLE)
+                        .with(ImprovedBookmarkRowProperties.DESCRIPTION, DESCRIPTION)
+                        .with(ImprovedBookmarkRowProperties.DESCRIPTION_VISIBLE, true)
+                        .with(
+                                ImprovedBookmarkRowProperties.LIST_MENU_BUTTON_DELEGATE,
+                                mListMenuDelegate)
+                        .with(ImprovedBookmarkRowProperties.POPUP_LISTENER, mPopupListener)
+                        .with(
+                                ImprovedBookmarkRowProperties.ROW_CLICK_LISTENER,
+                                mOpenBookmarkCallback)
+                        .with(ImprovedBookmarkRowProperties.EDITABLE, true)
+                        .with(
+                                ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY,
+                                ImageVisibility.MENU)
+                        .build();
+
+        PropertyModelChangeProcessor.create(
+                mModel, mImprovedBookmarkRow, ImprovedBookmarkRowViewBinder::bind);
+    }
+
+    private void toggleSelection() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+    }
+
+    private ListMenu buildListMenu() {
+        ModelList listItems = new ModelList();
+        listItems.add(buildSimpleMenuItem(R.string.bookmark_item_select));
+        listItems.add(buildSimpleMenuItem(R.string.bookmark_item_delete));
+        listItems.add(buildSimpleMenuItem(R.string.bookmark_item_edit));
+        listItems.add(buildSimpleMenuItem(R.string.bookmark_item_copy_link));
+        listItems.add(buildSimpleMenuItem(R.string.bookmark_item_move));
+
+        ListMenu.Delegate delegate = (item, view) -> {};
+        return BrowserUiListMenuUtils.getBasicListMenu(mActivity, listItems, delegate);
+    }
+
+    @Test
+    public void testTitleAndDescription() {
+        Assert.assertEquals(
+                TITLE, ((TextView) mImprovedBookmarkRow.findViewById(R.id.title)).getText());
+        Assert.assertEquals(
+                DESCRIPTION,
+                ((TextView) mImprovedBookmarkRow.findViewById(R.id.description)).getText());
+    }
+
+    @Test
+    public void testDescriptionVisibility() {
+        mModel.set(ImprovedBookmarkRowProperties.DESCRIPTION_VISIBLE, false);
+        Assert.assertEquals(
+                View.GONE, mImprovedBookmarkRow.findViewById(R.id.description).getVisibility());
+    }
+
+    @Test
+    public void testDescriptionUrlAntiSpoofAttributes_survivesRebind() {
+        // Rebind a spoof-shaped host through the normal model path, the attributes which keep the
+        // registrable domain (eTLD+1) visible and stop bidi re-ordering must survive it.
+        mModel.set(
+                ImprovedBookmarkRowProperties.DESCRIPTION,
+                "www.paypal.com.attacker.controlled.subdomain.evil.tld");
+        // Measuring is what makes the view resolve its text direction.
+        int rowWidthPx = 1000;
+        mImprovedBookmarkRow.measure(
+                MeasureSpec.makeMeasureSpec(rowWidthPx, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+
+        TextView descriptionView = mImprovedBookmarkRow.findViewById(R.id.description);
+        Assert.assertEquals(TextUtils.TruncateAt.START, descriptionView.getEllipsize());
+        Assert.assertEquals(TextView.TEXT_DIRECTION_LTR, descriptionView.getTextDirection());
+    }
+
+    @Test
+    public void testNullAccessoryViewClearsExistingViews() {
+        View accessoryView = new View(mActivity);
+        mModel.set(ImprovedBookmarkRowProperties.ACCESSORY_VIEW, accessoryView);
+        Assert.assertEquals(
+                0,
+                ((ViewGroup) mImprovedBookmarkRow.findViewById(R.id.custom_content_container))
+                        .indexOfChild(accessoryView));
+
+        mModel.set(ImprovedBookmarkRowProperties.ACCESSORY_VIEW, null);
+        Assert.assertEquals(
+                -1,
+                ((ViewGroup) mImprovedBookmarkRow.findViewById(R.id.custom_content_container))
+                        .indexOfChild(accessoryView));
+    }
+
+    @Test
+    public void testSelectedShowsCheck() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+        Assert.assertEquals(
+                View.VISIBLE, mImprovedBookmarkRow.findViewById(R.id.check_image).getVisibility());
+        Assert.assertEquals(
+                View.GONE, mImprovedBookmarkRow.findViewById(R.id.more).getVisibility());
+    }
+
+    @Test
+    public void testUnselectedShowsLastActive() {
+        View check = mImprovedBookmarkRow.findViewById(R.id.check_image);
+        View more = mImprovedBookmarkRow.findViewById(R.id.more);
+        View image = mImprovedBookmarkRow.findViewById(R.id.end_image);
+
+        // More button is set as visible, so it should be visible after the selection transition.
+        mModel.set(ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY, ImageVisibility.MENU);
+        toggleSelection();
+        Assert.assertEquals(View.GONE, check.getVisibility());
+        Assert.assertEquals(View.GONE, image.getVisibility());
+        Assert.assertEquals(View.VISIBLE, more.getVisibility());
+
+        mModel.set(ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY, ImageVisibility.DRAWABLE);
+        toggleSelection();
+        Assert.assertEquals(View.GONE, check.getVisibility());
+        Assert.assertEquals(View.GONE, more.getVisibility());
+        Assert.assertEquals(View.VISIBLE, image.getVisibility());
+
+        mModel.set(ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY, ImageVisibility.NONE);
+        toggleSelection();
+        Assert.assertEquals(View.GONE, check.getVisibility());
+        Assert.assertEquals(View.GONE, more.getVisibility());
+        Assert.assertEquals(View.GONE, image.getVisibility());
+    }
+
+    @Test
+    public void testSelectionActive() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        assertFalse(mImprovedBookmarkRow.findViewById(R.id.more).isClickable());
+        assertFalse(mImprovedBookmarkRow.findViewById(R.id.more).isEnabled());
+        Assert.assertEquals(
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO,
+                mImprovedBookmarkRow.findViewById(R.id.more).getImportantForAccessibility());
+    }
+
+    @Test
+    public void testSelectionInactive() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+        assertTrue(mImprovedBookmarkRow.findViewById(R.id.more).isClickable());
+        assertTrue(mImprovedBookmarkRow.findViewById(R.id.more).isEnabled());
+        Assert.assertEquals(
+                View.IMPORTANT_FOR_ACCESSIBILITY_YES,
+                mImprovedBookmarkRow.findViewById(R.id.more).getImportantForAccessibility());
+    }
+
+    @Test
+    public void testListMenuDelegateDoesNotChangeVisibility() {
+        int visibility = mImprovedBookmarkRow.findViewById(R.id.more).getVisibility();
+        mModel.set(ImprovedBookmarkRowProperties.LIST_MENU_BUTTON_DELEGATE, null);
+        // Setting the delegate shouldn't affect visibility.
+        Assert.assertEquals(
+                visibility, mImprovedBookmarkRow.findViewById(R.id.more).getVisibility());
+    }
+
+    @Test
+    public void testListMenuIncludesCopyLink() {
+        ListMenu menu = buildListMenu();
+        assertTrue(menu instanceof BasicListMenu);
+        ModelListAdapter adapter = ((BasicListMenu) menu).getContentAdapter();
+        boolean found = false;
+        for (int i = 0; i < adapter.getCount(); i++) {
+            ListItem item = (ListItem) adapter.getItem(i);
+            if (item.model.get(ListMenuItemProperties.TITLE_ID)
+                    == R.string.bookmark_item_copy_link) {
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found);
+    }
+
+    @Test
+    public void testNotEditableButMenuVisibility() {
+        mModel.set(ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY, ImageVisibility.MENU);
+        mModel.set(ImprovedBookmarkRowProperties.EDITABLE, false);
+        Assert.assertEquals(
+                View.GONE, mImprovedBookmarkRow.findViewById(R.id.more).getVisibility());
+    }
+
+    @Test
+    public void testStartImageVisibility() {
+        mModel.set(ImprovedBookmarkRowProperties.START_IMAGE_VISIBILITY, ImageVisibility.DRAWABLE);
+        Assert.assertEquals(
+                View.VISIBLE, mImprovedBookmarkRow.findViewById(R.id.start_image).getVisibility());
+        Assert.assertEquals(
+                View.GONE, mImprovedBookmarkRow.findViewById(R.id.folder_view).getVisibility());
+
+        mModel.set(
+                ImprovedBookmarkRowProperties.START_IMAGE_VISIBILITY,
+                ImageVisibility.FOLDER_DRAWABLE);
+        Assert.assertEquals(
+                View.GONE, mImprovedBookmarkRow.findViewById(R.id.start_image).getVisibility());
+        Assert.assertEquals(
+                View.VISIBLE, mImprovedBookmarkRow.findViewById(R.id.folder_view).getVisibility());
+    }
+
+    @Test
+    public void testEndImageVisibility() {
+        mModel.set(ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY, ImageVisibility.DRAWABLE);
+        Assert.assertEquals(
+                View.GONE, mImprovedBookmarkRow.findViewById(R.id.more).getVisibility());
+        Assert.assertEquals(
+                View.VISIBLE, mImprovedBookmarkRow.findViewById(R.id.end_image).getVisibility());
+    }
+
+    @Test
+    public void testAccessoryViewHasParent() {
+        View accessoryView = new View(mActivity);
+        FrameLayout oldParent = new FrameLayout(mActivity);
+        oldParent.addView(accessoryView);
+
+        mModel.set(ImprovedBookmarkRowProperties.ACCESSORY_VIEW, accessoryView);
+        Assert.assertEquals(0, oldParent.getChildCount());
+        Assert.assertEquals(
+                mImprovedBookmarkRow.findViewById(R.id.custom_content_container),
+                accessoryView.getParent());
+    }
+
+    @Test
+    public void testSetStartImageDrawable() {
+        ImageView startImageView = mImprovedBookmarkRow.findViewById(R.id.start_image);
+        // Preset a sentinel alpha so that reaching full alpha proves the fade-in ran.
+        startImageView.setAlpha(0.5f);
+
+        mModel.set(ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY, ImageVisibility.DRAWABLE);
+        mModel.set(ImprovedBookmarkRowProperties.START_ICON_DRAWABLE, mDrawableSupplier);
+
+        RobolectricUtil.runAllBackgroundAndUi();
+        Assert.assertEquals(mDrawable, startImageView.getDrawable());
+
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+        Assert.assertEquals(1f, startImageView.getAlpha(), 0f);
+    }
+
+    @Test
+    public void testSetStartImageDrawable_nullDrawableDoesNotAnimate() {
+        ImageView startImageView = mImprovedBookmarkRow.findViewById(R.id.start_image);
+        startImageView.setAlpha(0.5f);
+
+        mModel.set(ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY, ImageVisibility.DRAWABLE);
+        mModel.set(ImprovedBookmarkRowProperties.START_ICON_DRAWABLE, mNullDrawableSupplier);
+
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+
+        Assert.assertNull(startImageView.getDrawable());
+        Assert.assertEquals(0.5f, startImageView.getAlpha(), 0f);
+    }
+
+    @Test
+    public void testCancelAnimation() {
+        // This is tricky because the supplier introduces a post by default. But if we wait, we risk
+        // letting the animation finish. So use a mock/captor to make it synchronous.
+        mModel.set(ImprovedBookmarkRowProperties.START_ICON_DRAWABLE, mMockDrawableSupplier);
+        verify(mMockDrawableSupplier).onAvailable(mDrawableCallbackCaptor.capture());
+        verify(mMockDrawableSupplier).get();
+        mDrawableCallbackCaptor.getValue().onResult(mDrawable);
+        assertTrue(mImprovedBookmarkRow.hasTransientState());
+
+        mImprovedBookmarkRow.cancelAnimation();
+        assertFalse(mImprovedBookmarkRow.hasTransientState());
+    }
+
+    @Test
+    public void testClick() {
+        mImprovedBookmarkRow.performClick();
+        verify(mOpenBookmarkCallback).run();
+    }
+
+    @Test
+    public void testLocalAndRemoteBookmarks() {
+        View localBookmarkImageView = mImprovedBookmarkRow.findViewById(R.id.local_bookmark_image);
+        mModel.set(ImprovedBookmarkRowProperties.IS_LOCAL_BOOKMARK, true);
+        assertEquals(View.VISIBLE, localBookmarkImageView.getVisibility());
+
+        mModel.set(ImprovedBookmarkRowProperties.IS_LOCAL_BOOKMARK, false);
+        assertEquals(View.GONE, localBookmarkImageView.getVisibility());
+    }
+
+    @Test
+    public void testDragShadowVisuals_Visual() {
+        ImprovedBookmarkRow row = ImprovedBookmarkRow.buildView(mActivity, /* isVisual= */ true);
+
+        assertFalse(
+                "ClipToOutline should be false to allow shadow drawing.", row.getClipToOutline());
+        assertNotNull(
+                "OutlineProvider should be set when feature is enabled.", row.getOutlineProvider());
+    }
+
+    @Test
+    public void testDragShadowVisuals_Compact() {
+        ImprovedBookmarkRow row = ImprovedBookmarkRow.buildView(mActivity, /* isVisual= */ false);
+
+        assertFalse("Compact rows should also allow shadow drawing.", row.getClipToOutline());
+        assertNotNull("Compact rows should have an outline provider.", row.getOutlineProvider());
+    }
+
+    @Test
+    public void testDragHandleVisibility() {
+        // Create a new View object to re-run onFinishInflate when the flag is enabled.
+        mImprovedBookmarkRow = ImprovedBookmarkRow.buildView(mActivity, /* isVisual= */ true);
+
+        // Re-bind the binder to use the new View object.
+        PropertyModelChangeProcessor.create(
+                mModel, mImprovedBookmarkRow, ImprovedBookmarkRowViewBinder::bind);
+
+        View dragHandle = mImprovedBookmarkRow.findViewById(R.id.drag_handle);
+
+        assertNotNull("Drag handle should be inflated.", dragHandle);
+
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+        // There is an item that is selected in the list but this item is not selected.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+
+        assertEquals(
+                "Drag handle should be GONE when the item is unselected.",
+                View.GONE,
+                dragHandle.getVisibility());
+
+        mModel.set(ImprovedBookmarkRowProperties.IS_DRAG_ENABLED, true);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+        assertEquals(
+                "Drag handle should be VISIBLE when the item is selected and drag is enabled.",
+                View.VISIBLE,
+                dragHandle.getVisibility());
+    }
+
+    @Test
+    public void testAccessibilityNodeInfo_selectionDisabled() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+
+        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+        mImprovedBookmarkRow.onInitializeAccessibilityNodeInfo(info);
+        assertFalse(info.isCheckable());
+        assertFalse(info.isChecked());
+    }
+
+    @Test
+    public void testAccessibilityNodeInfo_selectionActive_unselected() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+
+        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+        mImprovedBookmarkRow.onInitializeAccessibilityNodeInfo(info);
+        assertTrue(info.isCheckable());
+        assertFalse(info.isChecked());
+    }
+
+    @Test
+    public void testAccessibilityNodeInfo_selectionActive_selected() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+
+        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+        mImprovedBookmarkRow.onInitializeAccessibilityNodeInfo(info);
+        assertTrue(info.isCheckable());
+        assertTrue(info.isChecked());
+    }
+
+    @Test
+    public void testAccessibilityNodeInfo_visualRow() {
+        ImprovedBookmarkRow visualRow =
+                ImprovedBookmarkRow.buildView(mActivity, /* isVisual= */ true);
+        PropertyModel model =
+                new PropertyModel.Builder(ImprovedBookmarkRowProperties.ALL_KEYS).build();
+        PropertyModelChangeProcessor.create(model, visualRow, ImprovedBookmarkRowViewBinder::bind);
+
+        model.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+        visualRow.onInitializeAccessibilityNodeInfo(info);
+        assertFalse(info.isCheckable());
+        assertFalse(info.isChecked());
+
+        model.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        model.set(ImprovedBookmarkRowProperties.SELECTED, true);
+        info = AccessibilityNodeInfo.obtain();
+        visualRow.onInitializeAccessibilityNodeInfo(info);
+        assertTrue(info.isCheckable());
+        assertTrue(info.isChecked());
+    }
+
+    @Test
+    public void testAccessibilityNodeInfo_selectionDisabled_withStaleSelectedTrue() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+
+        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+        mImprovedBookmarkRow.onInitializeAccessibilityNodeInfo(info);
+        assertFalse(info.isCheckable());
+        assertFalse(info.isChecked());
+    }
+
+    @Test
+    public void testSendAccessibilityEvent_onSelectionActiveChanged() {
+        View.AccessibilityDelegate delegate = mock(View.AccessibilityDelegate.class);
+        mImprovedBookmarkRow.setAccessibilityDelegate(delegate);
+
+        // Transition false -> true: event should be sent.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        verify(delegate, times(1))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+
+        // Setting true -> true (!changed): event should NOT be sent again.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        verify(delegate, times(1))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+
+        // Transition true -> false: event should be sent.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+        verify(delegate, times(2))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+
+        // Setting false -> false (!changed): event should NOT be sent again.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+        verify(delegate, times(2))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+    }
+
+    @Test
+    public void testSendAccessibilityEvent_onSelectedChanged() {
+        View.AccessibilityDelegate delegate = mock(View.AccessibilityDelegate.class);
+        mImprovedBookmarkRow.setAccessibilityDelegate(delegate);
+
+        // When SELECTION_ACTIVE is false, changing SELECTED should NOT send event.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, false);
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+        verify(delegate, never())
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+
+        // Enable SELECTION_ACTIVE.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTION_ACTIVE, true);
+        verify(delegate, times(1))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+
+        // Toggling SELECTED (true -> false) while SELECTION_ACTIVE is true should send event.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+        verify(delegate, times(2))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+
+        // Re-setting SELECTED to false (!changed) should NOT send event.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+        verify(delegate, times(2))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+
+        // Toggling SELECTED (false -> true) should send event.
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+        verify(delegate, times(3))
+                .sendAccessibilityEvent(
+                        mImprovedBookmarkRow, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+    }
+
+    @Test
+    public void testFocusable_enabledAndDisabled() {
+        assertTrue(mImprovedBookmarkRow.isFocusable());
+
+        mImprovedBookmarkRow.setRowEnabled(false);
+        assertFalse(mImprovedBookmarkRow.isFocusable());
+
+        mImprovedBookmarkRow.setRowEnabled(true);
+        assertTrue(mImprovedBookmarkRow.isFocusable());
+    }
+
+    @Test
+    public void testDefaultFocusHighlightEnabled_toggledOnSelection() {
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+        assertFalse(mImprovedBookmarkRow.getDefaultFocusHighlightEnabled());
+
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, true);
+        assertTrue(mImprovedBookmarkRow.getDefaultFocusHighlightEnabled());
+
+        mModel.set(ImprovedBookmarkRowProperties.SELECTED, false);
+        assertFalse(mImprovedBookmarkRow.getDefaultFocusHighlightEnabled());
+    }
+
+    @Test
+    public void testStartImageSizeAndCornerRadiusProperties() {
+        View startImage = mImprovedBookmarkRow.findViewById(R.id.start_image);
+        int testSize = 42;
+        int testRadius = 12;
+
+        mModel.set(ImprovedBookmarkRowProperties.START_IMAGE_SIZE, testSize);
+        assertEquals(testSize, startImage.getLayoutParams().width);
+        assertEquals(testSize, startImage.getLayoutParams().height);
+
+        mModel.set(ImprovedBookmarkRowProperties.START_IMAGE_CORNER_RADIUS, testRadius);
+    }
+
+    @Test
+    public void testBuildView_defaultStartImageDimensions() {
+        ImprovedBookmarkRow visualRow = ImprovedBookmarkRow.buildView(mActivity, true);
+        View visualStartImage = visualRow.findViewById(R.id.start_image);
+        int visualSize =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.improved_bookmark_start_image_size_visual);
+        assertEquals(visualSize, visualStartImage.getLayoutParams().width);
+        assertEquals(visualSize, visualStartImage.getLayoutParams().height);
+
+        ImprovedBookmarkRow compactRow = ImprovedBookmarkRow.buildView(mActivity, false);
+        View compactStartImage = compactRow.findViewById(R.id.start_image);
+        int compactSize =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.improved_bookmark_start_image_size_compact);
+        assertEquals(compactSize, compactStartImage.getLayoutParams().width);
+        assertEquals(compactSize, compactStartImage.getLayoutParams().height);
+    }
+}

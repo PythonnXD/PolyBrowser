@@ -1,0 +1,420 @@
+# Copyright 2026 Google LLC.
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import(
+    "//third_party/devtools-frontend/src/scripts/build/typescript/typescript.gni")
+import("../tools/build/bidi_module.gni")
+
+if (build_with_chromium) {
+  devtools_protocol_declare_dts =
+      "$target_gen_dir/devtools_protocol_declare.d.ts"
+  devtools_protocol_ambient_dts =
+      "$target_gen_dir/devtools_protocol_ambient.d.ts"
+  devtools_protocol_types_dir =
+      "$root_gen_dir/third_party/blink/public/devtools_protocol/types"
+
+  generated_file("devtools_protocol_declare_dts") {
+    outputs = [ devtools_protocol_declare_dts ]
+    contents = [
+      "declare module 'devtools-protocol' {}",
+      "declare module 'devtools-protocol/types/protocol-mapping.js' {}",
+    ]
+  }
+
+  generated_file("devtools_protocol_ambient_dts") {
+    outputs = [ devtools_protocol_ambient_dts ]
+    _rel_dir = rebase_path(devtools_protocol_types_dir, target_gen_dir)
+    contents = [
+      "import type * as ProtocolModule from '$_rel_dir/protocol.js';",
+      "import type * as ProtocolMappingModule from '$_rel_dir/protocol-mapping.js';",
+      "declare module 'devtools-protocol' {",
+      "  export import Protocol = ProtocolModule.Protocol;",
+      "  export default Protocol;",
+      "}",
+      "declare module 'devtools-protocol/types/protocol-mapping.js' {",
+      "  export import ProtocolMapping = ProtocolMappingModule.ProtocolMapping;",
+      "  export default ProtocolMapping;",
+      "}",
+    ]
+  }
+
+  devtools_protocol_types_deps = [
+    ":devtools_protocol_ambient_dts",
+    ":devtools_protocol_declare_dts",
+    "//third_party/blink/public/devtools_protocol:protocol_typescript_definitions",
+  ]
+  devtools_protocol_types_files = [
+    devtools_protocol_declare_dts,
+    devtools_protocol_ambient_dts,
+    "$devtools_protocol_types_dir/protocol.d.ts",
+    "$devtools_protocol_types_dir/protocol-mapping.d.ts",
+  ]
+} else {
+  devtools_protocol_types_deps = []
+  devtools_protocol_types_files = []
+}
+
+ts_library("utils") {
+  runs_in = "node"
+  sources = [
+    "utils/Buffer.ts",
+    "utils/DefaultMap.ts",
+    "utils/Deferred.ts",
+    "utils/EventEmitter.ts",
+    "utils/IdWrapper.ts",
+    "utils/Mutex.ts",
+    "utils/ProcessingQueue.ts",
+    "utils/assert.ts",
+    "utils/base64.ts",
+    "utils/cdpErrorConstants.ts",
+    "utils/graphemeTools.ts",
+    "utils/log.ts",
+    "utils/result.ts",
+    "utils/time.ts",
+    "utils/transport.ts",
+    "utils/unitConversions.ts",
+    "utils/urlHelpers.ts",
+    "utils/uuid.ts",
+  ]
+  inputs = [
+    "../node_modules/mitt/index.d.ts",
+    "../node_modules/mitt/package.json",
+  ]
+}
+
+ts_library("cdp") {
+  runs_in = "node"
+  sources = [
+    "cdp/CdpClient.ts",
+    "cdp/CdpConnection.ts",
+    "cdp/cdp.ts",
+    "cdp/cdpMessage.ts",
+  ]
+  additional_type_definitions = devtools_protocol_types_files
+  deps = devtools_protocol_types_deps + [ ":utils_sources" ]
+  ts_deps = [ ":utils" ]
+}
+
+ts_library("protocol") {
+  runs_in = "node"
+  sources = [
+    "protocol/ErrorResponse.ts",
+    "protocol/cdp.ts",
+    "protocol/chromium-bidi.ts",
+    "protocol/generated/webdriver-bidi-bluetooth.ts",
+    "protocol/generated/webdriver-bidi-digital-credentials.ts",
+    "protocol/generated/webdriver-bidi-nav-speculation.ts",
+    "protocol/generated/webdriver-bidi-permissions.ts",
+    "protocol/generated/webdriver-bidi-ua-client-hints.ts",
+    "protocol/generated/webdriver-bidi.ts",
+    "protocol/protocol.ts",
+  ]
+  additional_type_definitions = devtools_protocol_types_files
+  deps = devtools_protocol_types_deps
+}
+
+ts_library("protocol_parser") {
+  runs_in = "node"
+  sources = [
+    "protocol-parser/generated/webdriver-bidi-bluetooth.ts",
+    "protocol-parser/generated/webdriver-bidi-digital-credentials.ts",
+    "protocol-parser/generated/webdriver-bidi-nav-speculation.ts",
+    "protocol-parser/generated/webdriver-bidi-permissions.ts",
+    "protocol-parser/generated/webdriver-bidi-ua-client-hints.ts",
+    "protocol-parser/generated/webdriver-bidi.ts",
+    "protocol-parser/protocol-parser.ts",
+  ]
+  inputs = [
+    "../node_modules/zod/index.d.cts",
+    "../node_modules/zod/package.json",
+    "../node_modules/zod/v4/classic/checks.d.cts",
+    "../node_modules/zod/v4/classic/coerce.d.cts",
+    "../node_modules/zod/v4/classic/compat.d.cts",
+    "../node_modules/zod/v4/classic/deep-partial.d.cts",
+    "../node_modules/zod/v4/classic/errors.d.cts",
+    "../node_modules/zod/v4/classic/external.d.cts",
+    "../node_modules/zod/v4/classic/from-json-schema.d.cts",
+    "../node_modules/zod/v4/classic/in-out.d.cts",
+    "../node_modules/zod/v4/classic/iso.d.cts",
+    "../node_modules/zod/v4/classic/parse.d.cts",
+    "../node_modules/zod/v4/classic/schemas.d.cts",
+    "../node_modules/zod/v4/core/api.d.cts",
+    "../node_modules/zod/v4/core/checks.d.cts",
+    "../node_modules/zod/v4/core/compile.d.cts",
+    "../node_modules/zod/v4/core/core.d.cts",
+    "../node_modules/zod/v4/core/doc.d.cts",
+    "../node_modules/zod/v4/core/errors.d.cts",
+    "../node_modules/zod/v4/core/index.d.cts",
+    "../node_modules/zod/v4/core/json-schema-generator.d.cts",
+    "../node_modules/zod/v4/core/json-schema-processors.d.cts",
+    "../node_modules/zod/v4/core/json-schema.d.cts",
+    "../node_modules/zod/v4/core/memoizer.d.cts",
+    "../node_modules/zod/v4/core/parse.d.cts",
+    "../node_modules/zod/v4/core/regexes.d.cts",
+    "../node_modules/zod/v4/core/registries.d.cts",
+    "../node_modules/zod/v4/core/schemas.d.cts",
+    "../node_modules/zod/v4/core/standard-schema.d.cts",
+    "../node_modules/zod/v4/core/to-json-schema.d.cts",
+    "../node_modules/zod/v4/core/util.d.cts",
+    "../node_modules/zod/v4/core/versions.d.cts",
+    "../node_modules/zod/v4/locales/ar.d.cts",
+    "../node_modules/zod/v4/locales/az.d.cts",
+    "../node_modules/zod/v4/locales/be.d.cts",
+    "../node_modules/zod/v4/locales/bg.d.cts",
+    "../node_modules/zod/v4/locales/bn.d.cts",
+    "../node_modules/zod/v4/locales/ca.d.cts",
+    "../node_modules/zod/v4/locales/ckb.d.cts",
+    "../node_modules/zod/v4/locales/cs.d.cts",
+    "../node_modules/zod/v4/locales/da.d.cts",
+    "../node_modules/zod/v4/locales/de.d.cts",
+    "../node_modules/zod/v4/locales/el.d.cts",
+    "../node_modules/zod/v4/locales/en.d.cts",
+    "../node_modules/zod/v4/locales/eo.d.cts",
+    "../node_modules/zod/v4/locales/es.d.cts",
+    "../node_modules/zod/v4/locales/fa.d.cts",
+    "../node_modules/zod/v4/locales/fi.d.cts",
+    "../node_modules/zod/v4/locales/fr-CA.d.cts",
+    "../node_modules/zod/v4/locales/fr.d.cts",
+    "../node_modules/zod/v4/locales/gu.d.cts",
+    "../node_modules/zod/v4/locales/he.d.cts",
+    "../node_modules/zod/v4/locales/hi.d.cts",
+    "../node_modules/zod/v4/locales/hr.d.cts",
+    "../node_modules/zod/v4/locales/hu.d.cts",
+    "../node_modules/zod/v4/locales/hy.d.cts",
+    "../node_modules/zod/v4/locales/id.d.cts",
+    "../node_modules/zod/v4/locales/index.d.cts",
+    "../node_modules/zod/v4/locales/is.d.cts",
+    "../node_modules/zod/v4/locales/it.d.cts",
+    "../node_modules/zod/v4/locales/ja.d.cts",
+    "../node_modules/zod/v4/locales/ka.d.cts",
+    "../node_modules/zod/v4/locales/kh.d.cts",
+    "../node_modules/zod/v4/locales/km.d.cts",
+    "../node_modules/zod/v4/locales/kn.d.cts",
+    "../node_modules/zod/v4/locales/ko.d.cts",
+    "../node_modules/zod/v4/locales/lt.d.cts",
+    "../node_modules/zod/v4/locales/mk.d.cts",
+    "../node_modules/zod/v4/locales/ms.d.cts",
+    "../node_modules/zod/v4/locales/ne.d.cts",
+    "../node_modules/zod/v4/locales/nl.d.cts",
+    "../node_modules/zod/v4/locales/nn.d.cts",
+    "../node_modules/zod/v4/locales/no.d.cts",
+    "../node_modules/zod/v4/locales/ota.d.cts",
+    "../node_modules/zod/v4/locales/pl.d.cts",
+    "../node_modules/zod/v4/locales/ps.d.cts",
+    "../node_modules/zod/v4/locales/pt-BR.d.cts",
+    "../node_modules/zod/v4/locales/pt.d.cts",
+    "../node_modules/zod/v4/locales/ro.d.cts",
+    "../node_modules/zod/v4/locales/ru.d.cts",
+    "../node_modules/zod/v4/locales/sk.d.cts",
+    "../node_modules/zod/v4/locales/sl.d.cts",
+    "../node_modules/zod/v4/locales/sv.d.cts",
+    "../node_modules/zod/v4/locales/ta.d.cts",
+    "../node_modules/zod/v4/locales/tg.d.cts",
+    "../node_modules/zod/v4/locales/th.d.cts",
+    "../node_modules/zod/v4/locales/tk.d.cts",
+    "../node_modules/zod/v4/locales/tr.d.cts",
+    "../node_modules/zod/v4/locales/ua.d.cts",
+    "../node_modules/zod/v4/locales/uk.d.cts",
+    "../node_modules/zod/v4/locales/ur.d.cts",
+    "../node_modules/zod/v4/locales/uz.d.cts",
+    "../node_modules/zod/v4/locales/vi.d.cts",
+    "../node_modules/zod/v4/locales/yo.d.cts",
+    "../node_modules/zod/v4/locales/zh-CN.d.cts",
+    "../node_modules/zod/v4/locales/zh-TW.d.cts",
+  ]
+  deps = [ ":protocol_sources" ]
+  ts_deps = [ ":protocol" ]
+}
+
+ts_library("bidi_mapper") {
+  runs_in = "node"
+  sources = [
+    "bidiMapper/BidiMapper.ts",
+    "bidiMapper/BidiNoOpParser.ts",
+    "bidiMapper/BidiParser.ts",
+    "bidiMapper/BidiServer.ts",
+    "bidiMapper/BidiTransport.ts",
+    "bidiMapper/CommandProcessor.ts",
+    "bidiMapper/MapperOptions.ts",
+    "bidiMapper/OutgoingMessage.ts",
+    "bidiMapper/modules/bluetooth/BluetoothProcessor.ts",
+    "bidiMapper/modules/browser/BrowserProcessor.ts",
+    "bidiMapper/modules/browser/ContextConfig.ts",
+    "bidiMapper/modules/browser/ContextConfigStorage.ts",
+    "bidiMapper/modules/browser/UserContextStorage.ts",
+    "bidiMapper/modules/cdp/CdpProcessor.ts",
+    "bidiMapper/modules/cdp/CdpTarget.ts",
+    "bidiMapper/modules/cdp/CdpTargetManager.ts",
+    "bidiMapper/modules/context/BrowsingContextImpl.ts",
+    "bidiMapper/modules/context/BrowsingContextProcessor.ts",
+    "bidiMapper/modules/context/BrowsingContextStorage.ts",
+    "bidiMapper/modules/context/NavigationTracker.ts",
+    "bidiMapper/modules/digitalCredentials/DigitalCredentialsProcessor.ts",
+    "bidiMapper/modules/emulation/EmulationProcessor.ts",
+    "bidiMapper/modules/input/ActionDispatcher.ts",
+    "bidiMapper/modules/input/ActionOption.ts",
+    "bidiMapper/modules/input/InputProcessor.ts",
+    "bidiMapper/modules/input/InputSource.ts",
+    "bidiMapper/modules/input/InputState.ts",
+    "bidiMapper/modules/input/InputStateManager.ts",
+    "bidiMapper/modules/input/USKeyboardLayout.ts",
+    "bidiMapper/modules/input/keyUtils.ts",
+    "bidiMapper/modules/log/LogManager.ts",
+    "bidiMapper/modules/log/logHelper.ts",
+    "bidiMapper/modules/network/CollectorsStorage.ts",
+    "bidiMapper/modules/network/NetworkProcessor.ts",
+    "bidiMapper/modules/network/NetworkRequest.ts",
+    "bidiMapper/modules/network/NetworkStorage.ts",
+    "bidiMapper/modules/network/NetworkUtils.ts",
+    "bidiMapper/modules/permissions/PermissionsProcessor.ts",
+    "bidiMapper/modules/script/ChannelProxy.ts",
+    "bidiMapper/modules/script/PreloadScript.ts",
+    "bidiMapper/modules/script/PreloadScriptStorage.ts",
+    "bidiMapper/modules/script/Realm.ts",
+    "bidiMapper/modules/script/RealmStorage.ts",
+    "bidiMapper/modules/script/ScriptProcessor.ts",
+    "bidiMapper/modules/script/SharedId.ts",
+    "bidiMapper/modules/script/WindowRealm.ts",
+    "bidiMapper/modules/script/WorkerRealm.ts",
+    "bidiMapper/modules/session/EventManager.ts",
+    "bidiMapper/modules/session/SessionProcessor.ts",
+    "bidiMapper/modules/session/SubscriptionManager.ts",
+    "bidiMapper/modules/session/events.ts",
+    "bidiMapper/modules/speculation/SpeculationProcessor.ts",
+    "bidiMapper/modules/storage/StorageProcessor.ts",
+    "bidiMapper/modules/webExtension/WebExtensionProcessor.ts",
+  ]
+  additional_type_definitions = devtools_protocol_types_files
+  deps = devtools_protocol_types_deps + [
+           ":cdp_sources",
+           ":protocol_parser_sources",
+           ":protocol_sources",
+           ":utils_sources",
+         ]
+  ts_deps = [
+    ":cdp",
+    ":protocol",
+    ":protocol_parser",
+    ":utils",
+  ]
+}
+
+ts_library("bidi_tab") {
+  runs_in = "node"
+  sources = [
+    "bidiTab/BidiParser.ts",
+    "bidiTab/Transport.ts",
+    "bidiTab/bidiTab.ts",
+    "bidiTab/mapperTabPage.ts",
+  ]
+  deps = [ ":bidi_mapper_sources" ]
+  ts_deps = [ ":bidi_mapper" ]
+}
+
+bidi_bundle("mapper_bundle") {
+  entrypoint = "$target_gen_dir/bidiTab/bidiTab.js"
+  output_file = "$target_gen_dir/mapperTab.js"
+  deps = [
+    ":bidi_mapper_checked",
+    ":bidi_tab_checked",
+    ":cdp_checked",
+    ":protocol_checked",
+    ":protocol_parser_checked",
+    ":utils_checked",
+  ]
+}
+
+ts_library("unit_tests") {
+  testonly = true
+  runs_in = "node"
+  sources = [
+    "bidiMapper/modules/browser/BrowserProcessot.test.ts",
+    "bidiMapper/modules/browser/ContextConfigStorage.test.ts",
+    "bidiMapper/modules/context/BrowsingContextStorage.test.ts",
+    "bidiMapper/modules/context/NavigationTracker.test.ts",
+    "bidiMapper/modules/digitalCredentials/DigitalCredentialsProcessor.test.ts",
+    "bidiMapper/modules/emulation/EmulationProcessor.test.ts",
+    "bidiMapper/modules/log/logHelper.test.ts",
+    "bidiMapper/modules/network/NetworkModuleMocks.test.ts",
+    "bidiMapper/modules/network/NetworkProcessor.test.ts",
+    "bidiMapper/modules/network/NetworkStorage.test.ts",
+    "bidiMapper/modules/network/NetworkUtils.test.ts",
+    "bidiMapper/modules/script/PreloadScriptStorage.test.ts",
+    "bidiMapper/modules/script/SharedId.test.ts",
+    "bidiMapper/modules/session/EventManager.test.ts",
+    "bidiMapper/modules/session/SubscriptionManager.test.ts",
+    "bidiMapper/modules/session/events.test.ts",
+    "bidiMapper/modules/storage/StorageProcessor.test.ts",
+    "bidiMapper/modules/webExtension/WebExtensionProcessor.test.ts",
+    "cdp/CdpClient.test.ts",
+    "cdp/CdpConnection.test.ts",
+    "protocol-parser/protocol-parser.test.ts",
+    "protocol/ErrorResponse.test.ts",
+    "utils/Buffer.test.ts",
+    "utils/DefaultMap.test.ts",
+    "utils/Deferred.test.ts",
+    "utils/EventEmitter.test.ts",
+    "utils/IdWrapper.test.ts",
+    "utils/Mutex.test.ts",
+    "utils/ProcessingQueue.test.ts",
+    "utils/assert.test.ts",
+    "utils/base64.test.ts",
+    "utils/graphemeTools.test.ts",
+    "utils/time.test.ts",
+    "utils/transportStub.test.ts",
+    "utils/unitConversions.test.ts",
+    "utils/urlHelpers.test.ts",
+    "utils/uuid.test.ts",
+  ]
+  additional_type_definitions = devtools_protocol_types_files
+  deps = devtools_protocol_types_deps + [
+           ":bidi_mapper_sources",
+           ":bidi_tab_sources",
+           ":cdp_sources",
+           ":protocol_parser_sources",
+           ":protocol_sources",
+           ":utils_sources",
+         ]
+  ts_deps = [
+    ":bidi_mapper",
+    ":bidi_tab",
+    ":cdp",
+    ":protocol",
+    ":protocol_parser",
+    ":utils",
+  ]
+}
+
+ts_library("chromium_bidi") {
+  runs_in = "node"
+  sources = [ "index.ts" ]
+  deps = [
+    ":bidi_mapper_sources",
+    ":protocol_sources",
+  ]
+  ts_deps = [
+    ":bidi_mapper",
+    ":protocol",
+  ]
+}
+
+group("all") {
+  testonly = true
+  deps = [
+    ":chromium_bidi",
+    ":mapper_bundle",
+    ":unit_tests",
+  ]
+}

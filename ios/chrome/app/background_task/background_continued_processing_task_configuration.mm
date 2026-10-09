@@ -1,0 +1,58 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/app/background_task/background_continued_processing_task_configuration.h"
+
+#import "base/check.h"
+#import "base/check_op.h"
+#import "ios/chrome/app/background_mode_buildflags.h"
+
+@implementation BackgroundContinuedProcessingTaskConfiguration
+
+#pragma mark - Initializer
+
+- (instancetype)initWithTitle:(NSString*)title
+                     subtitle:(NSString*)subtitle
+            expirationHandler:(ProceduralBlock)expirationHandler {
+  CHECK(title.length > 0);
+  CHECK(expirationHandler);
+
+  if ((self = [super init])) {
+    _title = [title copy];
+    _subtitle = [subtitle copy] ?: @"";
+    _expirationHandler = [expirationHandler copy];
+    _totalUnits = kDefaultTotalUnitsOfProgress;
+    _expectedStepCount = kDefaultExpectedStepCount;
+#if BUILDFLAG(IOS_BACKGROUND_CONTINUED_PROCESSING_ENABLED)
+    if (@available(iOS 26.0, *)) {
+      _strategy = BGContinuedProcessingTaskRequestSubmissionStrategyQueue;
+      _requiredResources = BGContinuedProcessingTaskRequestResourcesDefault;
+    }
+#endif  // BUILDFLAG(IOS_BACKGROUND_CONTINUED_PROCESSING_ENABLED)
+  }
+  return self;
+}
+
+#pragma mark - Properties
+
+- (void)setTitle:(NSString*)title {
+  CHECK(title.length > 0);
+  _title = [title copy];
+}
+
+- (void)setSubtitle:(NSString*)subtitle {
+  _subtitle = [subtitle copy] ?: @"";
+}
+
+- (void)setTotalUnits:(int64_t)totalUnits {
+  CHECK_GT(totalUnits, 0);
+  _totalUnits = totalUnits;
+}
+
+- (void)setExpectedStepCount:(int64_t)expectedStepCount {
+  CHECK_GT(expectedStepCount, 0);
+  _expectedStepCount = expectedStepCount;
+}
+
+@end

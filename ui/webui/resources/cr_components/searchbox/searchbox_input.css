@@ -1,0 +1,245 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_icons_lit.css.js
+ * #scheme=relative
+ * #include=cr-icons-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  display: flex;
+  flex: 1;
+  width: 100%;
+}
+
+#inputInnerContainer {
+  align-items: flex-start;
+  display: flex;
+  min-height: var(--cr-searchbox-input-height, 48px);
+  position: relative;
+  width: 100%;
+}
+
+#mirrorContainer {
+  position: relative;
+  display: flex;
+  align-self: stretch;
+  flex: 1;
+}
+
+#mirror {
+  position: absolute;
+  overflow: hidden;
+  /* Match <input> whitespace treatment, which preserves spaces
+   * and never wraps. */
+  white-space: pre;
+  /* Font metrics should match underlying input element. */
+  font-family: inherit;
+  font-size: inherit;
+  /* Mirror text baseline should match underlying input element baseline. */
+  align-content: center;
+  line-height: normal;
+  /* All input events should pass through mirror to underlying input element. */
+  pointer-events: none;
+  user-select: none;
+  /* Dimensions should match underlying input element. */
+  height: 100%;
+  width: 100%;
+  /* Mirror overlay is placed atop underlying input element. */
+  z-index: 101;
+}
+
+#mirror span:not(.dimmed) {
+  color: var(--color-omnibox-text);
+}
+
+#mirror span.dimmed {
+  color: var(--color-omnibox-text-dimmed);
+}
+
+#mirror span.dangerous {
+  color: var(--color-omnibox-security-chip-dangerous);
+}
+
+#mirror span.strikethrough {
+  text-decoration: line-through;
+  text-decoration-color: currentColor;
+}
+
+:host([url-emphasis-enabled]) :is(input, textarea),
+:host([url-emphasis-enabled]) :is(input, textarea)::selection {
+  caret-color: var(--color-searchbox-foreground);
+  color: transparent;
+}
+
+:host([multi-line-enabled]) textarea {
+  background-color: var(--color-cr-searchbox-input-textarea, transparent);
+  box-sizing: border-box;
+  field-sizing: content;
+  line-height: 24px;
+  /* Fits 7 lines of text (7 * 24px) plus the input's block padding. Content
+   * beyond that scrolls, which is when the scrollbar becomes visible. */
+  max-height: 194px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: calc((var(--cr-searchbox-height) - 24px) / 2);
+  resize: none;
+  white-space: pre-wrap;
+}
+
+/* When force-single-line is enabled, keep the textarea as a single line. */
+:host([force-single-line]) textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:host([show-ellipsis]:focus-within) textarea {
+  text-overflow: clip;
+}
+
+#ellipsisIndicator {
+  background-color: transparent;
+  color: var(--color-searchbox-foreground);
+  display: none;
+  flex-shrink: 0;
+  height: var(--cr-searchbox-line-height, 24px);
+  line-height: var(--cr-searchbox-line-height, 24px);
+  margin-inline-end: 4px;
+  margin-top: calc(
+      (var(--cr-searchbox-height) - var(--cr-searchbox-line-height, 24px)) / 2);
+  padding-inline: 0 1px;
+  pointer-events: none;
+}
+
+:host([show-ellipsis]:focus-within) #ellipsisIndicator {
+  display: block;
+}
+
+:host([has-inline-selection]) #ellipsisIndicator {
+  background-color: var(--color-searchbox-selection-background);
+  color: var(
+      --color-searchbox-selection-foreground,
+      var(--color-searchbox-foreground));
+}
+
+/* The scrollbar is only rendered once the input content overflows its max
+ * height, e.g. while a long voice transcription is being shown or when the
+ * typed text grows past the last visible line. */
+:host([multi-line-enabled]) #input::-webkit-scrollbar {
+  width: 7px;
+}
+
+:host([multi-line-enabled]) #input::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: var(--cr-searchbox-input-scrollbar-margin-top, 0)
+      var(--cr-searchbox-input-scrollbar-margin-bottom, 0);
+}
+
+:host([multi-line-enabled]) #input::-webkit-scrollbar-thumb {
+  background: var(--color-cr-searchbox-input-scrollbar-thumb,
+      rgb(127, 127, 127));
+  border-radius: 100px;
+}
+
+:is(input, textarea) {
+  background-color: var(--color-cr-searchbox-input-textarea, transparent);
+  border: none;
+  color: var(--color-searchbox-foreground);
+  font-family: inherit;
+  font-size: inherit;
+  height: 100%;
+  outline: none;
+  padding-top: 20px;
+  position: relative;
+  width: 100%;
+}
+
+input::-webkit-search-decoration,
+input::-webkit-search-results-button,
+input::-webkit-search-results-decoration {
+  display: none;
+}
+
+/* Visually hide the cancel button but do not set display to none or
+ * visibility to hidden as this causes issues with NVDA not reading out the
+ * full value of the searchbox input as the user selects suggestion matches.
+ * See crbug.com/1312442 for more context. */
+input::-webkit-search-cancel-button {
+  appearance: none;
+  margin: 0;
+}
+
+:is(input, textarea)::placeholder {
+  color: var(--color-searchbox-placeholder);
+  opacity: var(--placeholder-opacity);
+  white-space: nowrap;
+}
+
+:is(input, textarea):focus::placeholder {
+  /* Visually hide the placeholder on focus. The placeholder will still be
+   * read by screen readers. Using color: transparent or other ways of
+   * visually hiding the placeholder does not work well with 'Find in page...'
+   * as the placeholder text can get highlighted. */
+  visibility: hidden;
+}
+
+:host([in-keyword-mode]) :is(input, textarea):focus::placeholder {
+  visibility: visible;
+}
+
+cr-searchbox-icon {
+  height: 100%;
+  padding-inline-end: var(--cr-searchbox-icon-right-position, 4px);
+  padding-inline-start: var(--cr-searchbox-icon-left-position);
+  position: relative;
+  top: var(--cr-searchbox-icon-top-position);
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  cr-searchbox-icon {
+    border-radius: 4px;
+  }
+}
+
+:is(input, textarea),
+cr-searchbox-icon,
+#keyword {
+  z-index: 100;
+}
+
+#keyword {
+  align-self: center;
+  border-inline-end: 1px solid var(--color-omnibox-keyword-selected);
+  color: var(--color-omnibox-keyword-selected);
+  margin-inline-end: 8px;
+  padding-inline-end: 8px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Kept in the accessibility tree but moved offscreen while it has a label. */
+#selectionAnnouncement {
+  left: -10000px;
+  position: absolute;
+}
+
+/* Without a label, leave it out of the layout altogether. Being positioned,
+   an empty box would otherwise remain in the accessibility tree as a leaf
+   with no text right after the input, and text range comparisons that cross
+   from the end of the input's value into it (e.g. VoiceOver asking for the
+   caret's line) resolve inconsistently. */
+#selectionAnnouncement:empty {
+  display: none;
+}

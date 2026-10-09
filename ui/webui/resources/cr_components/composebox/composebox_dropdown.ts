@@ -1,0 +1,453 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import './composebox_match.js';
+
+import {assert} from '//resources/js/assert.js';
+import {hasKeyModifiers} from '//resources/js/util.js';
+import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
+import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
+import type {AutocompleteMatch, AutocompleteResult} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import {RenderType, SuggestStyle} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import {ToolMode} from '//resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
+
+import {computeImageUrl} from './common.js';
+import {getCss} from './composebox_dropdown.css.js';
+import {getHtml} from './composebox_dropdown.html.js';
+import type {ComposeboxMatchElement} from './composebox_match.js';
+
+// Maximum time to wait for a batch of rich suggestion images to preload before
+// revealing the cards.
+const IMAGE_PRELOAD_TIMEOUT_MS = 2000;
+
+// The '%' operator in JS returns negative numbers. This workaround avoids that.
+function remainder(lhs: number, rhs: number) {
+  return ((lhs % rhs) + rhs) % rhs;
+}
+
+// TODO(crbug.com/439616869): Provide an API for the embedder (i.e.,
+// <cr-composebox>) to change the selection. A dropdown element that contains
+// autocomplete matches.
+export class ComposeboxDropdownElement extends CrLitElement {
+  static get is() {
+    return 'cr-composebox-dropdown';
+  }
+
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
+  }
+
+  static override get properties() {
+    return {
+      //========================================================================
+      // Public properties
+      //========================================================================
+
+      result: {
+        type: Object,
+      },
+      selectedMatchIndex: {
+        type: Number,
+        notify: true,
+      },
+      lastQueriedInput: {
+        type: String,
+        notify: true,
+      },
+      maxSuggestions: {
+        type: Number,
+      },
+      toolMode: {
+        type: Number,
+      },
+      overrideClampLineNum: {type: Number},
+      richImageSuggestionsEnabled: {type: Boolean},
+      isImageBatchLoading_: {type: Boolean},
+    };
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.cancelImagePreload_();
+  }
+
+  override willUpdate(changedProperties: PropertyValues<this>) {
+    super.willUpdate(changedProperties);
+    if (!this.richImageSuggestionsEnabled) {
+      return;
+    }
+
+    if (changedProperties.has('result') ||
+        changedProperties.has('maxSuggestions')) {
+      this.updateImagePreload_();
+    }
+  }
+
+  override updated(changedProperties: PropertyValues<this>) {
+    super.updated(changedProperties);
+
+    if (changedProperties.has('selectedMatchIndex') &&
+        this.selectedMatchIndex >= 0) {
+      const selectedMatch = this.shadowRoot.querySelector<HTMLElement>(
+          `#match${this.selectedMatchIndex}`);
+      selectedMatch?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+    }
+  }
+
+  accessor result: AutocompleteResult|null = null;
+  accessor selectedMatchIndex: number = -1;
+  accessor lastQueriedInput: string = '';
+  // Limits the number of suggestions shown in the dropdown. This allows
+  // the embedder to limit the number of suggestions based on available
+  // height. A value of 0 indicates that no suggestions should be shown.
+  // A value of null or -1 indicates that all suggestions should be shown.
+  accessor maxSuggestions: number|null = null;
+  accessor toolMode: ToolMode = ToolMode.kUnspecified;
+  accessor overrideClampLineNum: number = -1;
+  accessor richImageSuggestionsEnabled: boolean = false;
+  accessor isImageBatchLoading_: boolean = false;
+  private imagePreloadGeneration_: number = 0;
+  private imagePreloadTimeoutId_: number|undefined;
+  // Retains HTMLImageElement instances so Blink's MemoryCache holds a strong
+  // reference to the decoded ImageResource across tool-mode toggles.
+  private loadedImages_: Map<string, HTMLImageElement> = new Map();
+  private preloadingImages_: Set<HTMLImageElement> = new Set();
+
+  //============================================================================
+  // Public methods
+  //============================================================================
+
+  /** Unselects the currently selected match, if any. */
+  unselect() {
+    this.selectedMatchIndex = -1;
+  }
+
+  /** Focuses the selected match, if any. */
+  focusSelected() {
+    const selectableMatchElements =
+        this.shadowRoot.querySelectorAll('cr-composebox-match');
+    selectableMatchElements[this.selectedMatchIndex]?.focus();
+  }
+
+  /** Selects the first match. */
+  selectFirst() {
+    this.selectedMatchIndex = 0;
+  }
+
+  /** Selects the match at the given index. */
+  selectIndex(index: number) {
+    this.selectedMatchIndex = index;
+  }
+
+  /**
+   * Selects the previous match with respect to the currently selected one.
+   * Selects the last match if the first one or no match is currently selected.
+   */
+  selectPrevious() {
+    if (!this.result) {
+      this.selectedMatchIndex = -1;
+      return;
+    }
+
+    let previous: number;
+    const isTypedSuggest = this.lastQueriedInput.trim().length > 0;
+    const maxVisibleIndex = this.getMaxVisibleIndex_();
+    if (isTypedSuggest && this.selectedMatchIndex === 1) {
+      // Since we're hiding the first match, if we're on the second match (first
+      // shown match) and we're selecting the previous match, go to the last
+      // match in the result.
+      previous = maxVisibleIndex;
+    } else {
+      // The value of -1 for |this.selectedMatchIndex| indicates no selection.
+      // Therefore subtract one from the maximum of its value and 0.
+      previous = Math.max(this.selectedMatchIndex, 0) - 1;
+    }
+
+    this.selectedMatchIndex = remainder(previous, maxVisibleIndex + 1);
+  }
+
+  /** Selects the last match. */
+  selectLast() {
+    this.selectedMatchIndex = this.result ? this.getMaxVisibleIndex_() : -1;
+  }
+
+  /**
+   * Selects the next match with respect to the currently selected one.
+   * Selects the first match if the last one or no match is currently selected.
+   */
+  selectNext() {
+    if (!this.result) {
+      this.selectedMatchIndex = -1;
+      return;
+    }
+
+    let next;
+    const isTypedSuggest = this.lastQueriedInput.trim().length > 0;
+    const maxVisibleIndex = this.getMaxVisibleIndex_();
+    if (isTypedSuggest && this.selectedMatchIndex === maxVisibleIndex) {
+      // Since we're hiding the first match, if we're on the last match and
+      // we're selecting the next match, go to the second match (the first shown
+      // match).
+      next = 1;
+    } else {
+      next = this.selectedMatchIndex + 1;
+    }
+
+    this.selectedMatchIndex = remainder(next, maxVisibleIndex + 1);
+  }
+
+  /** Returns the minimum index of the visible matches. */
+  getFirstVisibleIndex(): number {
+    if (!this.result || this.result.matches.length === 0) {
+      return -1;
+    }
+    const firstIndex = this.hideVerbatimMatch_(0) ? 1 : 0;
+    return firstIndex <= this.getMaxVisibleIndex_() ? firstIndex : -1;
+  }
+
+  /** Returns the maximum index of the visible matches. */
+  getLastVisibleIndex(): number {
+    return this.getMaxVisibleIndex_();
+  }
+
+  /**
+   * Unselects the active match if a Tab or Shift-Tab event is about to move
+   * focus outside the visible dropdown matches.
+   */
+  unselectOnTabExit(e: KeyboardEvent) {
+    if (this.selectedMatchIndex < 0) {
+      return;
+    }
+    const isForwardExit = !hasKeyModifiers(e) &&
+        this.selectedMatchIndex === this.getLastVisibleIndex();
+    const isBackwardExit = e.shiftKey && !e.altKey && !e.ctrlKey &&
+        !e.metaKey && this.selectedMatchIndex === this.getFirstVisibleIndex();
+    if (!isForwardExit && !isBackwardExit) {
+      return;
+    }
+
+    const matchEl = this.shadowRoot.querySelector<ComposeboxMatchElement>(
+        `#match${this.selectedMatchIndex}`);
+    if (matchEl?.willTabExitMatch(e.shiftKey)) {
+      this.unselect();
+    }
+  }
+
+  /**
+   * @returns Index of the match in the autocomplete result. Passed to the match
+   *     so it knows its position in the list of matches.
+   */
+  protected matchIndex_(match: AutocompleteMatch): number {
+    return this.result?.matches.indexOf(match) ?? -1;
+  }
+
+  protected isSelected_(index: number): boolean {
+    return index === this.selectedMatchIndex;
+  }
+
+  /** Returns the maximum index of the visible matches. */
+  protected getMaxVisibleIndex_(): number {
+    if (!this.result) {
+      return -1;
+    }
+
+    // Max suggestions is not set, so show all.
+    if (!this.maxSuggestions || this.maxSuggestions < 0) {
+      return this.result.matches.length - 1;
+    }
+
+    // If typeahead is enabled, and the verbatim match is hidden, the
+    // maxSuggestions is 1 greater since the verbatim match is not actually
+    // visible.
+    let maxVisibleSuggestionIndex =
+        this.maxSuggestions ? this.maxSuggestions : 0;
+    if (!this.hideVerbatimMatch_(0)) {
+      // If there is no verbatim match, then the max visible suggestion index is
+      // one less than the max suggestions to account for indexing by zero. If
+      // the verbatim match is hidden, the the visible matches start at index 1
+      // so do not decrement the max visible suggestion index.
+      maxVisibleSuggestionIndex--;
+    }
+    return Math.min(maxVisibleSuggestionIndex, this.result.matches.length - 1);
+  }
+
+  /**
+   * Returns whether the given index corresponds to the last match.
+   */
+  protected isLastMatch_(index: number): boolean {
+    assert(this.result);
+    return index === this.getMaxVisibleIndex_();
+  }
+
+  /**
+   * Hides the match if its a verbatim match. This match should be hidden
+   * for all typed suggestions. It will still be "selected" when the
+   * autocomplete result changes, and the user can still navigate to this
+   * verbatim match by navigating to the input text. Zero suggest only has
+   * verbatim matches when context is uploaded. In this case the verbatim
+   * match is "empty" and allows for navigation to context with no text.
+   */
+  protected hideVerbatimMatch_(index: number): boolean {
+    assert(this.result);
+
+    // Only matches at index 0 can be verbatim matches.
+    if (index !== 0) {
+      return false;
+    }
+
+    // The only match allowed to be default in zero suggest is the verbatim
+    // match.
+    return this.result.input ?
+        true :
+        !!this.result.matches[index]?.allowedToBeDefaultMatch;
+  }
+
+  protected computeAriaLabel_(match: AutocompleteMatch): string {
+    return match.a11yLabel;
+  }
+
+  /**
+   * @returns Unique suggestion group IDs in natural order of appearance in
+   *     matches.
+   */
+  protected groupIds_(): number[] {
+    return [...new Set<number>(
+        this.result?.matches.map(match => match.suggestionGroupId) ?? [])];
+  }
+
+  protected matchesForGroup_(groupId: number):
+      Array<{match: AutocompleteMatch, index: number}> {
+    if (!this.result) {
+      return [];
+    }
+    const result: Array<{match: AutocompleteMatch, index: number}> = [];
+    this.result.matches.forEach((match, index) => {
+      if (match.suggestionGroupId === groupId) {
+        result.push({match, index});
+      }
+    });
+    return result;
+  }
+
+  protected hasHeaderForGroup_(groupId: number): boolean {
+    return !!this.headerForGroup_(groupId);
+  }
+
+  protected headerForGroup_(groupId: number): string {
+    return this.result?.suggestionGroupsMap[groupId]?.header ?? '';
+  }
+
+  protected renderTypeClassForGroup_(groupId: number): string {
+    return this.result?.suggestionGroupsMap[groupId]?.renderType ===
+            RenderType.kGrid ?
+        'grid' :
+        'vertical';
+  }
+
+  protected onHeaderMousedown_(e: MouseEvent) {
+    // Prevent default mousedown behavior to keep focus in the composebox input.
+    e.preventDefault();
+  }
+
+  protected isMatchHidden_(index: number): boolean {
+    return this.hideVerbatimMatch_(index) || index > this.getMaxVisibleIndex_();
+  }
+
+  protected isMatchLoading_(match: AutocompleteMatch): boolean {
+    return this.richImageSuggestionsEnabled &&
+        match.suggestStyle === SuggestStyle.kRichImage &&
+        Boolean(match.suggestTemplate.image?.url) && this.isImageBatchLoading_;
+  }
+
+  private clearImagePreloadTimeout_() {
+    if (this.imagePreloadTimeoutId_ !== undefined) {
+      clearTimeout(this.imagePreloadTimeoutId_);
+      this.imagePreloadTimeoutId_ = undefined;
+    }
+  }
+
+  private cancelImagePreload_() {
+    this.imagePreloadGeneration_++;
+    this.clearImagePreloadTimeout_();
+    for (const img of this.preloadingImages_) {
+      img.onload = null;
+      img.onerror = null;
+    }
+    this.preloadingImages_.clear();
+  }
+
+  private updateImagePreload_() {
+    this.cancelImagePreload_();
+    const generation = this.imagePreloadGeneration_;
+    if (!this.result) {
+      this.isImageBatchLoading_ = false;
+      return;
+    }
+
+    const imageMatches = this.result.matches.filter(
+        (m, index) => !this.isMatchHidden_(index) &&
+            m.suggestStyle === SuggestStyle.kRichImage &&
+            Boolean(m.suggestTemplate.image?.url));
+    if (imageMatches.length === 0 ||
+        imageMatches.every(
+            m => this.loadedImages_.has(m.suggestTemplate.image!.url))) {
+      this.isImageBatchLoading_ = false;
+      return;
+    }
+
+    this.isImageBatchLoading_ = true;
+    const preloadPromises = imageMatches.map(m => {
+      const imageUrl = m.suggestTemplate.image!.url;
+      return new Promise<void>(resolve => {
+        if (this.loadedImages_.has(imageUrl)) {
+          resolve();
+          return;
+        }
+        const img = new Image();
+        this.preloadingImages_.add(img);
+        img.onload = () => {
+          this.preloadingImages_.delete(img);
+          this.loadedImages_.set(imageUrl, img);
+          resolve();
+        };
+        img.onerror = () => {
+          this.preloadingImages_.delete(img);
+          resolve();
+        };
+        img.src = computeImageUrl(imageUrl);
+      });
+    });
+
+    const timeoutPromise = new Promise<void>(resolve => {
+      this.imagePreloadTimeoutId_ =
+          window.setTimeout(resolve, IMAGE_PRELOAD_TIMEOUT_MS);
+    });
+
+    void Promise
+        .race([
+          Promise.all(preloadPromises),
+          timeoutPromise,
+        ])
+        .then(() => {
+          if (this.imagePreloadGeneration_ === generation) {
+            // Only clear the timeout; let any still-in-flight images in
+            // `preloadingImages_` finish and populate `loadedImages_`.
+            this.clearImagePreloadTimeout_();
+            this.isImageBatchLoading_ = false;
+          }
+        });
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'cr-composebox-dropdown': ComposeboxDropdownElement;
+  }
+}
+
+customElements.define(ComposeboxDropdownElement.is, ComposeboxDropdownElement);

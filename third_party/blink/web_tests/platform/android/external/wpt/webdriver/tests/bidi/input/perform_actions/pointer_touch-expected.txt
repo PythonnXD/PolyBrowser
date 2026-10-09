@@ -1,0 +1,7 @@
+This is a wdspec test.
+[FAIL] test_touch_pointer_properties
+  AssertionError: assert 6 == 7
+[FAIL] test_touch_pointer_properties_angle_twist
+  AssertionError: assert 6 == 7
+Harness: the test ran to completion.
+

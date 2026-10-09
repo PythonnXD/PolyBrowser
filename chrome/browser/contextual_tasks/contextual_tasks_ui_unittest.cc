@@ -1,0 +1,4075 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui.h"
+
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/test/bind.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "base/uuid.h"
+#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_cookie_synchronizer.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_eligibility_manager.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_permission_controller.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_toolbar.mojom.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_base.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_post_rearchitecture.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
+#include "chrome/browser/contextual_tasks/mock_contextual_tasks_page.h"
+#include "chrome/browser/contextual_tasks/mock_contextual_tasks_panel_controller.h"
+#include "chrome/browser/contextual_tasks/mock_contextual_tasks_ui_service.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
+#include "chrome/browser/profiles/profile_avatar_icon_util.h"
+#include "chrome/browser/signin/chrome_signin_client_factory.h"
+#include "chrome/browser/signin/chrome_signin_client_test_util.h"
+#include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
+#include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/actions/chrome_action_id.h"  // nogncheck
+#include "chrome/browser/ui/actions/chrome_actions.h"    // nogncheck
+#include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"  // nogncheck
+#include "chrome/test/user_education/mock_browser_user_education_interface.h"
+#include "components/feature_engagement/public/feature_constants.h"
+#include "ui/actions/actions.h"  // nogncheck
+#endif
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/chrome_render_view_host_test_harness.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile.h"
+#include "chrome/test/base/testing_profile_manager.h"
+#include "components/contextual_tasks/public/contextual_task.h"
+#include "components/contextual_tasks/public/contextual_tasks_service.h"
+#include "components/contextual_tasks/public/features.h"
+#include "components/contextual_tasks/public/mock_contextual_tasks_service.h"
+#include "components/contextual_tasks/public/prefs.h"
+#include "components/omnibox/browser/mock_aim_eligibility_service.h"
+#include "components/omnibox/common/composebox_features.h"
+#include "components/omnibox/common/omnibox_features.h"
+#include "components/prefs/pref_service.h"
+#include "components/sessions/content/session_tab_helper.h"
+#include "components/signin/public/identity_manager/account_info.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
+#include "components/variations/scoped_variations_ids_provider.h"
+#include "content/public/browser/web_contents_delegate.h"
+#include "content/public/common/content_features.h"
+#include "content/public/test/mock_navigation_handle.h"
+#include "content/public/test/test_renderer_host.h"
+#include "content/public/test/test_web_ui.h"
+#include "content/public/test/web_contents_tester.h"
+#include "net/base/url_util.h"
+#include "services/network/test/test_url_loader_factory.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/web_preferences/web_preferences.h"
+#include "third_party/blink/public/mojom/css/preferred_color_scheme.mojom.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/base/unowned_user_data/unowned_user_data_host.h"
+#include "ui/gfx/image/image.h"
+#include "ui/webui/buildflags.h"
+#include "url/gurl.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/device_info.h"
+#endif
+
+using testing::_;
+using testing::Optional;
+using testing::Return;
+using testing::ReturnRef;
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+namespace contextual_tasks {
+
+namespace {
+
+constexpr char kAiPageUrl[] = "https://google.com/search?udm=50";
+
+constexpr char kUuid[] = "10000000-0000-0000-0000-000000000000";
+
+constexpr char kTestingProfileName[] = "testing_profile";
+
+class MockContextualTasksComposeboxHandler
+    : public ContextualTasksComposeboxHandlerInterface {
+ public:
+  MOCK_METHOD(void, ResetInputStateModel, (), (override));
+  MOCK_METHOD(void,
+              UpdateSuggestedTabContext,
+              (const SuggestedTabInfo*),
+              (override));
+  MOCK_METHOD(void, OnTaskChanged, (), (override));
+  MOCK_METHOD(void, InitializeInputStateModel, (), (override));
+  MOCK_METHOD(void, UpdateStateFromUrl, (const GURL&), (override));
+  MOCK_METHOD(void,
+              SetAimThreadRestoredTabs,
+              (std::vector<searchbox::mojom::TabInfoPtr>),
+              (override));
+  MOCK_METHOD(std::vector<int32_t>,
+              GetSelectedTabIds,
+              (),
+              (const, override));
+};
+
+class MockTaskInfoDelegate : public TaskInfoDelegate {
+ public:
+  MockTaskInfoDelegate() = default;
+  ~MockTaskInfoDelegate() override = default;
+  const std::optional<base::Uuid>& GetTaskId() override { return task_id_; }
+
+  void SetTaskId(std::optional<base::Uuid> id) override { task_id_ = id; }
+
+  const std::optional<std::string>& GetThreadId() override {
+    return thread_id_;
+  }
+
+  void SetThreadId(std::optional<std::string> id) override { thread_id_ = id; }
+
+  const std::optional<std::string>& GetThreadTitle() override { return title_; }
+
+  void SetThreadTitle(std::optional<std::string> title) override {
+    title_ = title;
+  }
+
+  MOCK_METHOD(void,
+              PushTaskDetailsToPage,
+              (std::optional<base::Uuid> id,
+               const GURL& url,
+               bool replace_navigation_entry),
+              (override));
+  MOCK_METHOD(void, UpdateStateFromUrl, (const GURL& url), (override));
+
+  bool IsShownInTab() override { return is_shown_in_tab_; }
+
+  void SetIsShownInTab(bool is_shown_in_tab) {
+    is_shown_in_tab_ = is_shown_in_tab;
+  }
+
+  BrowserWindowInterface* GetBrowser() override {
+    return &mock_browser_window_interface_;
+  }
+
+  void SetIsAiPage(bool is_ai_page) override {}
+  void SetInNlm(bool in_nlm) override {}
+
+  content::WebContents* GetWebUIWebContents() override { return nullptr; }
+
+  MOCK_METHOD(void, OnZeroStateChange, (bool is_zero_state), (override));
+
+  MOCK_METHOD(void, PrepareForTaskChange, (), (override));
+
+  MOCK_METHOD(void, OnTaskChanged, (), (override));
+
+ private:
+  std::optional<base::Uuid> task_id_;
+  std::optional<std::string> thread_id_;
+  std::optional<std::string> title_;
+  bool is_shown_in_tab_ = false;
+  MockBrowserWindowInterface mock_browser_window_interface_;
+};
+
+class FakeContextualTasksEligibilityManager
+    : public ContextualTasksEligibilityManager {
+ public:
+  FakeContextualTasksEligibilityManager()
+      : ContextualTasksEligibilityManager(nullptr, nullptr, nullptr) {
+    MaybeNotifyEligibilityChanged();
+  }
+  ~FakeContextualTasksEligibilityManager() override = default;
+
+  void SetIsEligible(bool eligible) {
+    is_eligible_ = eligible;
+    MaybeNotifyEligibilityChanged();
+  }
+
+  bool IsEligibleWithoutIdentity() const override { return is_eligible_; }
+
+ protected:
+  bool CalculateEligibility() const override { return is_eligible_; }
+
+ private:
+  bool is_eligible_ = true;
+};
+
+std::unique_ptr<content::MockNavigationHandle> CreateMockNavigationHandle(
+    const GURL& url) {
+  auto nav_handle = std::make_unique<content::MockNavigationHandle>();
+  nav_handle->set_is_in_primary_main_frame(true);
+  nav_handle->set_has_committed(true);
+  nav_handle->set_url(url);
+  return nav_handle;
+}
+
+class FakeContextualTasksPermissionController
+    : public ContextualTasksPermissionController {
+ public:
+  FakeContextualTasksPermissionController()
+      : ContextualTasksPermissionController(/*browser_window=*/nullptr) {}
+  ~FakeContextualTasksPermissionController() override = default;
+
+  toolbar_ui_api::mojom::PermissionDashboardStatePtr GetState() const override {
+    auto state = toolbar_ui_api::mojom::PermissionDashboardState::New();
+    state->indicator_chip = toolbar_ui_api::mojom::PermissionChipState::New();
+    state->request_chip = toolbar_ui_api::mojom::PermissionChipState::New();
+    return state;
+  }
+  void OnChipClicked(toolbar_ui_api::mojom::LhsChipIdentifier identifier,
+                     bool is_mouse_interaction) override {}
+  void OnChipExpandAnimationEnded(
+      toolbar_ui_api::mojom::LhsChipIdentifier identifier) override {}
+  void OnChipCollapseAnimationEnded(
+      toolbar_ui_api::mojom::LhsChipIdentifier identifier) override {}
+};
+
+class MockToolbarPage : public contextual_tasks_toolbar::mojom::Page {
+ public:
+  MockToolbarPage() = default;
+  ~MockToolbarPage() override = default;
+
+  MOCK_METHOD(void, OnSidePanelPinStateChanged, (bool is_pinned), (override));
+  MOCK_METHOD(void, OnAiPageStatusChanged, (bool is_ai_page), (override));
+  MOCK_METHOD(
+      void,
+      OnContextUpdated,
+      (std::vector<contextual_tasks_toolbar::mojom::ContextInfoPtr> context),
+      (override));
+  MOCK_METHOD(void, SetExpandButtonEnabled, (bool enabled), (override));
+  MOCK_METHOD(void, SetThreadTitle, (const std::string&), (override));
+  MOCK_METHOD(void, OnSidePanelStateChanged, (), (override));
+  MOCK_METHOD(void, SetProfileAvatarUrl, (const GURL& avatar_url), (override));
+
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::Page>
+  BindAndGetRemote() {
+    return receiver_.BindNewPipeAndPassRemote();
+  }
+
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::Page>
+  BindAndPassRemote() {
+    return receiver_.BindNewPipeAndPassRemote();
+  }
+
+  void FlushForTesting() { receiver_.FlushForTesting(); }
+
+ private:
+  mojo::Receiver<contextual_tasks_toolbar::mojom::Page> receiver_{this};
+};
+
+class TestContextualTasksUIBase : public ContextualTasksUIBase {
+ public:
+  explicit TestContextualTasksUIBase(content::WebUI* web_ui)
+      : ContextualTasksUIBase(web_ui) {}
+  ~TestContextualTasksUIBase() override = default;
+
+  void set_controller(ContextualTasksPermissionController* controller) {
+    controller_ = controller;
+  }
+
+  void set_panel_controller(
+      contextual_tasks::ContextualTasksPanelController* panel_controller) {
+    panel_controller_ = panel_controller;
+  }
+
+  contextual_tasks::ContextualTasksPanelController* GetPanelController()
+      override {
+    if (panel_controller_) {
+      return panel_controller_;
+    }
+    return ContextualTasksUIBase::GetPanelController();
+  }
+
+ protected:
+  ContextualTasksPermissionController* GetActiveController() override {
+    return controller_;
+  }
+
+ private:
+  raw_ptr<ContextualTasksPermissionController> controller_ = nullptr;
+  raw_ptr<contextual_tasks::ContextualTasksPanelController> panel_controller_ =
+      nullptr;
+};
+
+class TestContextualTasksUI : public ContextualTasksUI {
+ public:
+  explicit TestContextualTasksUI(content::WebUI* web_ui)
+      : ContextualTasksUI(web_ui) {}
+  ~TestContextualTasksUI() override = default;
+
+  void set_panel_controller(
+      contextual_tasks::ContextualTasksPanelController* panel_controller) {
+    panel_controller_ = panel_controller;
+  }
+
+  void set_browser_window(BrowserWindowInterface* browser_window) {
+    browser_window_ = browser_window;
+  }
+
+  contextual_tasks::ContextualTasksPanelController* GetPanelController()
+      override {
+    if (panel_controller_) {
+      return panel_controller_;
+    }
+    return ContextualTasksUI::GetPanelController();
+  }
+
+  BrowserWindowInterface* GetBrowser() override {
+    if (browser_window_) {
+      return browser_window_;
+    }
+    return ContextualTasksUI::GetBrowser();
+  }
+
+ private:
+  raw_ptr<contextual_tasks::ContextualTasksPanelController> panel_controller_ =
+      nullptr;
+  raw_ptr<BrowserWindowInterface> browser_window_ = nullptr;
+};
+
+}  // namespace
+
+class ContextualTasksUiTest : public ChromeRenderViewHostTestHarness {
+ public:
+  ContextualTasksUiTest() {
+    feature_list_.InitAndDisableFeature(
+        contextual_tasks::kEnableNotifyZeroStateRenderedCapability);
+  }
+
+  void SetUp() override {
+    ChromeRenderViewHostTestHarness::SetUp();
+
+    testing_profile_manager_ = std::make_unique<TestingProfileManager>(
+        TestingBrowserProcess::GetGlobal());
+    ASSERT_TRUE(testing_profile_manager_->SetUp());
+
+    TestingProfile::TestingFactories factories;
+    factories.push_back(TestingProfile::TestingFactory{
+        ChromeSigninClientFactory::GetInstance(),
+        base::BindRepeating(&BuildChromeSigninClientWithURLLoader,
+                            &test_url_loader_factory_)});
+    factories = IdentityTestEnvironmentProfileAdaptor::
+        GetIdentityTestEnvironmentFactoriesWithAppendedFactories(
+            std::move(factories));
+
+    profile_ = testing_profile_manager_->CreateTestingProfile(
+        kTestingProfileName, std::move(factories));
+    identity_test_env_profile_adaptor_ =
+        std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile_);
+    identity_test_env()->SetTestURLLoaderFactory(&test_url_loader_factory_);
+
+    AimEligibilityServiceFactory::GetInstance()->SetTestingFactory(
+        profile_,
+        base::BindLambdaForTesting([](content::BrowserContext* context)
+                                       -> std::unique_ptr<KeyedService> {
+          return std::make_unique<testing::NiceMock<MockAimEligibilityService>>(
+              *Profile::FromBrowserContext(context)->GetPrefs(),
+              /*template_url_service=*/nullptr,
+              /*url_loader_factory=*/nullptr,
+              /*identity_manager=*/nullptr);
+        }));
+
+    auto contextual_tasks_service = std::make_unique<
+        testing::NiceMock<contextual_tasks::MockContextualTasksService>>();
+    contextual_tasks_service_ = contextual_tasks_service.get();
+    ContextualTasksServiceFactory::GetInstance()->SetTestingFactory(
+        profile_, base::BindLambdaForTesting(
+                      [service = std::move(contextual_tasks_service)](
+                          content::BrowserContext* context) mutable
+                          -> std::unique_ptr<KeyedService> {
+                        return std::move(service);
+                      }));
+
+    auto service_for_nav = std::make_unique<
+        testing::NiceMock<contextual_tasks::MockContextualTasksUiService>>(
+        profile_, contextual_tasks_service_,
+        /*identity_manager=*/nullptr,
+        /*aim_eligibility_service=*/nullptr,
+        /*eligibility_manager=*/nullptr,
+        /*cookie_synchronizer=*/nullptr);
+    service_for_nav_ = service_for_nav.get();
+    ContextualTasksUiServiceFactory::GetInstance()->SetTestingFactory(
+        profile_,
+        base::BindLambdaForTesting([service = std::move(service_for_nav)](
+                                       content::BrowserContext* context) mutable
+                                       -> std::unique_ptr<KeyedService> {
+          return std::move(service);
+        }));
+
+    ON_CALL(*service_for_nav_, IsAiUrl(_)).WillByDefault(Return(true));
+    ON_CALL(*service_for_nav_, SetInitialEntryPointForTask(_, _))
+        .WillByDefault([this](const base::Uuid& task_id,
+                              omnibox::ChromeAimEntryPoint entry_point) {
+          service_for_nav_
+              ->ContextualTasksUiService::SetInitialEntryPointForTask(
+                  task_id, entry_point);
+        });
+
+    embedded_web_contents_ = content::WebContentsTester::CreateTestWebContents(
+        profile_, content::SiteInstance::Create(profile_));
+  }
+
+  void TearDown() override {
+    embedded_web_contents_ = nullptr;
+    service_for_nav_ = nullptr;
+    contextual_tasks_service_ = nullptr;
+    if (profile_) {
+      AimEligibilityServiceFactory::GetInstance()->SetTestingFactory(
+          profile_, base::NullCallback());
+      ContextualTasksUiServiceFactory::GetInstance()->SetTestingFactory(
+          profile_, base::NullCallback());
+      ContextualTasksServiceFactory::GetInstance()->SetTestingFactory(
+          profile_, base::NullCallback());
+    }
+    identity_test_env_profile_adaptor_.reset();
+    profile_ = nullptr;
+    testing_profile_manager_->DeleteTestingProfile(kTestingProfileName);
+    testing_profile_manager_.reset();
+    ChromeRenderViewHostTestHarness::TearDown();
+  }
+
+  signin::IdentityTestEnvironment* identity_test_env() {
+    return identity_test_env_profile_adaptor_->identity_test_env();
+  }
+
+ protected:
+  void SetupMockDelegate(MockTaskInfoDelegate* delegate,
+                         const std::optional<base::Uuid>& task_id,
+                         const std::optional<std::string>& thread_id,
+                         const std::optional<std::string>& title) {
+    if (task_id) {
+      delegate->SetTaskId(task_id.value());
+    }
+    if (thread_id) {
+      delegate->SetThreadId(thread_id.value());
+    }
+    if (title) {
+      delegate->SetThreadTitle(title.value());
+    }
+  }
+
+  void TriggerOnInnerWebContentsCreated(ContextualTasksUI* controller,
+                                        content::WebContents* inner) {
+    controller->OnInnerWebContentsCreated(inner);
+  }
+
+  std::unique_ptr<content::WebContents> embedded_web_contents_;
+  raw_ptr<TestingProfile> profile_;
+  std::unique_ptr<TestingProfileManager> testing_profile_manager_;
+  std::unique_ptr<IdentityTestEnvironmentProfileAdaptor>
+      identity_test_env_profile_adaptor_;
+  network::TestURLLoaderFactory test_url_loader_factory_;
+
+  raw_ptr<contextual_tasks::MockContextualTasksUiService> service_for_nav_;
+  raw_ptr<contextual_tasks::MockContextualTasksService>
+      contextual_tasks_service_;
+  variations::test::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
+      variations::VariationsIdsProvider::Mode::kUseSignedInState};
+  base::test::ScopedFeatureList feature_list_;
+};
+
+TEST_F(ContextualTasksUiTest, ContextualTasksServiceUpdatedOnUrlChange) {
+  MockTaskInfoDelegate delegate;
+  std::optional<base::Uuid> task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> thread_id = "5678";
+  std::optional<std::string> turn_id = "1234";
+  std::optional<std::string> title = "title";
+
+  SetupMockDelegate(&delegate, task_id, thread_id, title);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL updated_url(kAiPageUrl);
+  updated_url = net::AppendQueryParameter(updated_url, "q", "test");
+  updated_url = net::AppendQueryParameter(updated_url, "mstk", turn_id.value());
+  updated_url =
+      net::AppendQueryParameter(updated_url, "mtid", thread_id.value());
+
+  EXPECT_CALL(
+      *contextual_tasks_service_,
+      UpdateThreadForTask(task_id.value(), _, thread_id.value(),
+                          Optional(turn_id), Optional(std::string("test"))))
+      .Times(1);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(delegate, UpdateStateFromUrl(updated_url)).Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(updated_url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest,
+       ContextualTasksServiceUpdatedOnUrlChange_ThreadChange) {
+  MockTaskInfoDelegate delegate;
+  std::optional<base::Uuid> task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  base::Uuid task_id2 =
+      base::Uuid::ParseCaseInsensitive("20000000-0000-0000-0000-000000000000");
+  std::optional<std::string> thread_id = "5678";
+  std::string thread_id2 = "9876";
+  std::optional<std::string> turn_id = "1234";
+  std::optional<std::string> title = "title";
+
+  SetupMockDelegate(&delegate, task_id, thread_id, title);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL updated_url(kAiPageUrl);
+  updated_url = net::AppendQueryParameter(updated_url, "q", "test");
+  updated_url = net::AppendQueryParameter(updated_url, "mstk", "abcd");
+  updated_url = net::AppendQueryParameter(updated_url, "mtid", thread_id2);
+
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id2, _, thread_id2, _, _))
+      .Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_,
+              OnTaskChanged(_, _, _, _, /*is_shown_in_tab=*/false))
+      .Times(1);
+
+  ContextualTask task(task_id2);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_))
+      .WillByDefault(Return(task));
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(updated_url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest,
+       ContextualTasksServiceNotUpdatedOnUrlChange_NoThreadId) {
+  MockTaskInfoDelegate delegate;
+  std::optional<base::Uuid> task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> turn_id = "1234";
+  std::optional<std::string> title = "title";
+
+  SetupMockDelegate(&delegate, task_id, std::nullopt, title);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL updated_url(kAiPageUrl);
+  updated_url = net::AppendQueryParameter(updated_url, "q", "test");
+  updated_url = net::AppendQueryParameter(updated_url, "mstk", turn_id.value());
+
+  // UpdateThreadForTask() is not called due to missing thread id.
+  EXPECT_CALL(*contextual_tasks_service_, UpdateThreadForTask(_, _, _, _, _))
+      .Times(0);
+  // No task change events should occur.
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(updated_url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+// The task should still updated without a turn ID.
+TEST_F(ContextualTasksUiTest,
+       ContextualTasksServiceUpdatedOnUrlChange_NoTurnId) {
+  MockTaskInfoDelegate delegate;
+  std::optional<base::Uuid> task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> thread_id = "5678";
+  std::optional<std::string> title = "title";
+
+  SetupMockDelegate(&delegate, task_id, thread_id, title);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL updated_url(kAiPageUrl);
+  updated_url = net::AppendQueryParameter(updated_url, "q", "test");
+  updated_url =
+      net::AppendQueryParameter(updated_url, "mtid", thread_id.value());
+
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id.value(), _, thread_id.value(), _,
+                                  Optional(std::string("test"))))
+      .Times(1);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(updated_url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+// A task should be created if there's a change in the thread ID and no
+// existing task for that ID.
+TEST_F(ContextualTasksUiTest, TaskCreated_ThreadIdChanged) {
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> thread_id = "5678";
+  std::string query = "koalas";
+
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", query);
+
+  // Assume the URL has already produced a thread ID for the new query.
+  url = net::AppendQueryParameter(url, "mtid", thread_id.value());
+
+  // Ensure a task is created and the info is pushed to the UI.
+  ContextualTask task(task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(task));
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, thread_id.value()))
+      .WillByDefault(Return(std::nullopt));
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+  EXPECT_CALL(*contextual_tasks_service_,
+              GetTaskFromServerId(_, thread_id.value()))
+      .Times(1);
+  EXPECT_CALL(
+      *contextual_tasks_service_,
+      UpdateThreadForTask(task_id, _, thread_id.value(), _, Optional(query)))
+      .Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, Optional(task_id),
+                                               /*is_shown_in_tab=*/false))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+// Ensure that OnTaskChanged is called with is_shown_in_tab = true when the
+// delegate indicates it is shown in a tab.
+TEST_F(ContextualTasksUiTest, TaskCreated_ThreadIdChanged_ShownInTab) {
+  MockTaskInfoDelegate delegate;
+  delegate.SetIsShownInTab(true);
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> thread_id = "5678";
+  std::string query = "koalas";
+
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", query);
+  url = net::AppendQueryParameter(url, "mtid", thread_id.value());
+
+  ContextualTask task(task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(task));
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, thread_id.value()))
+      .WillByDefault(Return(std::nullopt));
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+  EXPECT_CALL(*contextual_tasks_service_,
+              GetTaskFromServerId(_, thread_id.value()))
+      .Times(1);
+  EXPECT_CALL(
+      *contextual_tasks_service_,
+      UpdateThreadForTask(task_id, _, thread_id.value(), _, Optional(query)))
+      .Times(1);
+  // Verify is_shown_in_tab is true.
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, Optional(task_id),
+                                               /*is_shown_in_tab=*/true))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+// Ensure a new task isn't created when switching to a thread that already has
+// a task.
+TEST_F(ContextualTasksUiTest, TaskChanged_ThreadIdChanged_HasExistingTask) {
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::string thread_id = "5678";
+  std::string title = "custom title";
+
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", "koalas");
+  url = net::AppendQueryParameter(url, "mtid", thread_id);
+
+  // The existing task should be pulled from the service rather than a new one
+  // being created.
+  ContextualTask task(task_id);
+  task.SetTitle(title);
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, thread_id))
+      .WillByDefault(Return(task));
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, thread_id))
+      .Times(1);
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id, _, thread_id, _,
+                                  Optional(std::string("koalas"))))
+      .Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+// Ensure a new task is created when switching to a thread that doesn't have
+// an existing local task.
+TEST_F(ContextualTasksUiTest,
+       TaskChanged_ThreadIdChanged_NoExistingTask_CreatesNewTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid current_task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  base::Uuid new_task_id =
+      base::Uuid::ParseCaseInsensitive("11111111-1111-1111-1111-111111111111");
+  std::string old_thread_id = "1234";
+  std::string new_thread_id = "5678";
+
+  // Simulate starting with an existing task and thread.
+  SetupMockDelegate(&delegate, current_task_id, old_thread_id, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", "koalas");
+  url = net::AppendQueryParameter(url, "mtid", new_thread_id);
+
+  // Return nullopt to indicate this historical thread isn't known to the
+  // service.
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, new_thread_id))
+      .WillByDefault(Return(std::nullopt));
+
+  ContextualTask new_task(new_task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(new_task));
+
+  // Verify that a new task is created.
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, new_thread_id))
+      .Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_,
+              OnTaskChanged(_, _, _, Optional(new_task_id), _))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  observer.reset();
+}
+
+// A new task should be created when navigating to the zero state.
+TEST_F(ContextualTasksUiTest, TaskCreated_ZeroState) {
+  MockTaskInfoDelegate delegate;
+
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+  // OnTaskChanged should be called with the created UUID.
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*contextual_tasks_service_, CreateTask()).WillOnce(Return(task));
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, Optional(task_id), _))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest, ThreadUpdatedOnSameDocumentNav) {
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> thread_id = "5678";
+  std::string query = "koalas";
+
+  SetupMockDelegate(&delegate, task_id, "1234", std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", query);
+  url = net::AppendQueryParameter(url, "mtid", thread_id.value());
+
+  EXPECT_CALL(
+      *contextual_tasks_service_,
+      UpdateThreadForTask(task_id, _, thread_id.value(), _, Optional(query)))
+      .Times(1);
+
+  ContextualTask task(task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(task));
+
+  EXPECT_CALL(delegate, UpdateStateFromUrl(url)).Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+  nav_handle->set_is_same_document(true);
+
+  observer->DidFinishNavigation(nav_handle.get());
+  observer.reset();
+}
+
+// Ensure that a pending task (a task without a thread) is not removed and a
+// new task created when a thread is finally available.
+TEST_F(ContextualTasksUiTest, PendingTaskNoNewTaskCreatedOnNav) {
+  MockTaskInfoDelegate delegate;
+
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  SetupMockDelegate(&delegate, task_id, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", "test");
+  url = net::AppendQueryParameter(url, "mtid", "5678");
+  url = net::AppendQueryParameter(url, "mstk", "1234");
+
+  // There is no query value and no other information, the task and thread being
+  // tracked should remain unchanged.
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest, PendingTaskWithEmptyTitleNoNewTaskCreatedOnNav) {
+  MockTaskInfoDelegate delegate;
+
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  SetupMockDelegate(&delegate, task_id, std::nullopt, "");
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", "test");
+  url = net::AppendQueryParameter(url, "mtid", "5678");
+  url = net::AppendQueryParameter(url, "mstk", "1234");
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest, TaskDetailsUpdated) {
+  MockTaskInfoDelegate delegate;
+
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  const std::string thread_id = "5678";
+  url = net::AppendQueryParameter(url, "q", "test");
+  url = net::AppendQueryParameter(url, "mtid", thread_id);
+  const std::string turn_id = "1234";
+  url = net::AppendQueryParameter(url, "mstk", turn_id);
+
+  // Expect a task to be created
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(task));
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+  EXPECT_EQ(delegate.GetThreadId(), thread_id);
+
+  // Fake an updated turn
+  GURL url2(kAiPageUrl);
+  url2 = net::AppendQueryParameter(url2, "q", "test");
+  url2 = net::AppendQueryParameter(url2, "mtid", thread_id);
+  const std::string turn_id2 = "2222";
+  url2 = net::AppendQueryParameter(url2, "mstk", turn_id2);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle2 =
+      CreateMockNavigationHandle(url2);
+
+  observer->DidFinishNavigation(nav_handle2.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+  EXPECT_EQ(delegate.GetThreadId(), thread_id);
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest, AreUrlsEqual) {
+  EXPECT_TRUE(ContextualTasksUI::AreUrlsEqual(
+      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://google.com/search?udm=50&q=test")));
+
+  EXPECT_TRUE(ContextualTasksUI::AreUrlsEqual(
+      GURL("https://google.com/search?a=1&b=2&c=3"),
+      GURL("https://google.com/search?c=3&a=1&b=2")));
+
+  EXPECT_TRUE(ContextualTasksUI::AreUrlsEqual(
+      GURL("https://google.com/search"), GURL("https://google.com/search")));
+
+  // Different query keys/values
+  EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
+      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://google.com/search?udm=50&q=test2")));
+
+  EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
+      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://google.com/search?udm=50&q2=test")));
+
+  // Different paths
+  EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
+      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://google.com/search2?udm=50&q=test")));
+
+  // Different query param sizes
+  EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
+      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://google.com/search?udm=50&q=test&extra=1")));
+}
+
+TEST_F(ContextualTasksUiTest, GetContextualTasksLoadTimeData) {
+  base::DictValue load_time_data =
+      ContextualTasksUI::GetContextualTasksLoadTimeData(profile_);
+
+  // The in-panel WebUI voice search UI is only used on large-screen Android
+  // devices (tablet or desktop form factor); it is always false elsewhere.
+  const bool expect_webui_voice_search =
+      contextual_tasks::IsAndroidLargeFormFactor();
+
+  // Only set when the in-panel WebUI voice search UI in desktop Android is
+  // active. It drives audio wave simulation, since that UI cannot open its own
+  // microphone stream.
+  std::optional<bool> android_speech_recognition =
+      load_time_data.FindBool("androidSpeechRecognition");
+  ASSERT_TRUE(android_speech_recognition.has_value());
+  EXPECT_EQ(android_speech_recognition.value(), expect_webui_voice_search);
+
+  // Android phones delegate to the platform voice recognition activity.
+  std::optional<bool> is_system_voice_search_enabled =
+      load_time_data.FindBool("isSystemVoiceSearchEnabled");
+  ASSERT_TRUE(is_system_voice_search_enabled.has_value());
+  EXPECT_EQ(is_system_voice_search_enabled.value(),
+            !!BUILDFLAG(IS_ANDROID) && !expect_webui_voice_search);
+}
+
+#if BUILDFLAG(IS_ANDROID)
+// Covers the path the feature actually ships: a large-screen Android device
+// with the flag on, which swaps the platform voice recognition activity for
+// the in-panel WebUI voice search UI.
+TEST_F(ContextualTasksUiTest,
+       GetContextualTasksLoadTimeData_WebUiVoiceSearchOnLargeScreen) {
+  // `IsAndroidLargeFormFactor()` reads `ui::GetDeviceFormFactor()`, which
+  // reports the desktop form factor when `device_info::is_desktop()` is set.
+  base::android::device_info::set_is_desktop_for_testing(true);
+  base::ScopedClosureRunner reset_form_factor(base::BindOnce(
+      &base::android::device_info::reset_is_desktop_for_testing));
+
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(
+      contextual_tasks::kContextualTasksWebUiVoiceSearchDesktopAndroid);
+
+  base::DictValue load_time_data =
+      ContextualTasksUI::GetContextualTasksLoadTimeData(profile_);
+
+  // The WebUI voice search UI is active, so it must simulate the audio wave
+  // rather than open a second microphone stream.
+  EXPECT_THAT(load_time_data.FindBool("androidSpeechRecognition"),
+              Optional(true));
+  // If androidSpeechRecognition is true, the platform recognition activity must
+  // not also be used.
+  EXPECT_THAT(load_time_data.FindBool("isSystemVoiceSearchEnabled"),
+              Optional(false));
+}
+#endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(ENABLE_WEBUI_CONTEXTUAL_TASKS_COMPOSEBOX)
+TEST_F(ContextualTasksUiTest,
+       GetContextualTasksLoadTimeData_CobrowsingOnlyCoherence) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      omnibox::kVoiceSearchCoherenceComposeboxes,
+      {{omnibox::kVoiceSearchCoherenceComposeboxCobrowsingOnly.name, "true"}});
+
+  // The plain searchbox dict keeps the diverging all-surfaces value.
+  base::DictValue searchbox_dict =
+      SearchboxHandler::GetWebUIDataSourceDict(profile_);
+  EXPECT_EQ(searchbox_dict.FindBool("voiceSearchCoherenceComposeboxesEnabled"),
+            false);
+  EXPECT_EQ(searchbox_dict.FindBool(
+                "voiceSearchCoherenceCobrowsingComposeboxEnabled"),
+            true);
+
+  // The Contextual Tasks dict preserves the distinct all-surfaces and
+  // cobrowsing values.
+  base::DictValue load_time_data =
+      ContextualTasksUI::GetContextualTasksLoadTimeData(profile_);
+  EXPECT_EQ(load_time_data.FindBool("voiceSearchCoherenceComposeboxesEnabled"),
+            false);
+  EXPECT_EQ(load_time_data.FindBool(
+                "voiceSearchCoherenceCobrowsingComposeboxEnabled"),
+            true);
+}
+
+TEST_F(ContextualTasksUiTest, ShouldClearAllInputsOnSubmit) {
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndDisableFeature(omnibox::kContextManagementInComposebox);
+
+    // Default / no invocation source should clear inputs when context
+    // management is disabled.
+    EXPECT_TRUE(ContextualTasksUI::ShouldClearAllInputsOnSubmit(std::nullopt));
+    base::DictValue load_time_data =
+        ContextualTasksUI::GetContextualTasksLoadTimeData(profile_);
+    EXPECT_EQ(load_time_data.FindBool("clearAllInputsWhenSubmittingQuery"),
+              true);
+
+#if !BUILDFLAG(IS_ANDROID)
+    // Omnibox page action entrypoint should retain inputs.
+    EXPECT_FALSE(ContextualTasksUI::ShouldClearAllInputsOnSubmit(
+        lens::LensOverlayInvocationSource::kOmniboxPageAction));
+
+    // Other entrypoints should clear inputs.
+    EXPECT_TRUE(ContextualTasksUI::ShouldClearAllInputsOnSubmit(
+        lens::LensOverlayInvocationSource::kAppMenu));
+    EXPECT_TRUE(ContextualTasksUI::ShouldClearAllInputsOnSubmit(
+        lens::LensOverlayInvocationSource::kToolbar));
+#endif
+  }
+
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+    // When context management is enabled, inputs should not clear restored
+    // tabs on submit.
+    EXPECT_FALSE(ContextualTasksUI::ShouldClearAllInputsOnSubmit(std::nullopt));
+    base::DictValue load_time_data =
+        ContextualTasksUI::GetContextualTasksLoadTimeData(profile_);
+    EXPECT_EQ(load_time_data.FindBool("clearAllInputsWhenSubmittingQuery"),
+              false);
+  }
+}
+#endif  // BUILDFLAG(ENABLE_WEBUI_CONTEXTUAL_TASKS_COMPOSEBOX)
+
+TEST_F(ContextualTasksUiTest, DidFinishNavigation_ZeroState) {
+  struct TestCase {
+    GURL url;
+    bool expected_is_zero_state;
+  } test_cases[] = {
+      {GURL("https://google.com"), false},
+      {GURL("https://google.com?q=test"), false},
+      {GURL("https://www.google.com/search?udm=50"), true},
+      {GURL("https://www.google.com/search?udm=50&mstk=test"), false},
+      {GURL("https://www.google.com/search?udm=50&q="), true},
+      {GURL("https://www.google.com/search?udm=50&q=&mstk=test"), false},
+      {GURL("https://www.google.com/search?udm=50&q=&mstk="), true},
+      {GURL("https://www.google.com/search?udm=50&q=test"), false},
+      {GURL("https://www.google.com/search?udm=50&q=test&mstk="), false},
+      {GURL("https://www.google.com/search?udm=50&q=&mstk=&vsrid=test"), false},
+      {GURL("https://www.google.com/search?udm=50&q=&mstk=&cinpts=test"),
+       false},
+      {GURL("https://google.com/search"), false},
+      {GURL("https://www.google.com/search?q=test&udm=50"), false},
+      {GURL("https://www.google.com/search?udm=50&other=param"),
+       true},  // Other noise/params
+      {GURL("https://www.google.com/search?udm=50&q=%20"),
+       false},  // Whitespace
+      {GURL("https://www.google.com/search?udm=50&smstk=test"),
+       false},  // smstk present
+      {GURL("https://www.google.com/search?udm=50&smstk="),
+       true},  // smstk empty
+      {GURL("https://www.google.com/search?udm=50&mtid=test"),
+       false},  // mtid present
+      {GURL("https://www.google.com/search?udm=50&mtid="), true},  // mtid empty
+  };
+
+  ON_CALL(*service_for_nav_, IsAiUrl(GURL("https://google.com")))
+      .WillByDefault(Return(false));
+  ON_CALL(*service_for_nav_, IsAiUrl(GURL("https://google.com?q=test")))
+      .WillByDefault(Return(false));
+  ON_CALL(*service_for_nav_, IsAiUrl(GURL("https://google.com/search")))
+      .WillByDefault(Return(false));
+
+  for (const auto& test_case : test_cases) {
+    testing::NiceMock<MockTaskInfoDelegate> delegate;
+    SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+    auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+        embedded_web_contents_.get(), service_for_nav_.get(),
+        contextual_tasks_service_.get(), &delegate);
+
+    EXPECT_EQ(
+        ContextualTasksUI::IsZeroState(test_case.url, service_for_nav_.get()),
+        test_case.expected_is_zero_state)
+        << "Expected " << test_case.url.spec() << " to "
+        << (test_case.expected_is_zero_state ? "be" : "not be")
+        << " a zero state";
+    EXPECT_CALL(delegate, OnZeroStateChange(test_case.expected_is_zero_state))
+        .Times(1);
+
+    if (test_case.expected_is_zero_state) {
+      base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+      ContextualTask task(task_id);
+      EXPECT_CALL(*contextual_tasks_service_, CreateTask())
+          .WillOnce(Return(task));
+      EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+    } else {
+      std::string temp;
+      if (net::GetValueForKeyInQuery(test_case.url, "mtid", &temp)) {
+        base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+        ContextualTask task(task_id);
+        EXPECT_CALL(*contextual_tasks_service_,
+                    CreateTaskFromUrl(test_case.url))
+            .WillOnce(Return(task));
+      }
+    }
+
+    std::unique_ptr<content::MockNavigationHandle> nav_handle =
+        CreateMockNavigationHandle(test_case.url);
+
+    observer->DidFinishNavigation(nav_handle.get());
+  }
+}
+
+// Checks that does not create new task when fully refreshing page.
+TEST_F(ContextualTasksUiTest, DidFinishNavigation_FiresOnReload) {
+  testing::NiceMock<MockTaskInfoDelegate> delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL zero_state_url("https://www.google.com/search?udm=50");
+
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+
+  EXPECT_CALL(delegate, OnZeroStateChange(true)).Times(2);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*contextual_tasks_service_, CreateTask())
+      .Times(1)
+      .WillRepeatedly(Return(task));
+
+  EXPECT_CALL(delegate, UpdateStateFromUrl(zero_state_url)).Times(2);
+
+  // First load.
+  auto handle1 = CreateMockNavigationHandle(zero_state_url);
+  handle1->set_has_committed(true);
+  observer->DidFinishNavigation(handle1.get());
+
+  // Full refresh, with same URL.
+  auto handle2 = CreateMockNavigationHandle(zero_state_url);
+  handle2->set_has_committed(true);
+  handle2->set_reload_type(content::ReloadType::NORMAL);
+  observer->DidFinishNavigation(handle2.get());
+}
+
+/* Ensures didFinishNavigation ignores network errors and returns early
+ * when !hasCommitted.
+ */
+TEST_F(ContextualTasksUiTest, DidFinishNavigation_IgnoredCases) {
+  testing::NiceMock<MockTaskInfoDelegate> delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  EXPECT_CALL(delegate, OnZeroStateChange(_)).Times(0);
+
+  auto failed_handle = std::make_unique<content::MockNavigationHandle>();
+  failed_handle->set_url(GURL("https://www.google.com/search?udm=50"));
+
+  failed_handle->set_is_in_primary_main_frame(true);
+
+  // Returns when !hasCommitted.
+  failed_handle->set_has_committed(false);
+  observer->DidFinishNavigation(failed_handle.get());
+}
+
+/* Goes from zero state to regular state, then refresh, and
+ * then back to zero, then regular.
+ */
+TEST_F(ContextualTasksUiTest, Transition_QueryToZeroToQuery) {
+  testing::NiceMock<MockTaskInfoDelegate> delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL zero_state_url("https://www.google.com/search?udm=50");
+  GURL query_url("https://www.google.com/search?udm=50&q=cats");
+
+  // Mock functions
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTask()).WillByDefault(Return(task));
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_))
+      .WillByDefault(Return(task));
+
+  // Exit zero state; enter normal state.
+  EXPECT_CALL(delegate, OnZeroStateChange(false));
+  auto handle_query = CreateMockNavigationHandle(query_url);
+  handle_query->set_has_committed(true);
+  observer->DidFinishNavigation(handle_query.get());
+
+  // Simulate full refresh. Enter zero state again.
+  EXPECT_CALL(delegate, OnZeroStateChange(true));
+  auto handle_zero = CreateMockNavigationHandle(zero_state_url);
+  handle_zero->set_has_committed(true);
+  observer->DidFinishNavigation(handle_zero.get());
+
+  // Exit zero state; enter normal state again.
+  EXPECT_CALL(delegate, OnZeroStateChange(false));
+  auto handle_query2 = CreateMockNavigationHandle(query_url);
+  handle_query2->set_has_committed(true);
+  observer->DidFinishNavigation(handle_query2.get());
+}
+
+TEST_F(ContextualTasksUiTest,
+       OnZeroStateChange_SameDocument_ZeroStateChanged_FeatureEnabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(
+      contextual_tasks::kEnableNotifyZeroStateRenderedCapability);
+
+  testing::NiceMock<MockTaskInfoDelegate> delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL zero_state_url("https://www.google.com/search?udm=50");
+  GURL query_url("https://www.google.com/search?udm=50&q=test");
+
+  // First navigate to a non-zero state URL to set the baseline state.
+  {
+    EXPECT_CALL(delegate, OnZeroStateChange(false)).Times(1);
+    auto handle = CreateMockNavigationHandle(query_url);
+    handle->set_has_committed(true);
+    handle->set_is_same_document(false);
+    observer->DidFinishNavigation(handle.get());
+  }
+
+  // Now simulate a same-document navigation to a zero state URL.
+  // Even though it's same-document and the feature is enabled,
+  // OnZeroStateChange should be called because the zero state status has
+  // changed (from false to true).
+  {
+    EXPECT_CALL(delegate, OnZeroStateChange(true)).Times(1);
+
+    base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+    ContextualTask task(task_id);
+    EXPECT_CALL(*contextual_tasks_service_, CreateTask())
+        .WillOnce(Return(task));
+    EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+    EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, Optional(task_id), _))
+        .Times(1);
+
+    auto handle = CreateMockNavigationHandle(zero_state_url);
+    handle->set_has_committed(true);
+    handle->set_is_same_document(true);
+    observer->DidFinishNavigation(handle.get());
+  }
+}
+
+TEST_F(ContextualTasksUiTest,
+       OnZeroStateChange_SameDocument_ZeroStateChanged_FeatureDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(
+      contextual_tasks::kEnableNotifyZeroStateRenderedCapability);
+
+  testing::NiceMock<MockTaskInfoDelegate> delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL zero_state_url("https://www.google.com/search?udm=50");
+  GURL query_url("https://www.google.com/search?udm=50&q=test");
+
+  // First navigate to a non-zero state URL to set the baseline state.
+  {
+    EXPECT_CALL(delegate, OnZeroStateChange(false)).Times(1);
+    auto handle = CreateMockNavigationHandle(query_url);
+    handle->set_has_committed(true);
+    handle->set_is_same_document(false);
+    observer->DidFinishNavigation(handle.get());
+  }
+
+  // Now simulate a same-document navigation to a zero state URL.
+  // Even though it's same-document, OnZeroStateChange should be called because
+  // the zero state status has changed (from false to true).
+  {
+    EXPECT_CALL(delegate, OnZeroStateChange(true)).Times(1);
+
+    base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+    ContextualTask task(task_id);
+    EXPECT_CALL(*contextual_tasks_service_, CreateTask())
+        .WillOnce(Return(task));
+    EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+    EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, Optional(task_id), _))
+        .Times(1);
+
+    auto handle = CreateMockNavigationHandle(zero_state_url);
+    handle->set_has_committed(true);
+    handle->set_is_same_document(true);
+    observer->DidFinishNavigation(handle.get());
+  }
+}
+
+TEST_F(ContextualTasksUiTest, SetAimUrlWithoutThreadId) {
+  GURL query_url("https://www.google.com/search?udm=50&q=test");
+  testing::NiceMock<MockTaskInfoDelegate> delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  // SetAimUrl() should be called even if mtid is missing since pre-prod server
+  // may not have it.
+  auto handle = CreateMockNavigationHandle(query_url);
+  handle->set_has_committed(true);
+  handle->set_is_same_document(false);
+  observer->DidFinishNavigation(handle.get());
+}
+
+TEST_F(ContextualTasksUiTest, SetComposeboxHandler) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPage> page;
+  mojo::PendingReceiver<mojom::PageHandler> handler_receiver;
+  controller.CreatePageHandler(page.BindAndGetRemote(),
+                               std::move(handler_receiver));
+
+  auto handler = std::make_unique<MockContextualTasksComposeboxHandler>();
+  auto* handler_ptr = handler.get();
+
+  controller.SetComposeboxHandler(handler_ptr);
+
+  // We can't easily verify the internal state since it's private, but we can
+  // call a method that uses it.
+  EXPECT_CALL(*handler_ptr, InitializeInputStateModel()).Times(1);
+  controller.SetTaskId(base::Uuid::GenerateRandomV4());
+
+  // Reset the handler in the controller before it goes out of scope to avoid
+  // dangling pointer.
+  controller.SetComposeboxHandler(nullptr);
+}
+
+TEST_F(ContextualTasksUiTest, CreatePageHandler_PushesTaskDetailsToPage) {
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  GURL url(chrome::kChromeUIContextualTasksURL);
+  url = net::AppendQueryParameter(url, kTaskQueryParam,
+                                  task_id.AsLowercaseString());
+  content::WebContentsTester::For(embedded_web_contents_.get())
+      ->NavigateAndCommit(url);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPage> page;
+
+  // Mock the creation URL fallback since inner frame is empty in this test.
+  GURL creation_url("https://google.com/ai_url");
+  EXPECT_CALL(*service_for_nav_, GetCreationUrlForTask(task_id))
+      .WillOnce(Return(creation_url));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(page, SetTaskDetails(task_id, creation_url,
+                                   /*replace_navigation_entry=*/true))
+      .WillOnce([&run_loop](const base::Uuid&, const GURL&, bool) {
+        run_loop.Quit();
+      });
+
+  mojo::PendingReceiver<mojom::PageHandler> handler_receiver;
+  controller.CreatePageHandler(page.BindAndGetRemote(),
+                               std::move(handler_receiver));
+
+  run_loop.Run();
+}
+
+class MockMPArchNavigationHandle : public content::MockNavigationHandle {
+ public:
+  MockMPArchNavigationHandle() = default;
+  ~MockMPArchNavigationHandle() override = default;
+
+  bool IsGuestViewMainFrame() const override { return is_guest_view_; }
+  void set_is_guest_view_main_frame(bool is_guest_view) {
+    is_guest_view_ = is_guest_view;
+  }
+
+ private:
+  bool is_guest_view_ = false;
+};
+
+TEST_F(ContextualTasksUiTest, FrameNavObserver_DidFinishNavigation_MPArch) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(features::kGuestViewMPArch);
+
+  testing::NiceMock<MockTaskInfoDelegate> delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", "test");
+  url = net::AppendQueryParameter(url, "mtid", "5678");
+
+  // Simulate an MPArch guest main frame navigation.
+  auto handle = std::make_unique<MockMPArchNavigationHandle>();
+  handle->set_url(url);
+  handle->set_has_committed(true);
+  handle->set_is_guest_view_main_frame(true);
+
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, "5678"))
+      .Times(1);
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillOnce(
+          Return(ContextualTask(base::Uuid::ParseCaseInsensitive(kUuid))));
+
+  observer->DidFinishNavigation(handle.get());
+
+  // Simulate a top-level navigation.
+  auto top_level_handle = std::make_unique<MockMPArchNavigationHandle>();
+  top_level_handle->set_url(url);
+  top_level_handle->set_has_committed(true);
+  top_level_handle->set_is_guest_view_main_frame(false);
+
+  // No interaction with the service should occur since top-level navs are
+  // filtered out.
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, "5678"))
+      .Times(0);
+
+  observer->DidFinishNavigation(top_level_handle.get());
+}
+
+TEST_F(ContextualTasksUiTest, DidFinishNavigation_UpdatesThemeFromCsParam) {
+  MockTaskInfoDelegate delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+  GURL url("https://www.google.com/search?udm=50&cs=1");
+  content::WebContents* wc = embedded_web_contents_.get();
+  blink::web_pref::WebPreferences prefs = wc->GetOrCreateWebPreferences();
+  // Initialize to light mode to verify it changes to dark.
+  prefs.preferred_color_scheme = blink::mojom::PreferredColorScheme::kLight;
+  wc->SetWebPreferences(prefs);
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTask()).WillByDefault(Return(task));
+  auto handle = CreateMockNavigationHandle(url);
+  handle->set_has_committed(true);
+  handle->set_is_same_document(true);
+  observer->DidFinishNavigation(handle.get());
+  blink::web_pref::WebPreferences updated_prefs =
+      wc->GetOrCreateWebPreferences();
+  EXPECT_EQ(updated_prefs.preferred_color_scheme,
+            blink::mojom::PreferredColorScheme::kDark);
+}
+
+TEST_F(ContextualTasksUiTest, CanExpandToFullTab_CobrowseEligible) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(contextual_tasks::kContextualTasks);
+
+  FakeContextualTasksEligibilityManager eligibility_manager;
+  eligibility_manager.SetIsEligible(true);
+  EXPECT_CALL(*service_for_nav_, GetEligibilityManager())
+      .WillRepeatedly(Return(&eligibility_manager));
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  controller.SetIsAiPage(true);
+  EXPECT_TRUE(controller.CanExpandToFullTab());
+}
+
+TEST_F(ContextualTasksUiTest, CanExpandToFullTab_NotCobrowseEligible) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(contextual_tasks::kContextualTasks);
+
+  FakeContextualTasksEligibilityManager eligibility_manager;
+  eligibility_manager.SetIsEligible(false);
+  EXPECT_CALL(*service_for_nav_, GetEligibilityManager())
+      .WillRepeatedly(Return(&eligibility_manager));
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  controller.SetIsAiPage(true);
+  EXPECT_FALSE(controller.CanExpandToFullTab());
+}
+
+TEST_F(ContextualTasksUiTest, CanExpandToFullTab_BecomesEligibleMidSession) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(contextual_tasks::kContextualTasks);
+
+  FakeContextualTasksEligibilityManager eligibility_manager;
+  eligibility_manager.SetIsEligible(false);
+  EXPECT_CALL(*service_for_nav_, GetEligibilityManager())
+      .WillRepeatedly(Return(&eligibility_manager));
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  // Initially ineligible on load.
+  controller.SetIsAiPage(true);
+  EXPECT_FALSE(controller.CanExpandToFullTab());
+
+  // Dynamic eligibility change mid-session to eligible.
+  eligibility_manager.SetIsEligible(true);
+
+  // The cached eligibility value should remain false, keeping the button
+  // hidden.
+  EXPECT_FALSE(controller.CanExpandToFullTab());
+}
+
+TEST_F(ContextualTasksUiTest, CanExpandToFullTab_FeatureDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(contextual_tasks::kContextualTasks);
+
+  FakeContextualTasksEligibilityManager eligibility_manager;
+  eligibility_manager.SetIsEligible(true);
+  EXPECT_CALL(*service_for_nav_, GetEligibilityManager())
+      .WillRepeatedly(Return(&eligibility_manager));
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  controller.SetIsAiPage(true);
+  EXPECT_FALSE(controller.CanExpandToFullTab());
+}
+
+TEST_F(ContextualTasksUiTest, IsCoBrowseOmniboxAction_True) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      omnibox::kWebUIOmniboxAskGAboutThisPage,
+      {{"Omnibox_AskGCoBrowseWithVisualSelection", "true"}});
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  service_for_nav_->SetInitialEntryPointForTask(
+      task_id,
+      omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_COBROWSE_OMNIBOX_ACTION);
+  controller.SetTaskId(task_id);
+
+  EXPECT_TRUE(controller.IsCoBrowseOmniboxAction());
+}
+
+TEST_F(ContextualTasksUiTest, IsCoBrowseOmniboxAction_False_FeatureDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      omnibox::kWebUIOmniboxAskGAboutThisPage);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  service_for_nav_->SetInitialEntryPointForTask(
+      task_id,
+      omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_COBROWSE_OMNIBOX_ACTION);
+  controller.SetTaskId(task_id);
+
+  EXPECT_FALSE(controller.IsCoBrowseOmniboxAction());
+}
+
+TEST_F(ContextualTasksUiTest, IsCoBrowseOmniboxAction_False_OtherEntryPoint) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      omnibox::kWebUIOmniboxAskGAboutThisPage,
+      {{"Omnibox_AskGCoBrowseWithVisualSelection", "true"}});
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  service_for_nav_->SetInitialEntryPointForTask(
+      task_id,
+      omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_COBROWSE_TOOLBAR_BUTTON);
+  controller.SetTaskId(task_id);
+
+  EXPECT_FALSE(controller.IsCoBrowseOmniboxAction());
+}
+
+TEST_F(ContextualTasksUiTest, IsCoBrowseOmniboxAction_False_NoTaskId) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      omnibox::kWebUIOmniboxAskGAboutThisPage,
+      {{"Omnibox_AskGCoBrowseWithVisualSelection", "true"}});
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  controller.SetTaskId(std::nullopt);
+
+  EXPECT_FALSE(controller.IsCoBrowseOmniboxAction());
+}
+
+TEST_F(ContextualTasksUiTest,
+       SetIsAiPage_CoBrowseOmniboxAction_SuppressesLensClose) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      omnibox::kWebUIOmniboxAskGAboutThisPage,
+      {{"Omnibox_AskGCoBrowseWithVisualSelection", "true"}});
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  service_for_nav_->SetInitialEntryPointForTask(
+      task_id,
+      omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_COBROWSE_OMNIBOX_ACTION);
+  controller.SetTaskId(task_id);
+
+  EXPECT_TRUE(controller.IsCoBrowseOmniboxAction());
+  // Calling SetIsAiPage should not trigger CloseLensAsync for CoBrowse Omnibox
+  // Action.
+  controller.SetIsAiPage(true);
+}
+
+TEST_F(ContextualTasksUiTest,
+       DidFinishNavigation_PushTaskDetails_ZeroStateNavigation) {
+  MockTaskInfoDelegate delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL zero_state_url("https://www.google.com/search?udm=50");
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+
+  // During the initial navigation, last_committed_url_ is empty.
+  // We expect PushTaskDetailsToPage to be called with replace_navigation_entry
+  // = true.
+  EXPECT_CALL(*contextual_tasks_service_, CreateTask()).WillOnce(Return(task));
+  EXPECT_CALL(delegate,
+              PushTaskDetailsToPage(std::make_optional(task_id), zero_state_url,
+                                    /*replace_navigation_entry=*/true))
+      .Times(1);
+
+  auto handle = CreateMockNavigationHandle(zero_state_url);
+  handle->set_has_committed(true);
+  observer->DidFinishNavigation(handle.get());
+
+  GURL zero_state_url_with_history_ui(
+      "https://www.google.com/search?udm=50&atvm=1");
+
+  // The URL may change while still in zero state (i.e. open/close history UI)
+  // We expect PushTaskDetailsToPage to be called with replace_navigation_entry
+  // = true and the same task_id.
+  EXPECT_CALL(delegate,
+              PushTaskDetailsToPage(std::make_optional(task_id),
+                                    zero_state_url_with_history_ui,
+                                    /*replace_navigation_entry=*/true))
+      .Times(1);
+
+  auto handle2 = CreateMockNavigationHandle(zero_state_url_with_history_ui);
+  handle2->set_has_committed(true);
+  observer->DidFinishNavigation(handle2.get());
+}
+
+TEST_F(ContextualTasksUiTest,
+       DidFinishNavigation_ZeroState_ReusesTaskIdWhenNoThread) {
+  MockTaskInfoDelegate delegate;
+  base::Uuid existing_task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  SetupMockDelegate(&delegate, existing_task_id, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL zero_state_url("https://www.google.com/search?udm=50");
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTask()).Times(0);
+  EXPECT_CALL(delegate,
+              PushTaskDetailsToPage(std::make_optional(existing_task_id),
+                                    zero_state_url,
+                                    /*replace_navigation_entry=*/true))
+      .Times(1);
+
+  auto handle = CreateMockNavigationHandle(zero_state_url);
+  handle->set_has_committed(true);
+  observer->DidFinishNavigation(handle.get());
+}
+
+TEST_F(ContextualTasksUiTest,
+       DidFinishNavigation_ZeroState_CreatesNewTaskWhenThreadExists) {
+  MockTaskInfoDelegate delegate;
+  base::Uuid old_task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  SetupMockDelegate(&delegate, old_task_id, "thread_123", std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL zero_state_url("https://www.google.com/search?udm=50");
+  base::Uuid new_task_id =
+      base::Uuid::ParseCaseInsensitive("20000000-0000-0000-0000-000000000000");
+  ContextualTask new_task(new_task_id);
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTask())
+      .WillOnce(Return(new_task));
+  EXPECT_CALL(delegate, PushTaskDetailsToPage(
+                            std::make_optional(new_task_id), zero_state_url,
+                            /*replace_navigation_entry=*/true))
+      .Times(1);
+
+  auto handle = CreateMockNavigationHandle(zero_state_url);
+  handle->set_has_committed(true);
+  observer->DidFinishNavigation(handle.get());
+}
+
+TEST_F(ContextualTasksUiTest,
+       DidFinishNavigation_PushTaskDetails_SameTaskUrlChange) {
+  MockTaskInfoDelegate delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+
+  // 1. Initial navigation (first load of a non-zero-state page with thread ID).
+  GURL first_url("https://www.google.com/search?udm=50&mtid=1234&q=first");
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, "1234"))
+      .WillOnce(Return(task));
+  EXPECT_CALL(delegate,
+              PushTaskDetailsToPage(std::make_optional(task_id), first_url,
+                                    /*replace_navigation_entry=*/false))
+      .Times(1);
+
+  auto handle1 = CreateMockNavigationHandle(first_url);
+  handle1->set_has_committed(true);
+  observer->DidFinishNavigation(handle1.get());
+
+  // 2. Subsequent navigation to a new URL with same task ID (thread ID is still
+  // "1234" and query is "second").
+  GURL same_task_url("https://www.google.com/search?udm=50&mtid=1234&q=second");
+  // Old task ID and new task ID are both `task_id`.
+  // We expect PushTaskDetailsToPage to be called with replace_navigation_entry
+  // = true (since old_task_id == new_task_id).
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, "1234"))
+      .WillOnce(Return(task));
+  EXPECT_CALL(delegate,
+              PushTaskDetailsToPage(std::make_optional(task_id), same_task_url,
+                                    /*replace_navigation_entry=*/true))
+      .Times(1);
+
+  auto handle2 = CreateMockNavigationHandle(same_task_url);
+  handle2->set_has_committed(true);
+  observer->DidFinishNavigation(handle2.get());
+}
+
+TEST_F(ContextualTasksUiTest, DidFinishNavigation_PushTaskDetails_TaskChange) {
+  MockTaskInfoDelegate delegate;
+  SetupMockDelegate(&delegate, std::nullopt, std::nullopt, std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  ContextualTask task(task_id);
+
+  // 1. Initial navigation (first load of a non-zero-state page with thread ID).
+  GURL first_url("https://www.google.com/search?udm=50&mtid=1234&q=first");
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, "1234"))
+      .WillOnce(Return(task));
+  EXPECT_CALL(delegate,
+              PushTaskDetailsToPage(std::make_optional(task_id), first_url,
+                                    /*replace_navigation_entry=*/false))
+      .Times(1);
+
+  auto handle1 = CreateMockNavigationHandle(first_url);
+  handle1->set_has_committed(true);
+  observer->DidFinishNavigation(handle1.get());
+
+  // 2. Subsequent navigation that switches to a different task.
+  GURL new_task_url("https://www.google.com/search?udm=50&mtid=5678&q=second");
+  base::Uuid task_id2 =
+      base::Uuid::ParseCaseInsensitive("20000000-0000-0000-0000-000000000000");
+  ContextualTask task2(task_id2);
+
+  EXPECT_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, "5678"))
+      .WillOnce(Return(task2));
+
+  // Old task ID is `task_id` (from previous load), new task ID is `task_id2`.
+  // Since old_task_id != new_task_id, we expect PushTaskDetailsToPage to be
+  // called with replace_navigation_entry = false.
+  EXPECT_CALL(delegate,
+              PushTaskDetailsToPage(std::make_optional(task_id2), new_task_url,
+                                    /*replace_navigation_entry=*/false))
+      .Times(1);
+
+  auto handle2 = CreateMockNavigationHandle(new_task_url);
+  handle2->set_has_committed(true);
+  observer->DidFinishNavigation(handle2.get());
+}
+
+TEST_F(ContextualTasksUiTest, OnRestoredTabsFetched) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  auto mock_handler = std::make_unique<
+      testing::NiceMock<MockContextualTasksComposeboxHandler>>();
+  auto* mock_handler_ptr = mock_handler.get();
+  controller.SetComposeboxHandler(mock_handler_ptr);
+
+  std::vector<searchbox::mojom::TabInfoPtr> restored_tabs;
+  auto tab_info = searchbox::mojom::TabInfo::New();
+  tab_info->url = GURL("https://example.com");
+  tab_info->title = "Example Site";
+  restored_tabs.push_back(std::move(tab_info));
+
+  EXPECT_CALL(*mock_handler_ptr, SetAimThreadRestoredTabs(testing::_))
+      .WillOnce([&](std::vector<searchbox::mojom::TabInfoPtr> tabs) {
+        EXPECT_EQ(tabs.size(), 1u);
+        EXPECT_EQ(tabs[0]->url, GURL("https://example.com"));
+        EXPECT_EQ(tabs[0]->title, "Example Site");
+      });
+
+  controller.OnRestoredTabsFetched(std::move(restored_tabs));
+  controller.SetComposeboxHandler(nullptr);
+}
+
+TEST_F(ContextualTasksUiTest,
+       MultipleBindInterfaceContextualTasksToolbarUIService) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  for (int i = 0; i < 50; ++i) {
+    mojo::Remote<
+        contextual_tasks_toolbar::mojom::ContextualTasksToolbarUIService>
+        remote;
+    controller.BindInterface(remote.BindNewPipeAndPassReceiver());
+    EXPECT_TRUE(remote.is_bound());
+  }
+}
+
+TEST_F(ContextualTasksUiTest, ContextualTasksToolbarUIServiceRebindTest) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::ContextualTasksToolbarUIService>
+      remote1;
+  controller.BindInterface(remote1.BindNewPipeAndPassReceiver());
+  EXPECT_TRUE(remote1.is_bound());
+
+  // Second call (simulating refresh/rebind)
+  mojo::Remote<contextual_tasks_toolbar::mojom::ContextualTasksToolbarUIService>
+      remote2;
+  controller.BindInterface(remote2.BindNewPipeAndPassReceiver());
+  EXPECT_TRUE(remote2.is_bound());
+}
+
+TEST_F(ContextualTasksUiTest, ContextualTasksToolbarUIServiceBindTest) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::ContextualTasksToolbarUIService>
+      remote;
+  controller.BindInterface(remote.BindNewPipeAndPassReceiver());
+  EXPECT_TRUE(remote.is_bound());
+
+  // Binding without an active controller fails with `kFailedPrecondition`.
+  {
+    base::test::TestFuture<
+        base::expected<contextual_tasks_toolbar::mojom::InitialStatePtr,
+                       mojo_base::mojom::ErrorPtr>>
+        future;
+    remote->GetInitialState(future.GetCallback());
+
+    auto result = future.Take();
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error()->code,
+              mojo_base::mojom::Code::kFailedPrecondition);
+  }
+
+  // Binding with an active controller succeeds.
+  FakeContextualTasksPermissionController fake_controller;
+  controller.set_controller(&fake_controller);
+
+  {
+    base::test::TestFuture<
+        base::expected<contextual_tasks_toolbar::mojom::InitialStatePtr,
+                       mojo_base::mojom::ErrorPtr>>
+        future;
+    remote->GetInitialState(future.GetCallback());
+
+    auto result = future.Take();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result.value()->state);
+    EXPECT_TRUE(result.value()->update_stream.is_valid());
+  }
+
+  remote->OnChipClicked(
+      toolbar_ui_api::mojom::LhsChipIdentifier::kPermissionIndicator,
+      /*is_mouse_interaction=*/true);
+  remote.FlushForTesting();
+}
+
+TEST_F(ContextualTasksUiTest, SetThreadTitle_DispatchesToToolbarPage) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      handler_remote;
+  auto handler_receiver = handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page.BindAndGetRemote(),
+                               std::move(handler_receiver));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(toolbar_page, SetThreadTitle("Test Title"))
+      .WillOnce([&run_loop]() { run_loop.Quit(); });
+  controller.SetThreadTitle("Test Title");
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest,
+       SetThreadTitle_Nullopt_DispatchesEmptyStringToToolbarPage) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      handler_remote;
+  auto handler_receiver = handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page.BindAndGetRemote(),
+                               std::move(handler_receiver));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(toolbar_page, SetThreadTitle("")).WillOnce([&run_loop]() {
+    run_loop.Quit();
+  });
+  controller.SetThreadTitle(std::nullopt);
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest,
+       SetThreadTitle_DispatchesToBothLegacyAndToolbarPages) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPage> legacy_page;
+  mojo::PendingReceiver<mojom::PageHandler> legacy_handler_receiver;
+  controller.CreatePageHandler(legacy_page.BindAndGetRemote(),
+                               std::move(legacy_handler_receiver));
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      toolbar_handler_remote;
+  auto toolbar_handler_receiver =
+      toolbar_handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page.BindAndGetRemote(),
+                               std::move(toolbar_handler_receiver));
+
+  base::RunLoop legacy_run_loop;
+  base::RunLoop toolbar_run_loop;
+  EXPECT_CALL(legacy_page, SetThreadTitle("Shared Title"))
+      .WillOnce([&legacy_run_loop]() { legacy_run_loop.Quit(); });
+  EXPECT_CALL(toolbar_page, SetThreadTitle("Shared Title"))
+      .WillOnce([&toolbar_run_loop]() { toolbar_run_loop.Quit(); });
+
+  controller.SetThreadTitle("Shared Title");
+  legacy_run_loop.Run();
+  toolbar_run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest, SetThreadTitle_UnboundToolbarPage_DoesNotCrash) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  // No page handlers bound; SetThreadTitle should safely update internal state
+  // without crashing.
+  controller.SetThreadTitle("Unbound Title");
+  EXPECT_EQ(controller.GetThreadTitle(), "Unbound Title");
+}
+
+TEST_F(ContextualTasksUiTest,
+       SetThreadTitle_ReboundToolbarPage_DispatchesToNewRemote) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page1;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      handler_remote1;
+  auto handler_receiver1 = handler_remote1.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page1.BindAndGetRemote(),
+                               std::move(handler_receiver1));
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page2;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      handler_remote2;
+  auto handler_receiver2 = handler_remote2.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page2.BindAndGetRemote(),
+                               std::move(handler_receiver2));
+
+  // The first page should not receive the call after rebind.
+  EXPECT_CALL(toolbar_page1, SetThreadTitle(testing::_)).Times(0);
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(toolbar_page2, SetThreadTitle("Rebound Title"))
+      .WillOnce([&run_loop]() { run_loop.Quit(); });
+  controller.SetThreadTitle("Rebound Title");
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest, OnSidePanelStateChanged_DispatchesToToolbarPage) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPage> legacy_page;
+  mojo::PendingRemote<contextual_tasks::mojom::PageHandler>
+      legacy_handler_remote;
+  auto legacy_handler_receiver =
+      legacy_handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(legacy_page.BindAndGetRemote(),
+                               std::move(legacy_handler_receiver));
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      handler_remote;
+  auto handler_receiver = handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page.BindAndGetRemote(),
+                               std::move(handler_receiver));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(toolbar_page, OnSidePanelStateChanged()).WillOnce([&run_loop]() {
+    run_loop.Quit();
+  });
+  controller.OnSidePanelStateChanged();
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest,
+       OnSidePanelStateChanged_DispatchesToBothLegacyAndToolbarPages) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPage> legacy_page;
+  mojo::PendingRemote<contextual_tasks::mojom::PageHandler>
+      legacy_handler_remote;
+  auto legacy_handler_receiver =
+      legacy_handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(legacy_page.BindAndGetRemote(),
+                               std::move(legacy_handler_receiver));
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      toolbar_handler_remote;
+  auto toolbar_handler_receiver =
+      toolbar_handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page.BindAndGetRemote(),
+                               std::move(toolbar_handler_receiver));
+
+  base::RunLoop run_loop;
+  int call_count = 0;
+  auto quit_on_both = [&run_loop, &call_count]() {
+    if (++call_count == 2) {
+      run_loop.Quit();
+    }
+  };
+
+  EXPECT_CALL(legacy_page, OnSidePanelStateChanged()).WillOnce(quit_on_both);
+  EXPECT_CALL(toolbar_page, OnSidePanelStateChanged()).WillOnce(quit_on_both);
+  controller.OnSidePanelStateChanged();
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest, OnSidePanelStateChanged_PostRearchitecture) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIPostRearchitecture controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::PageHandler>
+      handler_remote;
+  auto handler_receiver = handler_remote.InitWithNewPipeAndPassReceiver();
+  controller.CreatePageHandler(toolbar_page.BindAndGetRemote(),
+                               std::move(handler_receiver));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(toolbar_page, OnSidePanelStateChanged()).WillOnce([&run_loop]() {
+    run_loop.Quit();
+  });
+  controller.NotifySidePanelStateChanged();
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest,
+       FrameNavObserver_DidFinishNavigation_SearchToZeroState_ResetsTaskId) {
+  MockTaskInfoDelegate delegate;
+  std::optional<base::Uuid> task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> thread_id = std::nullopt;
+  std::optional<std::string> title = std::nullopt;
+
+  SetupMockDelegate(&delegate, task_id, thread_id, title);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  // 1. Navigate to a search URL (without mtid).
+  // This simulates the state where a search was performed but no thread ID
+  // was associated yet.
+  GURL search_url(kAiPageUrl);
+  search_url = net::AppendQueryParameter(search_url, "q", "test");
+
+  // We don't expect OnTaskChanged or UpdateThreadForTask because it returns
+  // early.
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(*contextual_tasks_service_, UpdateThreadForTask(_, _, _, _, _))
+      .Times(0);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle1 =
+      CreateMockNavigationHandle(search_url);
+  observer->DidFinishNavigation(nav_handle1.get());
+
+  // Verify that the observer's last committed URL is updated.
+  EXPECT_EQ(observer->last_committed_url(), search_url);
+
+  // 2. Navigate to zero state (e.g. clicking "New Thread").
+  // This should trigger a task change because we transition from search to zero
+  // state, even though the previous task had no thread ID.
+  GURL zero_state_url(kAiPageUrl);
+
+  base::Uuid new_task_id =
+      base::Uuid::ParseCaseInsensitive("20000000-0000-0000-0000-000000000000");
+  contextual_tasks::ContextualTask new_task(new_task_id);
+  EXPECT_CALL(*contextual_tasks_service_, CreateTask())
+      .WillOnce(Return(new_task));
+
+  // We expect OnTaskChanged to be called with the new task ID.
+  EXPECT_CALL(*service_for_nav_,
+              OnTaskChanged(_, _, Optional(task_id.value()),
+                            Optional(new_task_id), /*is_shown_in_tab=*/false))
+      .Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle2 =
+      CreateMockNavigationHandle(zero_state_url);
+  observer->DidFinishNavigation(nav_handle2.get());
+
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest, DidFinishNavigation_NonAiPage_ResetsTitle) {
+  MockTaskInfoDelegate delegate;
+  std::optional<base::Uuid> task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  std::optional<std::string> thread_id = "5678";
+  std::optional<std::string> title = "previous query title";
+
+  SetupMockDelegate(&delegate, task_id, thread_id, title);
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL non_ai_url("https://google.com/search?q=puppy");
+  ON_CALL(*service_for_nav_, IsAiUrl(non_ai_url)).WillByDefault(Return(false));
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(non_ai_url);
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetThreadTitle(), std::nullopt);
+}
+
+TEST_F(ContextualTasksUiTest, OnPageContextEligibilityChecked) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kContextualTasks);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPage> page;
+  mojo::PendingReceiver<mojom::PageHandler> handler_receiver;
+  controller.CreatePageHandler(page.BindAndGetRemote(),
+                               std::move(handler_receiver));
+
+  base::RunLoop run_loop1;
+  EXPECT_CALL(page, ShowErrorPage()).WillOnce([&run_loop1]() {
+    run_loop1.Quit();
+  });
+  controller.OnPageContextEligibilityChecked(
+      /*is_page_context_eligible=*/false);
+  run_loop1.Run();
+
+  base::RunLoop run_loop2;
+  EXPECT_CALL(page, HideErrorPage()).WillOnce([&run_loop2]() {
+    run_loop2.Quit();
+  });
+  controller.OnPageContextEligibilityChecked(
+      /*is_page_context_eligible=*/true);
+  run_loop2.Run();
+}
+
+// Ensure that when kContextManagementInComposebox is enabled, a pending task
+// with an existing title (e.g. page title) is reused and not replaced by a new
+// task even if the navigation URL's query differs from the initial title.
+TEST_F(ContextualTasksUiTest,
+       PendingTaskWithTitleMismatch_ContextManagementEnabled_ReusesTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  const std::string initial_title = "Wikipedia Page Title";
+  const std::string new_query = "melbourne cricket ground";
+  const std::string thread_id = "5678";
+  const std::string turn_id = "1234";
+
+  // Simulate a pending task created for this session with an initial title.
+  SetupMockDelegate(&delegate, task_id, std::nullopt, initial_title);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", new_query);
+  url = net::AppendQueryParameter(url, "mtid", thread_id);
+  url = net::AppendQueryParameter(url, "mstk", turn_id);
+
+  // A new task should NOT be created; the existing task should be reused.
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id, _, thread_id, Optional(turn_id),
+                                  Optional(new_query)))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+  EXPECT_EQ(delegate.GetThreadId(), thread_id);
+
+  observer.reset();
+}
+
+// Ensure that when kContextManagementInComposebox is disabled, a pending task
+// with a title mismatch creates a new task as before.
+TEST_F(ContextualTasksUiTest,
+       PendingTaskWithTitleMismatch_ContextManagementDisabled_CreatesNewTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid old_task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  base::Uuid new_task_id =
+      base::Uuid::ParseCaseInsensitive("11111111-1111-1111-1111-111111111111");
+  const std::string initial_title = "Wikipedia Page Title";
+  const std::string new_query = "melbourne cricket ground";
+  const std::string thread_id = "5678";
+
+  SetupMockDelegate(&delegate, old_task_id, std::nullopt, initial_title);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", new_query);
+  url = net::AppendQueryParameter(url, "mtid", thread_id);
+
+  ContextualTask new_task(new_task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(new_task));
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, thread_id))
+      .WillByDefault(Return(std::nullopt));
+
+  // Verify that a new task is created due to title mismatch when feature is
+  // off.
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_,
+              OnTaskChanged(_, _, _, Optional(new_task_id), _))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), new_task_id);
+
+  observer.reset();
+}
+
+// Ensure that when kContextManagementInComposebox is enabled, an existing task
+// is reused and not replaced by a new task when the webview performs a
+// same-document navigation updating its thread ID for the same query
+// (e.g. from provisional client mtid to canonical server mtid).
+TEST_F(ContextualTasksUiTest,
+       InPlaceThreadIdUpdate_SameDocSameQuery_ReusesTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  const std::string initial_title = "test";
+  const std::string initial_thread_id = "initial_thread_id";
+  const std::string updated_thread_id = "updated_thread_id";
+  const std::string turn_id = "1234";
+
+  // Simulate an existing task that already has an initial thread ID and title.
+  SetupMockDelegate(&delegate, task_id, initial_thread_id, initial_title);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", initial_title);
+  url = net::AppendQueryParameter(url, "mtid", updated_thread_id);
+  url = net::AppendQueryParameter(url, "mstk", turn_id);
+
+  // A new task should NOT be created; the existing task should be reused.
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id, _, updated_thread_id,
+                                  Optional(turn_id), Optional(initial_title)))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+  nav_handle->set_is_same_document(true);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+  EXPECT_EQ(delegate.GetThreadId(), updated_thread_id);
+
+  observer.reset();
+}
+
+// Ensure that an existing task is reused and not replaced by a new task when
+// the webview performs a same-document navigation updating its thread ID with a
+// server-generated title that differs from the initial query (e.g. when the
+// response finishes loading and updates the header title).
+TEST_F(ContextualTasksUiTest,
+       InPlaceThreadIdUpdate_SameDocDifferentTitle_ReusesTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  const std::string initial_query = "initial query about tabs";
+  const std::string initial_thread_id = "initial_thread_id";
+  const std::string canonical_server_thread_id = "canonical_server_thread_id";
+  const std::string generated_title = "Generated Summary Title";
+  const std::string turn_id = "5678";
+
+  // Simulate an existing task with initial provisional thread ID and query
+  // title.
+  SetupMockDelegate(&delegate, task_id, initial_thread_id, initial_query);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", generated_title);
+  url = net::AppendQueryParameter(url, "mtid", canonical_server_thread_id);
+  url = net::AppendQueryParameter(url, "mstk", turn_id);
+
+  // A new task should NOT be created; the existing task should be reused.
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(0);
+  EXPECT_CALL(delegate, OnTaskChanged()).Times(0);
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id, _, canonical_server_thread_id,
+                                  Optional(turn_id), Optional(generated_title)))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+  nav_handle->set_is_same_document(true);
+  ON_CALL(*nav_handle, HasUserGesture()).WillByDefault(Return(false));
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+  EXPECT_EQ(delegate.GetThreadId(), canonical_server_thread_id);
+  EXPECT_EQ(delegate.GetThreadTitle(), generated_title);
+
+  observer.reset();
+}
+
+// Ensure that even when kContextManagementInComposebox is disabled, an existing
+// task is reused and not replaced on same-document in-place thread ID updates.
+TEST_F(ContextualTasksUiTest,
+       InPlaceThreadIdUpdate_FeatureDisabled_SameDocDifferentTitle_ReusesTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  const std::string initial_query = "initial query";
+  const std::string initial_thread_id = "initial_thread_id";
+  const std::string canonical_server_thread_id = "canonical_server_thread_id";
+  const std::string generated_title = "Server Generated Title";
+
+  SetupMockDelegate(&delegate, task_id, initial_thread_id, initial_query);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", generated_title);
+  url = net::AppendQueryParameter(url, "mtid", canonical_server_thread_id);
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(0);
+  EXPECT_CALL(delegate, OnTaskChanged()).Times(0);
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id, _, canonical_server_thread_id, _,
+                                  Optional(generated_title)))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+  nav_handle->set_is_same_document(true);
+  ON_CALL(*nav_handle, HasUserGesture()).WillByDefault(Return(false));
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+  EXPECT_EQ(delegate.GetThreadId(), canonical_server_thread_id);
+  EXPECT_EQ(delegate.GetThreadTitle(), generated_title);
+
+  observer.reset();
+}
+
+// Ensure that a pending task is reused and attaches the thread ID without
+// creating a new task when a same-document navigation occurs with a generated
+// title.
+TEST_F(ContextualTasksUiTest,
+       InPlaceThreadIdUpdate_PendingTaskSameDoc_ReusesTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  const std::string initial_query = "pending query";
+  const std::string canonical_server_thread_id = "canonical_server_thread_id";
+  const std::string generated_title = "Generated Summary Title";
+
+  // Simulate a pending task (task ID set, no thread ID).
+  SetupMockDelegate(&delegate, task_id, /*thread_id=*/std::nullopt,
+                    initial_query);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", generated_title);
+  url = net::AppendQueryParameter(url, "mtid", canonical_server_thread_id);
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(_)).Times(0);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(0);
+  EXPECT_CALL(delegate, OnTaskChanged()).Times(0);
+  EXPECT_CALL(*contextual_tasks_service_,
+              UpdateThreadForTask(task_id, _, canonical_server_thread_id, _,
+                                  Optional(generated_title)))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+  nav_handle->set_is_same_document(true);
+  ON_CALL(*nav_handle, HasUserGesture()).WillByDefault(Return(false));
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), task_id);
+  EXPECT_EQ(delegate.GetThreadId(), canonical_server_thread_id);
+  EXPECT_EQ(delegate.GetThreadTitle(), generated_title);
+
+  observer.reset();
+}
+
+// Ensure that a user-initiated same-document navigation to a different thread
+// (e.g. selecting a thread from history) creates a new task even when the
+// thread is unknown to the service, so the previous thread's context (such as
+// Smart Tab Sharing) does not leak into the selected thread.
+TEST_F(ContextualTasksUiTest, UserInitiatedSameDocThreadSwitch_CreatesNewTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid old_task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  base::Uuid new_task_id =
+      base::Uuid::ParseCaseInsensitive("22222222-2222-2222-2222-222222222222");
+  const std::string old_title = "current thread";
+  const std::string old_thread_id = "current_thread_id";
+  const std::string history_thread_id = "history_thread_id";
+  const std::string history_title = "Historical Thread Title";
+
+  SetupMockDelegate(&delegate, old_task_id, old_thread_id, old_title);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", history_title);
+  url = net::AppendQueryParameter(url, "mtid", history_thread_id);
+
+  ContextualTask new_task(new_task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(new_task));
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, history_thread_id))
+      .WillByDefault(Return(std::nullopt));
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, Optional(old_task_id),
+                                               Optional(new_task_id), _))
+      .Times(1);
+  EXPECT_CALL(delegate, OnTaskChanged()).Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+  nav_handle->set_is_same_document(true);
+  ON_CALL(*nav_handle, HasUserGesture()).WillByDefault(Return(true));
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), new_task_id);
+  EXPECT_EQ(delegate.GetThreadId(), history_thread_id);
+  EXPECT_EQ(delegate.GetThreadTitle(), history_title);
+
+  observer.reset();
+}
+
+// Ensure that selecting a thread from history while the current task is still
+// pending (has no thread ID yet, e.g. the user switches threads before the
+// response finishes loading) creates a new task rather than attaching the
+// selected thread to the pending task.
+TEST_F(ContextualTasksUiTest,
+       UserInitiatedSameDocThreadSwitch_PendingTask_CreatesNewTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid old_task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  base::Uuid new_task_id =
+      base::Uuid::ParseCaseInsensitive("22222222-2222-2222-2222-222222222222");
+  const std::string history_thread_id = "history_thread_id";
+  const std::string history_title = "Historical Thread Title";
+
+  SetupMockDelegate(&delegate, old_task_id, /*thread_id=*/std::nullopt,
+                    /*title=*/std::nullopt);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", history_title);
+  url = net::AppendQueryParameter(url, "mtid", history_thread_id);
+
+  ContextualTask new_task(new_task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(new_task));
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, history_thread_id))
+      .WillByDefault(Return(std::nullopt));
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_, OnTaskChanged(_, _, Optional(old_task_id),
+                                               Optional(new_task_id), _))
+      .Times(1);
+  EXPECT_CALL(delegate, OnTaskChanged()).Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+  nav_handle->set_is_same_document(true);
+  ON_CALL(*nav_handle, HasUserGesture()).WillByDefault(Return(true));
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), new_task_id);
+  EXPECT_EQ(delegate.GetThreadId(), history_thread_id);
+  EXPECT_EQ(delegate.GetThreadTitle(), history_title);
+
+  observer.reset();
+}
+
+// Ensure that when switching between different threads (different query/title),
+// a new task is created even if kContextManagementInComposebox is enabled,
+// so context does not leak between threads.
+TEST_F(ContextualTasksUiTest, ThreadSwitch_DifferentQuery_CreatesNewTask) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kContextManagementInComposebox);
+
+  MockTaskInfoDelegate delegate;
+  base::Uuid old_task_id = base::Uuid::ParseCaseInsensitive(kUuid);
+  base::Uuid new_task_id =
+      base::Uuid::ParseCaseInsensitive("22222222-2222-2222-2222-222222222222");
+  const std::string old_title = "first query";
+  const std::string new_query = "second query";
+  const std::string old_thread_id = "thread_1";
+  const std::string new_thread_id = "thread_2";
+
+  SetupMockDelegate(&delegate, old_task_id, old_thread_id, old_title);
+
+  auto observer = std::make_unique<ContextualTasksUI::FrameNavObserver>(
+      embedded_web_contents_.get(), service_for_nav_.get(),
+      contextual_tasks_service_.get(), &delegate);
+
+  GURL url(kAiPageUrl);
+  url = net::AppendQueryParameter(url, "q", new_query);
+  url = net::AppendQueryParameter(url, "mtid", new_thread_id);
+
+  ContextualTask new_task(new_task_id);
+  ON_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url))
+      .WillByDefault(Return(new_task));
+  ON_CALL(*contextual_tasks_service_, GetTaskFromServerId(_, new_thread_id))
+      .WillByDefault(Return(std::nullopt));
+
+  EXPECT_CALL(*contextual_tasks_service_, CreateTaskFromUrl(url)).Times(1);
+  EXPECT_CALL(delegate, PrepareForTaskChange()).Times(1);
+  EXPECT_CALL(*service_for_nav_,
+              OnTaskChanged(_, _, _, Optional(new_task_id), _))
+      .Times(1);
+
+  std::unique_ptr<content::MockNavigationHandle> nav_handle =
+      CreateMockNavigationHandle(url);
+
+  observer->DidFinishNavigation(nav_handle.get());
+
+  EXPECT_EQ(delegate.GetTaskId(), new_task_id);
+
+  observer.reset();
+}
+
+TEST_F(ContextualTasksUiTest, CreateWebUIController) {
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+
+  ASSERT_TRUE(controller);
+  EXPECT_NE(controller->GetAs<ContextualTasksUI>(), nullptr);
+}
+
+TEST_F(ContextualTasksUiTest, HelpBubbleHandlerFactoryBindTest) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  mojo::Remote<help_bubble::mojom::HelpBubbleHandlerFactory> remote;
+  controller.BindInterface(remote.BindNewPipeAndPassReceiver());
+  remote.FlushForTesting();
+  EXPECT_TRUE(remote.is_connected());
+}
+
+TEST_F(ContextualTasksUiTest, BaseAccessors_PostRearchitecture) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui =
+      std::make_unique<ContextualTasksUIPostRearchitecture>(&web_ui);
+
+  ASSERT_NE(post_rearch_ui, nullptr);
+  EXPECT_EQ(post_rearch_ui->GetWebUIWebContents(),
+            embedded_web_contents_.get());
+  EXPECT_EQ(post_rearch_ui->GetBrowser(), nullptr);
+  EXPECT_EQ(post_rearch_ui->GetPanelController(), nullptr);
+
+  testing::NiceMock<MockBrowserWindowInterface> mock_browser_window;
+  webui::SetBrowserWindowInterface(embedded_web_contents_.get(),
+                                   &mock_browser_window);
+  EXPECT_EQ(post_rearch_ui->GetBrowser(), &mock_browser_window);
+  webui::SetBrowserWindowInterface(embedded_web_contents_.get(), nullptr);
+}
+
+TEST_F(ContextualTasksUiTest, BaseAccessors_Legacy) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto legacy_ui = std::make_unique<ContextualTasksUI>(&web_ui);
+
+  ASSERT_NE(legacy_ui, nullptr);
+  EXPECT_EQ(legacy_ui->GetWebUIWebContents(), embedded_web_contents_.get());
+  EXPECT_EQ(legacy_ui->GetBrowser(), nullptr);
+  EXPECT_EQ(legacy_ui->GetPanelController(), nullptr);
+
+  testing::NiceMock<MockBrowserWindowInterface> mock_browser_window;
+  webui::SetBrowserWindowInterface(embedded_web_contents_.get(),
+                                   &mock_browser_window);
+  EXPECT_EQ(legacy_ui->GetBrowser(), &mock_browser_window);
+  webui::SetBrowserWindowInterface(embedded_web_contents_.get(), nullptr);
+}
+
+namespace {
+
+class OpenURLCapturingDelegate : public content::WebContentsDelegate {
+ public:
+  content::WebContents* OpenURLFromTab(
+      content::WebContents* source,
+      const content::OpenURLParams& params,
+      base::OnceCallback<void(content::NavigationHandle&)>
+          navigation_handle_callback) override {
+    last_open_url_params_ = params;
+    return source;
+  }
+
+  const std::optional<content::OpenURLParams>& last_open_url_params() const {
+    return last_open_url_params_;
+  }
+
+ private:
+  std::optional<content::OpenURLParams> last_open_url_params_;
+};
+
+}  // namespace
+
+// Regression test for b/564494672: when a renderer-initiated navigation in the
+// side panel <webview> (such as clicking "Exact matches" or "Visual matches")
+// is intercepted and transferred back to the embedded page, the re-dispatched
+// OpenURLParams must have `is_renderer_initiated` reset to false so
+// WebViewGuest::OpenURLFromTab does not preserve `is_renderer_initiated = true`
+// and cause ContextualTasksNavigationThrottle to re-intercept the navigation in
+// an infinite loop.
+TEST_F(ContextualTasksUiTest,
+       TransferNavigationToEmbeddedPage_ResetsRendererInitiated) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto legacy_ui = std::make_unique<ContextualTasksUI>(&web_ui);
+  TriggerOnInnerWebContentsCreated(legacy_ui.get(),
+                                   embedded_web_contents_.get());
+
+  OpenURLCapturingDelegate delegate;
+  embedded_web_contents_->SetDelegate(&delegate);
+
+  GURL exact_matches_url("https://www.google.com/search?q=test&udm=48");
+  content::OpenURLParams renderer_params(
+      exact_matches_url, content::Referrer(),
+      WindowOpenDisposition::CURRENT_TAB, ui::PAGE_TRANSITION_LINK,
+      /*is_renderer_initiated=*/true);
+  renderer_params.initiator_origin =
+      url::Origin::Create(GURL("https://www.google.com"));
+
+  service_for_nav_
+      ->ContextualTasksUiService::OnSearchResultsNavigationInSidePanel(
+          renderer_params, legacy_ui.get());
+
+  ASSERT_TRUE(delegate.last_open_url_params().has_value());
+  EXPECT_EQ(delegate.last_open_url_params()->url, exact_matches_url);
+  EXPECT_FALSE(delegate.last_open_url_params()->is_renderer_initiated);
+
+  embedded_web_contents_->SetDelegate(nullptr);
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(ContextualTasksUiTest, PinSidePanel) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksSidePanelRearchitecture,
+                            contextual_tasks::
+                                kEnableContextualTasksPinButtonInToolbar},
+      /*disabled_features=*/{});
+
+  auto* model = PinnedToolbarActionsModel::Get(profile_);
+  ASSERT_TRUE(model);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(ui, nullptr);
+
+  // Initial state should be unpinned.
+  EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  // Pin the side panel.
+  ui->PinSidePanel();
+  EXPECT_TRUE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  // Now unpin.
+  ui->UnpinSidePanel();
+  EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  // Also test ContextualTasksUIPostRearchitecture directly.
+  content::TestWebUI post_rearch_web_ui;
+  post_rearch_web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui = std::make_unique<ContextualTasksUIPostRearchitecture>(
+      &post_rearch_web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+
+  post_rearch_ui->PinSidePanel();
+  EXPECT_TRUE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  post_rearch_ui->UnpinSidePanel();
+  EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+
+TEST_F(ContextualTasksUiTest, PinSidePanel_FeatureDisabled) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksSidePanelRearchitecture},
+      /*disabled_features=*/{
+          contextual_tasks::kEnableContextualTasksPinButtonInToolbar});
+
+  auto* model = PinnedToolbarActionsModel::Get(profile_);
+  ASSERT_TRUE(model);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(ui, nullptr);
+
+  EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+  ui->PinSidePanel();
+  EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  // Also test ContextualTasksUIPostRearchitecture directly.
+  content::TestWebUI post_rearch_web_ui;
+  post_rearch_web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui = std::make_unique<ContextualTasksUIPostRearchitecture>(
+      &post_rearch_web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+
+  post_rearch_ui->PinSidePanel();
+  EXPECT_FALSE(model->Contains(kActionSidePanelShowContextualTasks));
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+
+TEST_F(ContextualTasksUiTest, OnSidePanelPinStateChanged) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksSidePanelRearchitecture,
+                            contextual_tasks::
+                                kEnableContextualTasksPinButtonInToolbar},
+      /*disabled_features=*/{});
+
+  auto* model = PinnedToolbarActionsModel::Get(profile_);
+  ASSERT_TRUE(model);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(ui, nullptr);
+
+  testing::NiceMock<MockToolbarPage> mock_page;
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> handler_remote;
+  ui->CreatePageHandler(mock_page.BindAndGetRemote(),
+                        handler_remote.BindNewPipeAndPassReceiver());
+
+  mock_page.FlushForTesting();
+
+  // Pinning should trigger OnSidePanelPinStateChanged(true).
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page, OnSidePanelPinStateChanged(true))
+      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
+  ui->PinSidePanel();
+  run_loop.Run();
+
+  // Unpinning should trigger OnSidePanelPinStateChanged(false).
+  base::RunLoop run_loop2;
+  EXPECT_CALL(mock_page, OnSidePanelPinStateChanged(false))
+      .WillOnce(base::test::RunClosure(run_loop2.QuitClosure()));
+  ui->UnpinSidePanel();
+  run_loop2.Run();
+
+  controller.reset();
+
+  // Also test ContextualTasksUIPostRearchitecture directly.
+  content::TestWebUI post_rearch_web_ui;
+  post_rearch_web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui = std::make_unique<ContextualTasksUIPostRearchitecture>(
+      &post_rearch_web_ui);
+  testing::NiceMock<MockToolbarPage> post_rearch_mock_page;
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler>
+      post_rearch_handler_remote;
+  post_rearch_ui->CreatePageHandler(
+      post_rearch_mock_page.BindAndGetRemote(),
+      post_rearch_handler_remote.BindNewPipeAndPassReceiver());
+  post_rearch_mock_page.FlushForTesting();
+
+  base::RunLoop run_loop3;
+  EXPECT_CALL(post_rearch_mock_page, OnSidePanelPinStateChanged(true))
+      .WillOnce(base::test::RunClosure(run_loop3.QuitClosure()));
+  post_rearch_ui->PinSidePanel();
+  run_loop3.Run();
+
+  base::RunLoop run_loop4;
+  EXPECT_CALL(post_rearch_mock_page, OnSidePanelPinStateChanged(false))
+      .WillOnce(base::test::RunClosure(run_loop4.QuitClosure()));
+  post_rearch_ui->UnpinSidePanel();
+  run_loop4.Run();
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+
+TEST_F(ContextualTasksUiTest, OnSidePanelPinStateChanged_ModelDirectUpdate) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksSidePanelRearchitecture,
+                            contextual_tasks::
+                                kEnableContextualTasksPinButtonInToolbar},
+      /*disabled_features=*/{});
+
+  auto* model = PinnedToolbarActionsModel::Get(profile_);
+  ASSERT_TRUE(model);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(ui, nullptr);
+
+  testing::NiceMock<MockToolbarPage> mock_page;
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> handler_remote;
+  ui->CreatePageHandler(mock_page.BindAndGetRemote(),
+                        handler_remote.BindNewPipeAndPassReceiver());
+
+  mock_page.FlushForTesting();
+
+  // Updating model directly triggers observer callback.
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page, OnSidePanelPinStateChanged(true))
+      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
+  model->UpdatePinnedState(kActionSidePanelShowContextualTasks, true);
+  run_loop.Run();
+
+  base::RunLoop run_loop2;
+  EXPECT_CALL(mock_page, OnSidePanelPinStateChanged(false))
+      .WillOnce(base::test::RunClosure(run_loop2.QuitClosure()));
+  model->UpdatePinnedState(kActionSidePanelShowContextualTasks, false);
+  run_loop2.Run();
+
+  controller.reset();
+
+  // Also test ContextualTasksUIPostRearchitecture directly.
+  content::TestWebUI post_rearch_web_ui;
+  post_rearch_web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui = std::make_unique<ContextualTasksUIPostRearchitecture>(
+      &post_rearch_web_ui);
+  testing::NiceMock<MockToolbarPage> post_rearch_mock_page;
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler>
+      post_rearch_handler_remote;
+  post_rearch_ui->CreatePageHandler(
+      post_rearch_mock_page.BindAndGetRemote(),
+      post_rearch_handler_remote.BindNewPipeAndPassReceiver());
+  post_rearch_mock_page.FlushForTesting();
+
+  base::RunLoop run_loop3;
+  EXPECT_CALL(post_rearch_mock_page, OnSidePanelPinStateChanged(true))
+      .WillOnce(base::test::RunClosure(run_loop3.QuitClosure()));
+  model->UpdatePinnedState(kActionSidePanelShowContextualTasks, true);
+  run_loop3.Run();
+
+  base::RunLoop run_loop4;
+  EXPECT_CALL(post_rearch_mock_page, OnSidePanelPinStateChanged(false))
+      .WillOnce(base::test::RunClosure(run_loop4.QuitClosure()));
+  model->UpdatePinnedState(kActionSidePanelShowContextualTasks, false);
+  run_loop4.Run();
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+
+TEST_F(ContextualTasksUiTest,
+       OnSidePanelPinStateChanged_InitialStateWhenPinned) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksSidePanelRearchitecture,
+                            contextual_tasks::
+                                kEnableContextualTasksPinButtonInToolbar},
+      /*disabled_features=*/{});
+
+  auto* model = PinnedToolbarActionsModel::Get(profile_);
+  ASSERT_TRUE(model);
+  model->UpdatePinnedState(kActionSidePanelShowContextualTasks, true);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(ui, nullptr);
+
+  testing::NiceMock<MockToolbarPage> mock_page;
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page, OnSidePanelPinStateChanged(true))
+      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> handler_remote;
+  ui->CreatePageHandler(mock_page.BindAndGetRemote(),
+                        handler_remote.BindNewPipeAndPassReceiver());
+
+  run_loop.Run();
+
+  // Also test ContextualTasksUIPostRearchitecture directly.
+  content::TestWebUI post_rearch_web_ui;
+  post_rearch_web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui = std::make_unique<ContextualTasksUIPostRearchitecture>(
+      &post_rearch_web_ui);
+  testing::NiceMock<MockToolbarPage> post_rearch_mock_page;
+  base::RunLoop run_loop2;
+  EXPECT_CALL(post_rearch_mock_page, OnSidePanelPinStateChanged(true))
+      .WillOnce(base::test::RunClosure(run_loop2.QuitClosure()));
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler>
+      post_rearch_handler_remote;
+  post_rearch_ui->CreatePageHandler(
+      post_rearch_mock_page.BindAndGetRemote(),
+      post_rearch_handler_remote.BindNewPipeAndPassReceiver());
+
+  run_loop2.Run();
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+
+TEST_F(ContextualTasksUiTest, OnSidePanelPinStateChanged_FeatureDisabled) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kContextualTasksSidePanelRearchitecture},
+      /*disabled_features=*/{
+          contextual_tasks::kEnableContextualTasksPinButtonInToolbar});
+
+  auto* model = PinnedToolbarActionsModel::Get(profile_);
+  ASSERT_TRUE(model);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(ui, nullptr);
+
+  testing::StrictMock<MockToolbarPage> mock_page;
+  EXPECT_CALL(mock_page, SetProfileAvatarUrl(_)).Times(testing::AnyNumber());
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> handler_remote;
+  ui->CreatePageHandler(mock_page.BindAndGetRemote(),
+                        handler_remote.BindNewPipeAndPassReceiver());
+
+  mock_page.FlushForTesting();
+
+  model->UpdatePinnedState(kActionSidePanelShowContextualTasks, true);
+  mock_page.FlushForTesting();
+
+  // Also test ContextualTasksUIPostRearchitecture directly.
+  content::TestWebUI post_rearch_web_ui;
+  post_rearch_web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui = std::make_unique<ContextualTasksUIPostRearchitecture>(
+      &post_rearch_web_ui);
+  testing::StrictMock<MockToolbarPage> post_rearch_mock_page;
+  EXPECT_CALL(post_rearch_mock_page, SetProfileAvatarUrl(_))
+      .Times(testing::AnyNumber());
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler>
+      post_rearch_handler_remote;
+  post_rearch_ui->CreatePageHandler(
+      post_rearch_mock_page.BindAndGetRemote(),
+      post_rearch_handler_remote.BindNewPipeAndPassReceiver());
+
+  post_rearch_mock_page.FlushForTesting();
+
+  model->UpdatePinnedState(kActionSidePanelShowContextualTasks, false);
+  post_rearch_mock_page.FlushForTesting();
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+#endif
+
+TEST_F(ContextualTasksUiTest, OpenMyActivityUi_NoBrowser_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->OpenMyActivityUi();
+}
+
+TEST_F(ContextualTasksUiTest, OpenOverflowMenuHelpUi_NoBrowser_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->OpenOverflowMenuHelpUi();
+}
+
+TEST_F(ContextualTasksUiTest, OpenFeedbackUi_NoBrowser_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->OpenFeedbackUi();
+}
+
+TEST_F(ContextualTasksUiTest, MoveTaskUiToNewTab_NoBrowser_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->MoveTaskUiToNewTab();
+}
+
+TEST_F(ContextualTasksUiTest, MoveTaskUiToNewTab_CallsUiService) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto contextual_tasks_ui = std::make_unique<ContextualTasksUI>(&web_ui);
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  contextual_tasks_ui->SetTaskId(task_id);
+
+  EXPECT_CALL(*service_for_nav_, MoveTaskUiToNewTab(task_id, _, _)).Times(1);
+
+  contextual_tasks_ui->MoveTaskUiToNewTab();
+}
+
+// MockToolbarPage and the toolbar page remote are desktop-only, so these tests
+// cannot be compiled on Android.
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(ContextualTasksUiTest, OnAiPageStatusChanged) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto contextual_tasks_ui = std::make_unique<ContextualTasksUI>(&web_ui);
+
+  testing::NiceMock<MockToolbarPage> toolbar_page;
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::Page> remote =
+      toolbar_page.BindAndGetRemote();
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> page_handler;
+  contextual_tasks_ui->CreatePageHandler(
+      std::move(remote), page_handler.BindNewPipeAndPassReceiver());
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(toolbar_page, OnAiPageStatusChanged(true))
+      .WillOnce(testing::InvokeWithoutArgs(&run_loop, &base::RunLoop::Quit));
+  contextual_tasks_ui->SetIsAiPage(true);
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksUiTest, NotifyAiPageStatusChanged_Unbound_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto contextual_tasks_ui = std::make_unique<ContextualTasksUI>(&web_ui);
+  contextual_tasks_ui->NotifyAiPageStatusChanged(true);
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+TEST_F(ContextualTasksUiTest, ShowThreadHistory_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->ShowThreadHistory();
+}
+
+TEST_F(ContextualTasksUiTest, ShowThreadHistory_PostRearchitecture_SafeNoOp) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {kContextualTasks, kContextualTasksSidePanelRearchitecture}, {});
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->ShowThreadHistory();
+}
+
+TEST_F(ContextualTasksUiTest, OnTabClickedFromSourcesMenu_PostRearchitecture) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui =
+      std::make_unique<ContextualTasksUIPostRearchitecture>(&web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+
+  int32_t tab_id = 123;
+  GURL url("https://example.com");
+  EXPECT_CALL(*service_for_nav_, OnTabClickedFromSourcesMenu(tab_id, url, _))
+      .Times(1);
+  post_rearch_ui->OnTabClickedFromSourcesMenu(tab_id, url);
+}
+
+TEST_F(ContextualTasksUiTest, OnFileClickedFromSourcesMenu_PostRearchitecture) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui =
+      std::make_unique<ContextualTasksUIPostRearchitecture>(&web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+
+  GURL url("https://example.com/sample.pdf");
+  EXPECT_CALL(*service_for_nav_, OnFileClickedFromSourcesMenu(url, _)).Times(1);
+  post_rearch_ui->OnFileClickedFromSourcesMenu(url);
+}
+
+TEST_F(ContextualTasksUiTest, OnTabClickedFromSourcesMenu_Legacy) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+
+  ASSERT_TRUE(controller);
+  auto* legacy_ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(legacy_ui, nullptr);
+
+  int32_t tab_id = 123;
+  GURL url("https://example.com");
+  EXPECT_CALL(*service_for_nav_, OnTabClickedFromSourcesMenu(tab_id, url, _))
+      .Times(1);
+  legacy_ui->OnTabClickedFromSourcesMenu(tab_id, url);
+}
+
+TEST_F(ContextualTasksUiTest, OnFileClickedFromSourcesMenu_Legacy) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+
+  ASSERT_TRUE(controller);
+  auto* legacy_ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(legacy_ui, nullptr);
+
+  GURL url("https://example.com/sample.pdf");
+  EXPECT_CALL(*service_for_nav_, OnFileClickedFromSourcesMenu(url, _)).Times(1);
+  legacy_ui->OnFileClickedFromSourcesMenu(url);
+}
+
+TEST_F(ContextualTasksUiTest,
+       OnImageClickedFromSourcesMenu_PostRearchitecture) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui =
+      std::make_unique<ContextualTasksUIPostRearchitecture>(&web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+
+  GURL url("https://example.com/image.png");
+  EXPECT_CALL(*service_for_nav_, OnImageClickedFromSourcesMenu(url, _))
+      .Times(1);
+  post_rearch_ui->OnImageClickedFromSourcesMenu(url);
+}
+
+TEST_F(ContextualTasksUiTest, OnImageClickedFromSourcesMenu_Legacy) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+
+  ASSERT_TRUE(controller);
+  auto* legacy_ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(legacy_ui, nullptr);
+
+  GURL url("https://example.com/image.png");
+  EXPECT_CALL(*service_for_nav_, OnImageClickedFromSourcesMenu(url, _))
+      .Times(1);
+  legacy_ui->OnImageClickedFromSourcesMenu(url);
+}
+
+TEST_F(ContextualTasksUiTest, CloseSidePanel_PostRearchitecture) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui =
+      std::make_unique<ContextualTasksUIPostRearchitecture>(&web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+  // With no panel controller, CloseSidePanel is a safe no-op.
+  post_rearch_ui->CloseSidePanel();
+}
+
+TEST_F(ContextualTasksUiTest, CloseSidePanel_Legacy) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+
+  ASSERT_TRUE(controller);
+  auto* legacy_ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(legacy_ui, nullptr);
+  // With no panel controller, CloseSidePanel is a safe no-op.
+  legacy_ui->CloseSidePanel();
+}
+
+TEST_F(ContextualTasksUiTest, ShowPageInfoBubble_PostRearchitecture) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui =
+      std::make_unique<ContextualTasksUIPostRearchitecture>(&web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+  // With no panel controller, ShowPageInfoBubble is a safe no-op.
+  post_rearch_ui->ShowPageInfoBubble(/*is_pointer_interaction=*/true);
+  post_rearch_ui->ShowPageInfoBubble(/*is_pointer_interaction=*/false);
+}
+
+TEST_F(ContextualTasksUiTest, ShowPageInfoBubble_Legacy) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+
+  ASSERT_TRUE(controller);
+  auto* legacy_ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(legacy_ui, nullptr);
+  // With no panel controller, ShowPageInfoBubble is a safe no-op.
+  legacy_ui->ShowPageInfoBubble(/*is_pointer_interaction=*/true);
+  legacy_ui->ShowPageInfoBubble(/*is_pointer_interaction=*/false);
+}
+
+TEST_F(ContextualTasksUiTest, OnLogoPointerDown_PostRearchitecture) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto post_rearch_ui =
+      std::make_unique<ContextualTasksUIPostRearchitecture>(&web_ui);
+  ASSERT_NE(post_rearch_ui, nullptr);
+  // With no panel controller, OnLogoPointerDown is a safe no-op.
+  post_rearch_ui->OnLogoPointerDown();
+}
+
+TEST_F(ContextualTasksUiTest, OnLogoPointerDown_Legacy) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      kContextualTasksSidePanelRearchitecture);
+
+  ContextualTasksUIConfig config;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+
+  ASSERT_TRUE(controller);
+  auto* legacy_ui = controller->GetAs<ContextualTasksUI>();
+  ASSERT_NE(legacy_ui, nullptr);
+  // With no panel controller, OnLogoPointerDown is a safe no-op.
+  legacy_ui->OnLogoPointerDown();
+}
+
+// ContextualTasksUI::UpdateExpandButtonEnabled() only forwards to the toolbar
+// page on desktop, so this test would hang waiting on the mock on Android.
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(ContextualTasksUiTest, UpdateExpandButtonEnabled) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  auto contextual_tasks_ui = std::make_unique<ContextualTasksUI>(&web_ui);
+
+  testing::NiceMock<MockContextualTasksToolbarPage> toolbar_page;
+  mojo::Receiver<contextual_tasks_toolbar::mojom::Page> receiver{&toolbar_page};
+  mojo::PendingRemote<contextual_tasks_toolbar::mojom::Page> remote =
+      receiver.BindNewPipeAndPassRemote();
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> page_handler;
+  contextual_tasks_ui->CreatePageHandler(
+      std::move(remote), page_handler.BindNewPipeAndPassReceiver());
+
+  ContextualTasksUIInterface* ui_interface = contextual_tasks_ui.get();
+
+  base::RunLoop run_loop_true;
+  EXPECT_CALL(toolbar_page, SetExpandButtonEnabled(true))
+      .WillOnce(
+          testing::InvokeWithoutArgs(&run_loop_true, &base::RunLoop::Quit));
+  ui_interface->UpdateExpandButtonEnabled(true);
+  run_loop_true.Run();
+
+  base::RunLoop run_loop_false;
+  EXPECT_CALL(toolbar_page, SetExpandButtonEnabled(false))
+      .WillOnce(
+          testing::InvokeWithoutArgs(&run_loop_false, &base::RunLoop::Quit));
+  ui_interface->UpdateExpandButtonEnabled(false);
+  run_loop_false.Run();
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+TEST_F(ContextualTasksUiTest, CreateNewThread_NoPanelController_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+  controller.set_panel_controller(nullptr);
+
+  // Should exit safely without crashing.
+  controller.CreateNewThread();
+}
+
+TEST_F(ContextualTasksUiTest, CreateNewThread_NoActiveWebContents_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  controller.set_panel_controller(&mock_panel_controller);
+
+  EXPECT_CALL(mock_panel_controller, GetActiveWebContents())
+      .WillRepeatedly(Return(nullptr));
+
+  // Should exit safely without crashing.
+  controller.CreateNewThread();
+}
+
+TEST_F(ContextualTasksUiTest, CreateNewThread_Success_WithTaskId) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  controller.set_panel_controller(&mock_panel_controller);
+
+  std::unique_ptr<content::WebContents> active_web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  EXPECT_CALL(mock_panel_controller, GetActiveWebContents())
+      .WillRepeatedly(Return(active_web_contents.get()));
+
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  EXPECT_CALL(mock_panel_controller, GetCurrentTask())
+      .WillRepeatedly(Return(ContextualTask(task_id)));
+
+  GURL raw_url("https://www.google.com/search?udm=50");
+  EXPECT_CALL(*service_for_nav_, GetDefaultAiPageUrlForTask(task_id))
+      .WillOnce(Return(raw_url));
+
+  controller.SetThreadTitle("Existing Thread Title");
+  EXPECT_EQ(controller.GetThreadTitle(), "Existing Thread Title");
+
+  testing::NiceMock<MockToolbarPage> mock_toolbar_page;
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler>
+      page_handler_remote;
+  EXPECT_CALL(mock_toolbar_page, SetThreadTitle("Existing Thread Title"))
+      .Times(1);
+  controller.CreatePageHandler(
+      mock_toolbar_page.BindAndPassRemote(),
+      page_handler_remote.BindNewPipeAndPassReceiver());
+  mock_toolbar_page.FlushForTesting();
+
+  EXPECT_CALL(mock_toolbar_page, SetThreadTitle(std::string())).Times(1);
+
+  controller.CreateNewThread();
+
+  mock_toolbar_page.FlushForTesting();
+  EXPECT_EQ(controller.GetThreadTitle(), std::nullopt);
+
+  GURL expected_url = ContextualTasksUiService::AddRequiredSidePanelUrlChanges(
+      raw_url, active_web_contents.get());
+  EXPECT_EQ(active_web_contents->GetVisibleURL(), expected_url);
+}
+
+TEST_F(ContextualTasksUiTest, CreateNewThread_Success_NoTaskId) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  controller.set_panel_controller(&mock_panel_controller);
+
+  std::unique_ptr<content::WebContents> active_web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  EXPECT_CALL(mock_panel_controller, GetActiveWebContents())
+      .WillRepeatedly(Return(active_web_contents.get()));
+
+  EXPECT_CALL(mock_panel_controller, GetCurrentTask())
+      .WillRepeatedly(Return(std::nullopt));
+
+  GURL raw_url("https://www.google.com/search?udm=50");
+  EXPECT_CALL(*service_for_nav_, GetDefaultAiPageUrl())
+      .WillOnce(Return(raw_url));
+
+  testing::NiceMock<MockToolbarPage> mock_toolbar_page;
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler>
+      page_handler_remote;
+  controller.CreatePageHandler(
+      mock_toolbar_page.BindAndPassRemote(),
+      page_handler_remote.BindNewPipeAndPassReceiver());
+
+  EXPECT_CALL(mock_toolbar_page, SetThreadTitle(std::string())).Times(1);
+
+  controller.CreateNewThread();
+
+  mock_toolbar_page.FlushForTesting();
+
+  GURL expected_url = ContextualTasksUiService::AddRequiredSidePanelUrlChanges(
+      raw_url, active_web_contents.get());
+  EXPECT_EQ(active_web_contents->GetVisibleURL(), expected_url);
+}
+
+TEST_F(ContextualTasksUiTest, CreateNewThread_LegacyUI_ClearsThreadTitle) {
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  std::unique_ptr<content::WebContents> active_web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
+  EXPECT_CALL(mock_panel_controller, GetActiveWebContents())
+      .WillRepeatedly(Return(active_web_contents.get()));
+  EXPECT_CALL(mock_panel_controller, GetCurrentTask())
+      .WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(*service_for_nav_, GetDefaultAiPageUrl())
+      .WillOnce(Return(GURL("https://www.google.com/search?udm=50")));
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUI controller(&web_ui);
+  controller.set_panel_controller(&mock_panel_controller);
+
+  controller.SetThreadTitle("Existing Thread Title");
+  EXPECT_EQ(controller.GetThreadTitle(), "Existing Thread Title");
+
+  controller.CreateNewThread();
+
+  EXPECT_EQ(controller.GetThreadTitle(), std::nullopt);
+}
+
+TEST_F(ContextualTasksUiTest, MaybeTriggerPinningPromo_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->MaybeTriggerPinningPromo();
+}
+
+TEST_F(ContextualTasksUiTest,
+       MaybeTriggerPinningPromo_PostRearchitecture_SafeNoOp) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {kContextualTasks, kContextualTasksSidePanelRearchitecture}, {});
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->MaybeTriggerPinningPromo();
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(ContextualTasksUiTest, MaybeTriggerPinningPromo_PanelClosed) {
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUI controller(&web_ui);
+  controller.set_panel_controller(&mock_panel_controller);
+
+  // If the side panel is not open for Contextual Tasks, we should not attempt
+  // to trigger the promo (no-op).
+  EXPECT_CALL(mock_panel_controller, IsPanelOpenForContextualTask())
+      .WillOnce(Return(false));
+
+  controller.MaybeTriggerPinningPromo();
+}
+
+TEST_F(ContextualTasksUiTest, MaybeTriggerPinningPromo_Success) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/
+      {contextual_tasks::kEnableContextualTasksPinButtonInToolbar,
+       feature_engagement::kIPHSidePanelContextualTasksPinnableFeature},
+      /*disabled_features=*/{
+          contextual_tasks::kContextualTasksHideMenuOnAiPage});
+
+  // Set the post-onboarding session count to meet the default threshold (2).
+  profile_->GetPrefs()->SetInteger(
+      contextual_tasks::kContextualTasksSessionCountPostOnboarding, 2);
+
+  testing::NiceMock<MockBrowserWindowInterface> mock_browser_window;
+  ui::UnownedUserDataHost window_user_data_host;
+  ON_CALL(mock_browser_window, GetUnownedUserDataHost())
+      .WillByDefault(ReturnRef(window_user_data_host));
+  ON_CALL(mock_browser_window, GetProfile()).WillByDefault(Return(profile_));
+
+  // Instantiating MockBrowserUserEducationInterface automatically attaches it
+  // to the mock_browser_window (via the UnownedUserDataHost).
+  MockBrowserUserEducationInterface mock_user_education(&mock_browser_window);
+
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUI controller(&web_ui);
+  controller.set_panel_controller(&mock_panel_controller);
+  controller.set_browser_window(&mock_browser_window);
+
+  EXPECT_CALL(mock_panel_controller, IsPanelOpenForContextualTask())
+      .WillOnce(Return(true));
+  EXPECT_CALL(*service_for_nav_, IsAiUrl(_)).WillOnce(Return(true));
+
+  // The pinning promo is expected to be tried.
+  EXPECT_CALL(
+      mock_user_education,
+      MaybeShowFeaturePromo(
+          testing::Matcher<user_education::FeaturePromoParams>(testing::_)))
+      .WillOnce(Return(true));
+
+  controller.MaybeTriggerPinningPromo();
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+
+TEST_F(ContextualTasksUiTest,
+       MaybeTriggerPinningPromo_SessionsLessThanThreshold) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/
+      {contextual_tasks::kEnableContextualTasksPinButtonInToolbar,
+       feature_engagement::kIPHSidePanelContextualTasksPinnableFeature},
+      /*disabled_features=*/{
+          contextual_tasks::kContextualTasksHideMenuOnAiPage});
+
+  // Set the count to 1 (less than the default threshold of 2).
+  profile_->GetPrefs()->SetInteger(
+      contextual_tasks::kContextualTasksSessionCountPostOnboarding, 1);
+
+  testing::NiceMock<MockBrowserWindowInterface> mock_browser_window;
+  ui::UnownedUserDataHost window_user_data_host;
+  ON_CALL(mock_browser_window, GetUnownedUserDataHost())
+      .WillByDefault(ReturnRef(window_user_data_host));
+  ON_CALL(mock_browser_window, GetProfile()).WillByDefault(Return(profile_));
+
+  MockBrowserUserEducationInterface mock_user_education(&mock_browser_window);
+
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUI controller(&web_ui);
+  controller.set_panel_controller(&mock_panel_controller);
+  controller.set_browser_window(&mock_browser_window);
+
+  EXPECT_CALL(mock_panel_controller, IsPanelOpenForContextualTask())
+      .WillOnce(Return(true));
+  EXPECT_CALL(*service_for_nav_, IsAiUrl(_)).WillOnce(Return(true));
+
+  // The pinning promo is NOT expected to be tried because threshold (2) is not
+  // met.
+  EXPECT_CALL(
+      mock_user_education,
+      MaybeShowFeaturePromo(
+          testing::Matcher<user_education::FeaturePromoParams>(testing::_)))
+      .Times(0);
+
+  controller.MaybeTriggerPinningPromo();
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+
+TEST_F(ContextualTasksUiTest,
+       MaybeTriggerPinningPromo_HideMenuOnAiPageEnabled) {
+  InitializeActionIdStringMapping();
+  base::test::ScopedFeatureList test_features;
+  test_features.InitWithFeatures(
+      /*enabled_features=*/
+      {contextual_tasks::kEnableContextualTasksPinButtonInToolbar,
+       feature_engagement::kIPHSidePanelContextualTasksPinnableFeature,
+       contextual_tasks::kContextualTasksHideMenuOnAiPage},
+      /*disabled_features=*/{});
+
+  testing::NiceMock<MockBrowserWindowInterface> mock_browser_window;
+  ui::UnownedUserDataHost window_user_data_host;
+  ON_CALL(mock_browser_window, GetUnownedUserDataHost())
+      .WillByDefault(ReturnRef(window_user_data_host));
+  ON_CALL(mock_browser_window, GetProfile()).WillByDefault(Return(profile_));
+
+  MockBrowserUserEducationInterface mock_user_education(&mock_browser_window);
+
+  testing::NiceMock<MockContextualTasksPanelController> mock_panel_controller;
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUI controller(&web_ui);
+  controller.set_panel_controller(&mock_panel_controller);
+  controller.set_browser_window(&mock_browser_window);
+
+  EXPECT_CALL(mock_panel_controller, IsPanelOpenForContextualTask())
+      .WillOnce(Return(true));
+
+  // The pinning promo is not expected to be tried.
+  EXPECT_CALL(
+      mock_user_education,
+      MaybeShowFeaturePromo(
+          testing::Matcher<user_education::FeaturePromoParams>(testing::_)))
+      .Times(0);
+
+  controller.MaybeTriggerPinningPromo();
+
+  actions::ActionIdMap::ResetMapsForTesting();
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+TEST_F(ContextualTasksUiTest, ProfileIndicator_SignedOutInitially) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandlerFactory>
+      factory_remote;
+  controller.BindInterface(factory_remote.BindNewPipeAndPassReceiver());
+
+  testing::NiceMock<MockContextualTasksToolbarPage> mock_page;
+  base::test::TestFuture<GURL> future;
+  EXPECT_CALL(mock_page, SetProfileAvatarUrl(_))
+      .WillOnce(
+          [&future](const GURL& avatar_url) { future.SetValue(avatar_url); });
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> page_handler;
+  factory_remote->CreatePageHandler(mock_page.BindAndGetRemote(),
+                                    page_handler.BindNewPipeAndPassReceiver());
+
+  GURL avatar_url = future.Take();
+  EXPECT_EQ(avatar_url, GURL(profiles::GetPlaceholderAvatarIconUrl()));
+}
+
+TEST_F(ContextualTasksUiTest, ProfileIndicator_WebSignedInWithExtendedInfo) {
+  AccountInfo account_info =
+      identity_test_env()->MakeAccountAvailable("user@example.com");
+  SkBitmap bitmap;
+  bitmap.allocN32Pixels(16, 16);
+  bitmap.eraseColor(SK_ColorBLUE);
+  signin::SimulateAccountImageFetch(
+      identity_test_env()->identity_manager(), account_info.GetAccountId(),
+      "https://example.com/avatar.png", gfx::Image::CreateFrom1xBitmap(bitmap));
+  identity_test_env()->SetCookieAccounts(
+      {{std::string(account_info.GetEmail()), account_info.GetGaiaId()}});
+
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandlerFactory>
+      factory_remote;
+  controller.BindInterface(factory_remote.BindNewPipeAndPassReceiver());
+
+  testing::NiceMock<MockContextualTasksToolbarPage> mock_page;
+  base::test::TestFuture<GURL> future;
+  EXPECT_CALL(mock_page, SetProfileAvatarUrl(_))
+      .WillOnce(
+          [&future](const GURL& avatar_url) { future.SetValue(avatar_url); });
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> page_handler;
+  factory_remote->CreatePageHandler(mock_page.BindAndGetRemote(),
+                                    page_handler.BindNewPipeAndPassReceiver());
+
+  GURL avatar_url = future.Take();
+  EXPECT_TRUE(avatar_url.is_valid());
+  EXPECT_TRUE(avatar_url.spec().starts_with("data:image/png;base64,"));
+}
+
+TEST_F(ContextualTasksUiTest,
+       ProfileIndicator_UpdateProfileIndicatorPushesAvatarUrl) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  TestContextualTasksUIBase controller(&web_ui);
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandlerFactory>
+      factory_remote;
+  controller.BindInterface(factory_remote.BindNewPipeAndPassReceiver());
+
+  testing::NiceMock<MockContextualTasksToolbarPage> mock_page;
+  base::test::TestFuture<GURL> future;
+
+  EXPECT_CALL(mock_page, SetProfileAvatarUrl(_))
+      .WillRepeatedly(
+          [&future](const GURL& avatar_url) { future.SetValue(avatar_url); });
+
+  mojo::Remote<contextual_tasks_toolbar::mojom::PageHandler> page_handler;
+  factory_remote->CreatePageHandler(mock_page.BindAndGetRemote(),
+                                    page_handler.BindNewPipeAndPassReceiver());
+
+  GURL initial_avatar_url = future.Take();
+  EXPECT_EQ(initial_avatar_url, GURL(profiles::GetPlaceholderAvatarIconUrl()));
+
+  AccountInfo account_info =
+      identity_test_env()->MakeAccountAvailable("cookie_user@example.com");
+  SkBitmap bitmap;
+  bitmap.allocN32Pixels(16, 16);
+  bitmap.eraseColor(SK_ColorGREEN);
+  signin::SimulateAccountImageFetch(
+      identity_test_env()->identity_manager(), account_info.GetAccountId(),
+      "https://example.com/avatar.png", gfx::Image::CreateFrom1xBitmap(bitmap));
+  identity_test_env()->SetCookieAccounts(
+      {{std::string(account_info.GetEmail()), account_info.GetGaiaId()}});
+
+  controller.UpdateProfileIndicator(GURL("https://google.com/search"));
+
+  GURL updated_avatar_url = future.Take();
+  EXPECT_TRUE(updated_avatar_url.is_valid());
+  EXPECT_TRUE(updated_avatar_url.spec().starts_with("data:image/png;base64,"));
+
+  // Add a second signed-in account with a different avatar and verify
+  // authuser=1 selects the second account's avatar.
+  AccountInfo second_account =
+      identity_test_env()->MakeAccountAvailable("second_user@example.com");
+  SkBitmap second_bitmap;
+  second_bitmap.allocN32Pixels(16, 16);
+  second_bitmap.eraseColor(SK_ColorYELLOW);
+  signin::SimulateAccountImageFetch(
+      identity_test_env()->identity_manager(), second_account.GetAccountId(),
+      "https://example.com/avatar2.png",
+      gfx::Image::CreateFrom1xBitmap(second_bitmap));
+  identity_test_env()->SetCookieAccounts(
+      {{std::string(account_info.GetEmail()), account_info.GetGaiaId(),
+        /*signed_out=*/true},
+       {std::string(second_account.GetEmail()), second_account.GetGaiaId(),
+        /*signed_out=*/false}});
+
+  // Account 0 is signed_out=true, so index 0 falls back to the placeholder.
+  controller.UpdateProfileIndicator(
+      GURL("https://google.com/search?authuser=0"));
+  EXPECT_EQ(future.Take(), GURL(profiles::GetPlaceholderAvatarIconUrl()));
+
+  // Account 1 is signed in with its own avatar bitmap.
+  controller.UpdateProfileIndicator(
+      GURL("https://google.com/search?authuser=1"));
+  GURL second_avatar_url = future.Take();
+  EXPECT_TRUE(second_avatar_url.is_valid());
+  EXPECT_TRUE(second_avatar_url.spec().starts_with("data:image/png;base64,"));
+  EXPECT_NE(second_avatar_url, updated_avatar_url);
+}
+
+TEST_F(ContextualTasksUiTest, ProfileIndicator_LoadTimeDataPopulated) {
+  // Signed-out test.
+  base::DictValue signed_out_dict =
+      ContextualTasksUIBase::GetContextualTasksLoadTimeData(profile_);
+  const std::string* avatar_url =
+      signed_out_dict.FindString("profileAvatarUrl");
+  ASSERT_TRUE(avatar_url);
+  EXPECT_EQ(*avatar_url, profiles::GetPlaceholderAvatarIconUrl());
+
+  // Signed-in test.
+  AccountInfo account_info =
+      identity_test_env()->MakeAccountAvailable("user@example.com");
+  SkBitmap bitmap;
+  bitmap.allocN32Pixels(16, 16);
+  bitmap.eraseColor(SK_ColorRED);
+  signin::SimulateAccountImageFetch(
+      identity_test_env()->identity_manager(), account_info.GetAccountId(),
+      "https://example.com/avatar.png", gfx::Image::CreateFrom1xBitmap(bitmap));
+  identity_test_env()->SetCookieAccounts(
+      {{std::string(account_info.GetEmail()), account_info.GetGaiaId()}});
+
+  base::DictValue signed_in_dict =
+      ContextualTasksUIBase::GetContextualTasksLoadTimeData(profile_);
+  const std::string* signed_in_avatar_url =
+      signed_in_dict.FindString("profileAvatarUrl");
+  ASSERT_TRUE(signed_in_avatar_url);
+  EXPECT_TRUE(signed_in_avatar_url->starts_with("data:image/png;base64,"));
+}
+}  // namespace contextual_tasks

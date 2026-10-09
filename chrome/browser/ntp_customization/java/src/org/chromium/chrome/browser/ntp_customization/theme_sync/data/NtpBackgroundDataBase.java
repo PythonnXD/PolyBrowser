@@ -1,0 +1,148 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ntp_customization.theme_sync.data;
+
+import android.graphics.Bitmap;
+import android.graphics.drawable.Drawable;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import org.chromium.base.Callback;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundType;
+
+import java.util.Objects;
+
+/** Base class for NTP background data. */
+@NullMarked
+public class NtpBackgroundDataBase {
+    public static final String PORTRAIT_MATRIX_KEY = "portraitMatrix";
+    public static final String LANDSCAPE_MATRIX_KEY = "landscapeMatrix";
+    public static final String BACKGROUND_IMAGE_INFO_KEY = "backgroundImageInfo";
+
+    @VisibleForTesting static final String PLATFORM_TYPE_KEY = "platformType";
+    @VisibleForTesting static final String BACKGROUND_TYPE_KEY = "backgroundType";
+    @VisibleForTesting static final String PRIMARY_COLOR_KEY = "primaryColor";
+    @VisibleForTesting static final String FILE_ID_HASH_KEY = "fileIdHash";
+
+    private final @PlatformType int mPlatformType;
+    private @Nullable String mContentDescription;
+
+    /**
+     * @param platformType The type of platform where this NTP background data comes from.
+     */
+    public NtpBackgroundDataBase(@PlatformType int platformType) {
+        mPlatformType = platformType;
+    }
+
+    /**
+     * @param platformType The type of platform where this NTP background data comes from.
+     * @param contentDescription The content description string.
+     */
+    public NtpBackgroundDataBase(@PlatformType int platformType, String contentDescription) {
+        mPlatformType = platformType;
+        mContentDescription = contentDescription;
+    }
+
+    /** Returns the platform type. */
+    public @PlatformType int getPlatformType() {
+        return mPlatformType;
+    }
+
+    /** Returns the NTP background type. */
+    public @NtpBackgroundType int getBackgroundType() {
+        return NtpBackgroundType.DEFAULT;
+    }
+
+    /** Returns the image drawable of this background data. */
+    public @Nullable Drawable getImageDrawable() {
+        return null;
+    }
+
+    /** Sets the accessibility content description for this NTP background data. */
+    public void setContentDescription(@Nullable String contentDescription) {
+        mContentDescription = contentDescription;
+    }
+
+    /** Returns the accessibility content description for this NTP background data. */
+    public @Nullable String getContentDescription() {
+        return mContentDescription;
+    }
+
+    /**
+     * Gets the bitmap image and loads it asynchronously if not available
+     *
+     * @param onImageAvailableCallback The callback to invoke when the image is loaded.
+     */
+    public void getBitmapOrLoadImage(Callback<@Nullable Bitmap> onImageAvailableCallback) {}
+
+    /** Returns the JSON representation of the object. */
+    public JSONObject toJson() throws JSONException {
+        JSONObject json = new JSONObject();
+        json.put(PLATFORM_TYPE_KEY, mPlatformType);
+        json.put(BACKGROUND_TYPE_KEY, getBackgroundType());
+        return json;
+    }
+
+    @Override
+    public boolean equals(@Nullable Object obj) {
+        if (obj instanceof NtpBackgroundDataBase other) {
+            // A theme is identified by what it looks like, not by the device it came from. The
+            // sync payload carries no platform of origin, so the same background reaches this
+            // device tagged ANDROID when it is replayed through sync and tagged DESKTOP or IOS
+            // when it is listed as a cross device history entry. Comparing the platform would
+            // make those two copies distinct and show the same background twice.
+            return getBackgroundType() == other.getBackgroundType();
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether this background data has the same theme identity and primary color as {@code
+     * obj}.
+     *
+     * <p>Unlike {@link #equals}, which compares theme identity (ignoring primary color for theme
+     * collections so that color updates merge into the existing history entry), this method also
+     * checks whether the primary color matches. Callers that decide whether to re-apply a theme or
+     * recreate the activity should use this method so that color-only updates are applied.
+     *
+     * <p>Neither method compares the platform type (where an entry came from) or, for theme
+     * collections, the attribution string (display-only text that can differ in language and format
+     * for the same image).
+     */
+    public boolean hasSameThemeAndColor(@Nullable Object obj) {
+        return equals(obj);
+    }
+
+    /**
+     * Returns whether this background data has the same theme identity as {@code obj} and a
+     * compatible primary color.
+     *
+     * <p>For theme collection images, this is like {@link #hasSameThemeAndColor}, but a null
+     * primary color on either side is treated as "unknown" and matches any color. For example, iOS
+     * never sends a primary color, so an iOS theme collection with the same image as a Desktop or
+     * Android theme collection with a known primary color is considered the same theme. Two
+     * non-null colors must still match.
+     *
+     * <p>For all other background types, this is the same as {@link #hasSameThemeAndColor}.
+     */
+    public boolean hasSameThemeAndCompatibleColor(@Nullable Object obj) {
+        return equals(obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getBackgroundType());
+    }
+
+    /** Returns the image bitmap of this background data. */
+    public @Nullable Bitmap getImageBitmapForTesting() {
+        return null;
+    }
+}

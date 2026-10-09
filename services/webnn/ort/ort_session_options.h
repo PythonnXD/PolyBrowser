@@ -1,0 +1,108 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef SERVICES_WEBNN_ORT_ORT_SESSION_OPTIONS_H_
+#define SERVICES_WEBNN_ORT_ORT_SESSION_OPTIONS_H_
+
+#include <optional>
+#include <string>
+
+#include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/types/expected.h"
+#include "base/types/pass_key.h"
+#include "services/webnn/ort/scoped_ort_types.h"
+#include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
+#include "services/webnn/public/mojom/webnn_device.mojom.h"
+#include "services/webnn/public/mojom/webnn_error.mojom.h"
+#include "services/webnn/public/mojom/webnn_service_introspection.mojom-forward.h"
+#include "third_party/windows_app_sdk_headers/src/inc/abi/winml/winml/onnxruntime_c_api.h"
+
+namespace base {
+class CommandLine;
+}
+
+namespace webnn {
+
+struct EpDeviceInfo;
+
+namespace ort {
+
+class Environment;
+
+void COMPONENT_EXPORT(WEBNN_SERVICE) ApplySessionConfigEntriesFromCommandLine(
+    OrtSessionOptions* session_options,
+    const base::CommandLine& command_line);
+
+// `SessionOptions` is a wrapper of `OrtSessionOptions` and used to create
+// sessions on background threads.
+class SessionOptions final : public base::RefCountedThreadSafe<SessionOptions> {
+ public:
+  // Applies the auto EP selection policy to configure the EPs based on
+  // `context_options`.
+  static base::expected<scoped_refptr<SessionOptions>, std::string> Create(
+      mojom::CreateContextOptionsPtr context_options,
+      scoped_refptr<Environment> env);
+
+  // Selects the target EP device directly, bypassing the auto EP selection
+  // policy. Used by the GPU process to create dispatch sessions that consume
+  // models already compiled by the Compiler process. Applies additional
+  // hardening.
+  static scoped_refptr<SessionOptions> CreateForDispatch(
+      const EpDeviceInfo& target_device,
+      scoped_refptr<Environment> env);
+
+  // Selects the target EP device directly, bypassing the auto EP selection
+  // policy. Used by the Compiler process for model compilation and EP warmup.
+  static scoped_refptr<SessionOptions> CreateForCompilation(
+      const EpDeviceInfo& target_device,
+      scoped_refptr<Environment> env);
+
+  SessionOptions(base::PassKey<SessionOptions>,
+                 ScopedOrtSessionOptions session_options,
+                 scoped_refptr<Environment> env,
+                 const OrtEpDevice* first_selected_device,
+                 mojom::CreateContextOptionsPtr context_options);
+
+  SessionOptions(const SessionOptions&) = delete;
+  SessionOptions& operator=(const SessionOptions&) = delete;
+
+  const OrtSessionOptions* get() const { return session_options_.get(); }
+
+  // Returns the first selected EP device for WebNN.
+  const OrtEpDevice* first_selected_device() const {
+    return first_selected_device_;
+  }
+
+ private:
+  friend class base::RefCountedThreadSafe<SessionOptions>;
+
+  ~SessionOptions();
+
+  ScopedOrtSessionOptions session_options_;
+  scoped_refptr<Environment> env_;
+  // It's safe to keep `first_selected_device_` as `env_` owns all EP devices.
+  raw_ptr<const OrtEpDevice> first_selected_device_;
+
+  // EP selection policy delegate selects EPs based on the context options.
+  // Nullptr if the target EP device is specified directly.
+  const mojom::CreateContextOptionsPtr context_options_;
+};
+
+// Builds a minimal session options for the internal `kTrivialModel`, used to
+// obtain an EP's device allocator or to warm up an EP. It binds `ep_device`
+// directly and keeps only functionally required configs, deliberately omitting
+// the debug switches and consumer-side hardening that the full session options
+// carry, which are irrelevant for this internal constant model.
+ScopedOrtSessionOptions CreateTrivialModelSessionOptions(
+    const OrtEnv* env,
+    const OrtEpDevice* ep_device);
+
+}  // namespace ort
+
+}  // namespace webnn
+
+#endif  // SERVICES_WEBNN_ORT_ORT_SESSION_OPTIONS_H_

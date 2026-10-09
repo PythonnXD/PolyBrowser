@@ -1,0 +1,471 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/**
+ * @fileoverview
+ * 'per-device-keyboard-subsection' allow users to configure their
+ * per-device-keyboard subsection settings in system settings.
+ */
+
+import '../settings_shared.css.js';
+import 'chrome://resources/ash/common/cr_elements/localized_link/localized_link.js';
+import 'chrome://resources/ash/common/cr_elements/cr_link_row/cr_link_row.js';
+import 'chrome://resources/ash/common/cr_elements/cr_radio_button/cr_radio_button.js';
+import 'chrome://resources/ash/common/cr_elements/cr_shared_vars.css.js';
+import '../controls/settings_radio_group.js';
+import '../controls/settings_slider.js';
+import '../controls/settings_toggle_button.js';
+import '../os_settings_page/os_settings_animated_pages.js';
+import '../os_settings_page/os_settings_subpage.js';
+import './input_device_settings_shared.css.js';
+import './per_device_app_installed_row.js';
+import './per_device_install_row.js';
+import './per_device_subsection_header.js';
+import 'chrome://resources/ash/common/cr_elements/cr_slider/cr_slider.js';
+
+import {I18nMixin} from 'chrome://resources/ash/common/cr_elements/i18n_mixin.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import {PluralStringProxyImpl} from 'chrome://resources/js/plural_string_proxy.js';
+import type {PolymerElementProperties} from 'chrome://resources/polymer/v3_0/polymer/interfaces.js';
+import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+
+import {DeepLinkingMixin} from '../common/deep_linking_mixin.js';
+import {RouteObserverMixin} from '../common/route_observer_mixin.js';
+import type {SettingsSliderElement} from '../controls/settings_slider.js';
+import type {SettingsToggleButtonElement} from '../controls/settings_toggle_button.js';
+import {KeyboardAmbientLightSensorObserverReceiver, KeyboardBrightnessObserverReceiver, LidStateObserverReceiver} from '../mojom-webui/input_device_settings_provider.mojom-webui.js';
+import {Setting} from '../mojom-webui/setting.mojom-webui.js';
+import type {PersonalizationHubBrowserProxy} from '../personalization_page/personalization_hub_browser_proxy.js';
+import {PersonalizationHubBrowserProxyImpl} from '../personalization_page/personalization_hub_browser_proxy.js';
+import type {Route} from '../router.js';
+import {Router, routes} from '../router.js';
+
+import {getInputDeviceSettingsProvider} from './input_device_mojo_interface_provider.js';
+import type {InputDeviceSettingsProviderInterface, Keyboard, KeyboardPolicies, KeyboardSettings} from './input_device_settings_types.js';
+import {CompanionAppState, MetaKey, ModifierKey, SixPackShortcutModifier} from './input_device_settings_types.js';
+import {getPrefPolicyFields, settingsAreEqual} from './input_device_settings_utils.js';
+import {getTemplate} from './per_device_keyboard_subsection.html.js';
+
+const SettingsPerDeviceKeyboardSubsectionElementBase =
+    DeepLinkingMixin(I18nMixin(RouteObserverMixin(PolymerElement)));
+
+const MIN_VISIBLE_PERCENT = 5;
+
+export class SettingsPerDeviceKeyboardSubsectionElement extends
+    SettingsPerDeviceKeyboardSubsectionElementBase {
+  static get is() {
+    return 'settings-per-device-keyboard-subsection';
+  }
+
+  static get template(): HTMLTemplateElement {
+    return getTemplate();
+  }
+
+  static get properties(): PolymerElementProperties {
+    return {
+      topRowAreFunctionKeysPref: {
+        type: Object,
+        value() {
+          return {
+            key: 'fakeTopRowAreFunctionKeysPref',
+            type: chrome.settingsPrivate.PrefType.BOOLEAN,
+            value: false,
+          };
+        },
+      },
+
+      blockMetaFunctionKeyRewritesPref: {
+        type: Object,
+        value() {
+          return {
+            key: 'fakeBlockMetaFunctionKeyRewritesPref',
+            type: chrome.settingsPrivate.PrefType.BOOLEAN,
+            value: false,
+          };
+        },
+      },
+
+      keyboardBrightnessPercentPref: {
+        type: Object,
+        value() {
+          return {
+            key: 'fakekeyboardBrightnessPercentPref',
+            type: chrome.settingsPrivate.PrefType.NUMBER,
+            value: 40,
+          };
+        },
+      },
+
+      keyboardAutoBrightnessPref: {
+        type: Object,
+        value() {
+          return {
+            key: 'fakekeyboardAutoBrightnessPref',
+            type: chrome.settingsPrivate.PrefType.BOOLEAN,
+            value: false,
+          };
+        },
+      },
+
+      keyboard: {
+        type: Object,
+      },
+
+      keyboardPolicies: {
+        type: Object,
+      },
+
+      remapKeyboardKeysSublabel: {
+        type: String,
+        value: '',
+      },
+
+      keyboardIndex: {
+        type: Number,
+      },
+
+      isLastDevice: {
+        type: Boolean,
+        reflectToAttribute: true,
+      },
+
+      isRgbKeyboardSupported: {
+        type: Boolean,
+        value: false,
+      },
+
+      hasKeyboardBacklight: {
+        type: Boolean,
+        value: false,
+      },
+
+      hasAmbientLightSensor: {
+        type: Boolean,
+        value: false,
+      },
+
+      isLidOpen: {
+        type: Boolean,
+        value: true,
+      },
+    };
+  }
+
+  static get observers(): string[] {
+    return [
+      'onSettingsChanged(topRowAreFunctionKeysPref.value,' +
+          'blockMetaFunctionKeyRewritesPref.value,' +
+          'enableAutoRepeatPref.value,' +
+          'autoRepeatDelaysPref.value,' +
+          'autoRepeatIntervalsPref.value)',
+      'onPoliciesChanged(keyboardPolicies)',
+      'onKeyboardRemappingsChanged(keyboard.*)',
+      'updateSettingsToCurrentPrefs(keyboard)',
+    ];
+  }
+
+  override currentRouteChanged(newRoute: Route): void {
+    // Does not apply to this page.
+    if (newRoute !== routes.PER_DEVICE_KEYBOARD) {
+      return;
+    }
+
+    if (this.keyboard.isExternal) {
+      this.supportedSettingIds.add(Setting.kKeyboardBlockMetaFkeyRewrites);
+    }
+
+    // If multiple keyboards are available, focus on the first one.
+    if (this.keyboardIndex === 0) {
+      this.attemptDeepLink();
+    }
+  }
+
+  // DeepLinkingMixin override
+  override supportedSettingIds = new Set<Setting>([
+    Setting.kKeyboardFunctionKeys,
+    Setting.kKeyboardRemapKeys,
+  ]);
+
+  declare protected keyboard: Keyboard;
+  declare protected keyboardPolicies: KeyboardPolicies;
+  declare protected topRowAreFunctionKeysPref:
+      chrome.settingsPrivate.PrefObject;
+  declare protected blockMetaFunctionKeyRewritesPref:
+      chrome.settingsPrivate.PrefObject;
+  declare protected keyboardBrightnessPercentPref:
+      chrome.settingsPrivate.PrefObject;
+  declare protected keyboardAutoBrightnessPref:
+      chrome.settingsPrivate.PrefObject;
+  declare protected remapKeyboardKeysSublabel: string;
+  private isInitialized_: boolean = false;
+  private inputDeviceSettingsProvider_: InputDeviceSettingsProviderInterface =
+      getInputDeviceSettingsProvider();
+  private personalizationHubBrowserProxy_: PersonalizationHubBrowserProxy =
+      PersonalizationHubBrowserProxyImpl.getInstance();
+  private keyboardBrightnessObserverReceiver_ =
+      new KeyboardBrightnessObserverReceiver(this);
+  private keyboardAmbientLightSensorObserverReceiver_ =
+      new KeyboardAmbientLightSensorObserverReceiver(this);
+  private lidStateObserverReceiver_ = new LidStateObserverReceiver(this);
+  declare protected keyboardIndex: number;
+  declare protected isLastDevice: boolean;
+  declare protected isRgbKeyboardSupported: boolean;
+  declare protected hasKeyboardBacklight: boolean;
+  declare protected hasAmbientLightSensor: boolean;
+  declare protected isLidOpen: boolean;
+
+  constructor() {
+    super();
+    this.observeKeyboardBrightness();
+    this.observeKeyboardAmbientLightSensor();
+    this.observeLidState();
+  }
+
+  override async connectedCallback(): Promise<void> {
+    super.connectedCallback();
+
+    this.isRgbKeyboardSupported =
+        (await this.inputDeviceSettingsProvider_.isRgbKeyboardSupported())
+            ?.isRgbKeyboardSupported;
+    this.hasKeyboardBacklight =
+        (await this.inputDeviceSettingsProvider_.hasKeyboardBacklight())
+            ?.hasKeyboardBacklight;
+    this.hasAmbientLightSensor =
+        (await this.inputDeviceSettingsProvider_.hasAmbientLightSensor())
+            ?.hasAmbientLightSensor;
+
+    if (this.hasKeyboardBacklight && this.isChromeOsKeyboard()) {
+      const crSlider =
+          this.shadowRoot!.querySelector('#keyboardBrightnessSlider')
+              ?.shadowRoot!.querySelector('cr-slider');
+      if (crSlider) {
+        // Set key press increment value to be 10.
+        crSlider.setAttribute('key-press-slider-increment', '10');
+      }
+    }
+  }
+
+  private showInstallAppRow(): boolean {
+    return this.keyboard.appInfo?.state === CompanionAppState.kAvailable;
+  }
+
+  private updateSettingsToCurrentPrefs(): void {
+    // `updateSettingsToCurrentPrefs` gets called when the `keyboard` object
+    // gets updated. This subsection element can be reused multiple times so we
+    // need to reset `isInitialized_` so we do not make unneeded API calls.
+    this.isInitialized_ = false;
+    this.set(
+        'topRowAreFunctionKeysPref.value',
+        this.keyboard.settings.topRowAreFkeys);
+    this.set(
+        'blockMetaFunctionKeyRewritesPref.value',
+        this.keyboard.settings.suppressMetaFkeyRewrites);
+    this.isInitialized_ = true;
+  }
+
+  private onPoliciesChanged(): void {
+    this.topRowAreFunctionKeysPref = {
+      ...this.topRowAreFunctionKeysPref,
+      ...getPrefPolicyFields(this.keyboardPolicies.topRowAreFkeysPolicy),
+    };
+    this.blockMetaFunctionKeyRewritesPref = {
+      ...this.blockMetaFunctionKeyRewritesPref,
+      ...getPrefPolicyFields(
+          this.keyboardPolicies.enableMetaFkeyRewritesPolicy),
+    };
+  }
+
+  private onLearnMoreLinkClicked_(event: Event): void {
+    const path = event.composedPath();
+    if (!Array.isArray(path) || !path.length) {
+      return;
+    }
+
+    if ((path[0] as HTMLElement).tagName === 'A') {
+      // Do not toggle reverse scrolling if the contained link is clicked.
+      event.stopPropagation();
+    }
+  }
+
+  private onKeyboardBrightnessSliderChanged(): void {
+    this.inputDeviceSettingsProvider_.setKeyboardBrightness(
+        this.getKeyboardBrightnessFromSlider());
+  }
+
+  private onKeyup(event: KeyboardEvent): void {
+    // Record updated brightness if adjusted via arrow keys.
+    if (['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(
+            event.key)) {
+      this.inputDeviceSettingsProvider_
+          .recordKeyboardBrightnessChangeFromSlider(
+              this.getKeyboardBrightnessFromSlider());
+    }
+  }
+
+  private onPointerup(): void {
+    // Record brightness after slider adjustment is completed.
+    this.inputDeviceSettingsProvider_
+        .recordKeyboardBrightnessChangeFromSlider(
+            this.getKeyboardBrightnessFromSlider());
+  }
+
+  private onKeyboardAutoBrightnessToggleChanged(e: Event): void {
+    const toggle = e.target as SettingsToggleButtonElement;
+    this.inputDeviceSettingsProvider_.setKeyboardAmbientLightSensorEnabled(
+        toggle.checked);
+  }
+
+  private onSettingsChanged(): void {
+    if (!this.isInitialized_) {
+      return;
+    }
+
+    const newSettings: KeyboardSettings = {
+      ...this.keyboard.settings,
+      topRowAreFkeys: this.topRowAreFunctionKeysPref.value,
+      suppressMetaFkeyRewrites: this.blockMetaFunctionKeyRewritesPref.value,
+    };
+
+    if (settingsAreEqual(newSettings, this.keyboard.settings)) {
+      return;
+    }
+
+    this.keyboard.settings = newSettings;
+    this.inputDeviceSettingsProvider_.setKeyboardSettings(
+        this.keyboard.id, this.keyboard.settings);
+  }
+
+  onKeyboardBrightnessChanged(keyboardBrightnessPercent: number): void {
+    if (keyboardBrightnessPercent > 0 &&
+        keyboardBrightnessPercent < MIN_VISIBLE_PERCENT) {
+      // When auto-brightness is enabled, it's likely that the automated
+      // brightness percentage will fall between 0% and 5%. To avoid confusion
+      // where the user cannot distinguish between the keyboard being off (0%)
+      // and low brightness levels, set the slider to a minimum visible
+      // percentage (5%).
+      this.set('keyboardBrightnessPercentPref.value', MIN_VISIBLE_PERCENT);
+      return;
+    }
+    this.set('keyboardBrightnessPercentPref.value', keyboardBrightnessPercent);
+  }
+
+  onKeyboardAmbientLightSensorEnabledChanged(
+      keyboardAmbientLightSensorEnabled: boolean): void {
+    this.set(
+        'keyboardAutoBrightnessPref.value', keyboardAmbientLightSensorEnabled);
+  }
+
+  onLidStateChanged(isLidOpen: boolean): void {
+    this.isLidOpen = isLidOpen;
+  }
+
+  private observeKeyboardBrightness(): void {
+    this.inputDeviceSettingsProvider_.observeKeyboardBrightness(
+        this.keyboardBrightnessObserverReceiver_.$.bindNewPipeAndPassRemote());
+  }
+
+  private observeKeyboardAmbientLightSensor(): void {
+    this.inputDeviceSettingsProvider_.observeKeyboardAmbientLightSensor(
+        this.keyboardAmbientLightSensorObserverReceiver_.$
+            .bindNewPipeAndPassRemote());
+  }
+
+  private observeLidState(): void {
+    this.inputDeviceSettingsProvider_
+        .observeLidState(
+            this.lidStateObserverReceiver_.$.bindNewPipeAndPassRemote())
+        .then(({isLidOpen}: {isLidOpen: boolean}) => {
+          this.onLidStateChanged(isLidOpen);
+        });
+  }
+
+  private getNumRemappedSixPackKeys(): number {
+    if (!this.keyboard.settings.sixPackKeyRemappings) {
+      return 0;
+    }
+
+    return Object.values(this.keyboard.settings.sixPackKeyRemappings)
+        .filter(
+            (modifier: SixPackShortcutModifier) =>
+                modifier !== SixPackShortcutModifier.kSearch)
+        .length;
+  }
+
+  private async onKeyboardRemappingsChanged(): Promise<void> {
+    let numRemappedKeys =
+        Object.keys(this.keyboard.settings.modifierRemappings).length;
+    if (loadTimeData.getBoolean('enableAltClickAndSixPackCustomization')) {
+      numRemappedKeys += this.getNumRemappedSixPackKeys();
+    }
+    this.remapKeyboardKeysSublabel =
+        await PluralStringProxyImpl.getInstance().getPluralString(
+            'remapKeyboardKeysRowSubLabel', numRemappedKeys);
+  }
+
+  private onRemapKeyboardKeysClick(): void {
+    const url = new URLSearchParams(
+        'keyboardId=' + encodeURIComponent(this.keyboard.id));
+
+    Router.getInstance().navigateTo(
+        routes.PER_DEVICE_KEYBOARD_REMAP_KEYS,
+        /* dynamicParams= */ url, /* removeSearch= */ true);
+  }
+
+  private getKeyboardName(): string {
+    return this.keyboard.isExternal ? this.keyboard.name :
+                                      this.i18n('builtInKeyboardName');
+  }
+
+  private showKeyboardSettings(): boolean {
+    return this.keyboard.isExternal ||
+        (!this.keyboard.isExternal && this.isLidOpen);
+  }
+
+  private isChromeOsKeyboard(): boolean {
+    return this.keyboard.metaKey === MetaKey.kLauncher ||
+        this.keyboard.metaKey === MetaKey.kSearch ||
+        this.keyboard.metaKey === MetaKey.kLauncherRefresh;
+  }
+
+  private openPersonalizationHub(): void {
+    this.inputDeviceSettingsProvider_.recordKeyboardColorLinkClicked();
+    this.personalizationHubBrowserProxy_.openPersonalizationHub();
+  }
+
+  private getKeyboardBrightnessFromSlider(): number {
+    const slider = this.shadowRoot!.querySelector<SettingsSliderElement>(
+        '#keyboardBrightnessSlider');
+    return slider!.pref.value;
+  }
+
+  protected getRemapKeyboardKeysClass(): string {
+    return `hr bottom-divider ${
+        this.keyboard.isExternal ? '' : 'remap-keyboard-keys-row-internal'}`;
+  }
+
+  protected showSendFunctionKeyDescription(): string {
+    const hasFunctionKey: boolean =
+        this.keyboard.modifierKeys.includes(ModifierKey.kFunction);
+    if (hasFunctionKey) {
+      return this.i18n('splitModifierKeyboardSendFunctionKeysDescription');
+    } else {
+      return this.i18n('keyboardSendFunctionKeysDescription');
+    }
+  }
+
+  private isCompanionAppInstalled(): boolean {
+    return this.keyboard.appInfo?.state === CompanionAppState.kInstalled;
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'settings-per-device-keyboard-subsection':
+        SettingsPerDeviceKeyboardSubsectionElement;
+  }
+}
+
+customElements.define(
+    SettingsPerDeviceKeyboardSubsectionElement.is,
+    SettingsPerDeviceKeyboardSubsectionElement);

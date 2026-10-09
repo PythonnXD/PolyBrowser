@@ -1,0 +1,27 @@
+include_rules = [
+  "-chrome",
+
+  "+chrome/browser/apps/app_service",
+  "+chrome/browser/ash/app_list/arc",
+  "+chrome/browser/ash/apps",
+  "+chrome/browser/ash/arc",
+  "+chrome/browser/profiles",
+  "+chrome/browser/web_applications/model/web_app_icon_types.h",
+  "+chrome/browser/web_applications/web_app_filter.h",
+  "+chrome/browser/web_applications/web_app_icon_manager.h",
+  "+chrome/browser/web_applications/web_app_provider.h",
+  "+chrome/browser/web_applications/web_app_registrar.h",
+  "+chrome/browser/web_applications/web_app_utils.h",
+  "+components/webapk",
+]
+
+specific_include_rules = {
+  # Only tests need these //chrome dependencies.
+  "webapk_install_task_unittest\\.cc": [
+    "+chrome/browser/web_applications/web_app_install_info.h",
+  ],
+  # Only tests need //chrome/browser/policy.
+  "webapk_policy_browsertest\\.cc": [
+    "+chrome/browser/policy/policy_test_utils.h",
+  ],
+}

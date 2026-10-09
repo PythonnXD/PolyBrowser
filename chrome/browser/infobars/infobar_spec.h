@@ -1,0 +1,310 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_INFOBARS_INFOBAR_SPEC_H_
+#define CHROME_BROWSER_INFOBARS_INFOBAR_SPEC_H_
+
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "components/infobars/core/confirm_infobar_delegate.h"
+#include "components/infobars/core/infobar_delegate.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/ui_base_types.h"
+#include "ui/base/window_open_disposition.h"
+#include "ui/gfx/vector_icon_types.h"
+#include "url/gurl.h"
+
+class BrowserWindowInterface;
+
+namespace content {
+class WebContents;
+}
+
+namespace views {
+class View;
+}
+
+namespace infobars {
+
+enum class InfoBarScope {
+  // The infobar will only show for the web contents specified.
+  kTab,
+  // The infobar will show for all the tabs/web contents across all browsers.
+  kGlobal,
+};
+
+// Terminal outcome of a shown infobar. Reported exactly once per logical
+// infobar; programmatic removals are not reported.
+enum class InfoBarResult {
+  // The user pressed the OK button.
+  kAccepted,
+  // The user pressed the Cancel button.
+  kCancelled,
+  // The user pressed the extra button.
+  kExtraButtonPressed,
+  // The user closed the infobar.
+  kDismissed,
+  // Went away without the user touching it, e.g. the tab was closed.
+  kIgnored,
+  // The only user interaction was a link click.
+  kLinkClicked,
+};
+
+// InfoBarSpec defines an InfoBar's appearance and behavior.
+class InfoBarSpec {
+ public:
+  // Runs when the user presses a button or dismisses the infobar. The
+  // delegate guards against synchronous destruction during the callback
+  // (e.g. if the callback hides or replaces the infobar).
+  using ActionCallback = base::RepeatingCallback<void(content::WebContents*)>;
+  using SubstitutionsCallback =
+      base::RepeatingCallback<std::vector<MessageSubstitution>(
+          content::WebContents*)>;
+  // Called with the substitution index when an inline link is clicked.
+  // Returns true to close the infobar.
+  using InlineLinkCallback = base::RepeatingCallback<
+      bool(content::WebContents*, size_t, WindowOpenDisposition)>;
+  // Creates a custom message view to replace the standard label.
+  using CustomViewCallback =
+      base::RepeatingCallback<std::unique_ptr<views::View>(
+          content::WebContents*)>;
+  // Reports the terminal outcome. The WebContents may already be gone by
+  // then, in which case it is null.
+  using ResultCallback =
+      base::RepeatingCallback<void(content::WebContents*, InfoBarResult)>;
+  // Returns true if the infobar may be shown in the given browser. Only
+  // consulted for InfoBarScope::kGlobal.
+  using BrowserFilter = base::RepeatingCallback<bool(BrowserWindowInterface*)>;
+
+  class Builder;
+
+  InfoBarSpec();
+  InfoBarSpec(const InfoBarSpec&);
+  InfoBarSpec(InfoBarSpec&&);
+  ~InfoBarSpec();
+  InfoBarSpec& operator=(const InfoBarSpec&);
+
+  infobars::InfoBarDelegate::InfoBarIdentifier identifier() const {
+    return identifier_;
+  }
+  const std::u16string& message_text() const { return message_text_; }
+  const std::u16string& message_text_template() const {
+    return message_text_template_;
+  }
+  const SubstitutionsCallback& substitutions_callback() const {
+    return substitutions_callback_;
+  }
+  const InlineLinkCallback& inline_link_callback() const {
+    return inline_link_callback_;
+  }
+  const CustomViewCallback& custom_view_callback() const {
+    return custom_view_callback_;
+  }
+  const std::u16string& link_text() const { return link_text_; }
+  const std::optional<std::u16string>& link_accessible_text() const {
+    return link_accessible_text_;
+  }
+  const GURL& link_navigation_url() const { return link_navigation_url_; }
+  bool should_show_link_before_button() const {
+    return should_show_link_before_button_;
+  }
+  int link_spacing_when_positioned_before_button() const {
+    return link_spacing_when_positioned_before_button_;
+  }
+  InfoBarDelegate::InfobarPriority priority() const { return priority_; }
+  InfoBarScope scope() const { return scope_; }
+  const gfx::VectorIcon* icon() const { return icon_; }
+  const gfx::VectorIcon* dark_mode_icon() const { return dark_mode_icon_; }
+  int icon_id() const { return icon_id_; }
+  bool expire_on_navigation() const { return expire_on_navigation_; }
+  bool should_hide_in_fullscreen() const { return should_hide_in_fullscreen_; }
+  bool should_animate() const { return should_animate_; }
+  bool is_closeable() const { return is_closeable_; }
+  bool allow_duplicates() const { return allow_duplicates_; }
+  bool close_on_accept() const { return close_on_accept_; }
+  bool close_on_cancel() const { return close_on_cancel_; }
+  bool close_on_extra_button() const { return close_on_extra_button_; }
+
+  const std::u16string& ok_button_label() const { return ok_button_label_; }
+  const ActionCallback& ok_button_callback() const {
+    return ok_button_callback_;
+  }
+  const std::u16string& cancel_button_label() const {
+    return cancel_button_label_;
+  }
+  const ActionCallback& cancel_button_callback() const {
+    return cancel_button_callback_;
+  }
+  const std::u16string& extra_button_label() const {
+    return extra_button_label_;
+  }
+  const ActionCallback& extra_button_callback() const {
+    return extra_button_callback_;
+  }
+  const ActionCallback& dismiss_callback() const { return dismiss_callback_; }
+  const ResultCallback& result_callback() const { return result_callback_; }
+  const BrowserFilter& browser_filter() const { return browser_filter_; }
+
+ private:
+  friend class Builder;
+  friend class BrowserInfoBarManager;
+
+  infobars::InfoBarDelegate::InfoBarIdentifier identifier_ =
+      infobars::InfoBarDelegate::INVALID;
+  std::u16string message_text_;
+  std::u16string message_text_template_;
+  SubstitutionsCallback substitutions_callback_;
+  InlineLinkCallback inline_link_callback_;
+  CustomViewCallback custom_view_callback_;
+  std::u16string link_text_;
+  std::optional<std::u16string> link_accessible_text_;
+  GURL link_navigation_url_;
+  bool should_show_link_before_button_ = false;
+  int link_spacing_when_positioned_before_button_ = 0;
+  InfoBarDelegate::InfobarPriority priority_ =
+      InfoBarDelegate::InfobarPriority::kDefault;
+  InfoBarScope scope_ = InfoBarScope::kTab;
+  raw_ptr<const gfx::VectorIcon> icon_ = nullptr;
+  raw_ptr<const gfx::VectorIcon> dark_mode_icon_ = nullptr;
+  int icon_id_ = 0;
+  bool expire_on_navigation_ = true;
+  bool should_hide_in_fullscreen_ = false;
+  bool should_animate_ = true;
+  bool is_closeable_ = true;
+  bool allow_duplicates_ = false;
+  bool close_on_accept_ = true;
+  bool close_on_cancel_ = true;
+  bool close_on_extra_button_ = true;
+
+  std::u16string ok_button_label_;
+  ActionCallback ok_button_callback_;
+  std::u16string cancel_button_label_;
+  ActionCallback cancel_button_callback_;
+  std::u16string extra_button_label_;
+  ActionCallback extra_button_callback_;
+  ActionCallback dismiss_callback_;
+  ResultCallback result_callback_;
+  BrowserFilter browser_filter_;
+};
+
+// Per-show overrides for an individual infobar button.
+struct InfoBarButtonParams {
+  InfoBarButtonParams();
+  InfoBarButtonParams(InfoBarButtonParams&&);
+  InfoBarButtonParams& operator=(InfoBarButtonParams&&);
+  InfoBarButtonParams(const InfoBarButtonParams&);
+  InfoBarButtonParams& operator=(const InfoBarButtonParams&);
+  ~InfoBarButtonParams();
+
+  std::optional<std::u16string> label;
+  std::optional<bool> enabled;
+  std::optional<std::u16string> tooltip;
+  std::optional<ui::ImageModel> image;
+  std::optional<bool> use_text_color_for_icon;
+  std::optional<ui::ButtonStyle> style;
+};
+
+// Per-show overrides for values only known at show time. Anything set here
+// wins over the registered InfoBarSpec for that one instance.
+struct InfoBarShowParams {
+  InfoBarShowParams();
+  InfoBarShowParams(InfoBarShowParams&&);
+  InfoBarShowParams& operator=(InfoBarShowParams&&);
+  // Copyable: a global show stamps one params set onto every mirrored
+  // instance.
+  InfoBarShowParams(const InfoBarShowParams&);
+  InfoBarShowParams& operator=(const InfoBarShowParams&);
+  ~InfoBarShowParams();
+
+  // Overrides the spec's message text and suppresses its template.
+  std::optional<std::u16string> message_text;
+
+  // Substitutions for the spec's message template, computed by the caller.
+  std::optional<std::vector<MessageSubstitution>> substitutions;
+
+  // Overrides the spec's link text; empty suppresses the link.
+  std::optional<std::u16string> link_text;
+
+  // Overrides the spec's scope in Show().
+  //
+  // Limitation: while the override instance occupies a tab, an armed global
+  // instance is deduplicated away there and only reappears on the next
+  // active-tab change.
+  std::optional<InfoBarScope> scope;
+
+  InfoBarButtonParams ok_button;
+  InfoBarButtonParams cancel_button;
+  InfoBarButtonParams extra_button;
+
+  // Override the spec's callbacks when non-null.
+  InfoBarSpec::ActionCallback ok_button_callback;
+  InfoBarSpec::ActionCallback cancel_button_callback;
+  InfoBarSpec::ActionCallback extra_button_callback;
+  InfoBarSpec::InlineLinkCallback inline_link_callback;
+  InfoBarSpec::CustomViewCallback custom_view_callback;
+  InfoBarSpec::ResultCallback result_callback;
+};
+
+class InfoBarSpec::Builder {
+ public:
+  explicit Builder(infobars::InfoBarDelegate::InfoBarIdentifier identifier);
+  ~Builder();
+  Builder(const Builder&) = delete;
+  Builder& operator=(const Builder&) = delete;
+
+  Builder& SetMessageText(std::u16string message_text);
+  Builder& SetMessageTextTemplate(std::u16string message_text_template);
+  Builder& SetSubstitutionsCallback(SubstitutionsCallback callback);
+  Builder& SetInlineLinkCallback(InlineLinkCallback callback);
+  Builder& SetCustomViewCallback(CustomViewCallback callback);
+  Builder& SetLinkText(std::u16string link_text);
+  Builder& SetLinkAccessibleText(std::u16string link_accessible_text);
+  Builder& SetLinkNavigationUrl(GURL gurl);
+  Builder& SetShouldShowLinkBeforeButton(bool should_show_link_before_button);
+  Builder& SetLinkSpacingWhenPositionedBeforeButton(int spacing);
+  Builder& SetIcon(const gfx::VectorIcon& icon);
+  // Shown instead of the SetIcon() icon when the infobar is in dark mode.
+  Builder& SetDarkModeIcon(const gfx::VectorIcon& icon);
+  Builder& SetIconId(int icon_id);
+
+  Builder& SetScope(InfoBarScope scope);
+  Builder& SetPriority(InfoBarDelegate::InfobarPriority priority);
+  Builder& SetExpireOnNavigation(bool expire_on_navigation);
+  Builder& SetShouldHideInFullscreen(bool should_hide_in_fullscreen);
+  Builder& SetShouldAnimate(bool should_animate);
+  Builder& SetIsCloseable(bool is_closeable);
+  // Allows multiple instances of this spec to coexist on the same tab.
+  Builder& SetAllowDuplicates(bool allow_duplicates);
+  // Pressing the OK button closes the infobar by default. Pass false to
+  // keep it up, e.g. when the button starts work whose outcome the infobar
+  // is still describing.
+  Builder& SetCloseOnAccept(bool close_on_accept);
+  Builder& SetCloseOnCancel(bool close_on_cancel);
+  Builder& SetCloseOnExtraButton(bool close_on_extra_button);
+
+  Builder& AddOkButton(const std::u16string& label,
+                       InfoBarSpec::ActionCallback callback);
+  Builder& AddCancelButton(const std::u16string& label,
+                           InfoBarSpec::ActionCallback callback);
+  Builder& AddExtraButton(const std::u16string& label,
+                          InfoBarSpec::ActionCallback callback);
+  Builder& SetDismissAction(InfoBarSpec::ActionCallback callback);
+  Builder& SetResultCallback(InfoBarSpec::ResultCallback callback);
+  Builder& SetBrowserFilter(InfoBarSpec::BrowserFilter filter);
+
+  InfoBarSpec Build();
+
+ private:
+  InfoBarSpec spec_;
+};
+
+}  // namespace infobars
+
+#endif  // CHROME_BROWSER_INFOBARS_INFOBAR_SPEC_H_

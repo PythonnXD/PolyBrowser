@@ -1,0 +1,118 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+chromium::import! {
+    "//mojo/public/rust/bindings";
+    "//mojo/public/rust/system";
+}
+
+use crate::rust_associated_sender::{RequestHandleRemote, RequestRemote, RustAssociatedSender};
+use crate::tests::{
+    BindRustAssociatedSenderReceiver, BindRustHandleServiceReceiver, BindRustMathServiceReceiver,
+};
+
+#[cxx::bridge(namespace = "bindings_unittests::mojom")]
+pub mod ffi {
+    #[namespace = "mojo::rust::bindings"]
+    unsafe extern "C++" {
+        include!("mojo/public/rust/bindings/multiplex_router/cpp_interop/associated_endpoint_rust_adapter.h");
+        type AssociatedEndpointRustAdapter = super::bindings::CxxPendingAssociatedEndpoint;
+    }
+
+    extern "Rust" {
+        fn BindRustMathServiceReceiver(adapter: UniquePtr<AssociatedEndpointRustAdapter>);
+        fn BindRustHandleServiceReceiver(adapter: UniquePtr<AssociatedEndpointRustAdapter>);
+        fn BindRustAssociatedSenderReceiver(adapter: UniquePtr<AssociatedEndpointRustAdapter>);
+
+        type RustAssociatedSender;
+        fn RequestRemote(
+            sender: &mut RustAssociatedSender,
+        ) -> UniquePtr<AssociatedEndpointRustAdapter>;
+        fn RequestHandleRemote(
+            sender: &mut RustAssociatedSender,
+        ) -> UniquePtr<AssociatedEndpointRustAdapter>;
+    }
+
+    unsafe extern "C++" {
+        include!("mojo/public/rust/bindings/test/cpp/add_seven_service.h");
+        include!("mojo/public/rust/bindings/test/cpp/associated_services.h");
+        include!("mojo/public/rust/bindings/test/cpp/cxx_shim.h");
+        include!("mojo/public/rust/bindings/test/cpp/test_runners.h");
+        include!("mojo/public/rust/system/scoped_handle_interop.h");
+
+        type PlusSevenMathService;
+
+        #[namespace = "mojo::rust"]
+        type ScopedMessagePipeHandleWrapper =
+            super::system::scoped_handle_interop::ScopedMessagePipeHandleWrapper;
+
+        fn CreatePlusSevenMathService(
+            handle: UniquePtr<ScopedMessagePipeHandleWrapper>,
+        ) -> UniquePtr<PlusSevenMathService>;
+
+        fn TestRemoteFromCpp(handle: UniquePtr<ScopedMessagePipeHandleWrapper>);
+
+        fn CreatePlusSevenMathServiceAndRemote(
+            service_out: &mut UniquePtr<PlusSevenMathService>,
+            remote_out: &mut UniquePtr<ScopedMessagePipeHandleWrapper>,
+        );
+
+        fn CreateCppAssociatedSender(handle: UniquePtr<ScopedMessagePipeHandleWrapper>);
+        fn CreateAssociatedSenderInteropTest(handle: UniquePtr<ScopedMessagePipeHandleWrapper>);
+
+        type AssociatedSenderTestRemote;
+
+        fn CreateAssociatedSenderTestRemote(
+            handle: UniquePtr<ScopedMessagePipeHandleWrapper>,
+        ) -> UniquePtr<AssociatedSenderTestRemote>;
+
+        fn RequestRemote(
+            self: Pin<&mut AssociatedSenderTestRemote>,
+        ) -> UniquePtr<AssociatedEndpointRustAdapter>;
+
+        fn SendReceiver(
+            self: Pin<&mut AssociatedSenderTestRemote>,
+            receiver_adapter: UniquePtr<AssociatedEndpointRustAdapter>,
+        );
+
+        fn RequestHandleRemote(
+            self: Pin<&mut AssociatedSenderTestRemote>,
+        ) -> UniquePtr<AssociatedEndpointRustAdapter>;
+
+        fn SendHandleReceiver(
+            self: Pin<&mut AssociatedSenderTestRemote>,
+            receiver_adapter: UniquePtr<AssociatedEndpointRustAdapter>,
+        );
+
+        fn TestSendReceiverAndAddCppRemote(remote: Pin<&mut AssociatedSenderTestRemote>);
+
+        fn TestSendHandleReceiverAndPassHandlesCppRemote(
+            remote: Pin<&mut AssociatedSenderTestRemote>,
+        );
+
+        fn BindPlusSevenAssociatedReceiver(adapter: UniquePtr<AssociatedEndpointRustAdapter>);
+        fn BindCppHandleServiceReceiver(adapter: UniquePtr<AssociatedEndpointRustAdapter>);
+        fn BindPlusSevenAssociatedSender(adapter: UniquePtr<AssociatedEndpointRustAdapter>);
+
+        fn CreatePlusSevenAssociatedReceiver(
+            adapter: UniquePtr<AssociatedEndpointRustAdapter>,
+        ) -> UniquePtr<PlusSevenMathService>;
+
+        fn TestRequestRemoteAndAddRustRemote(sender: &mut RustAssociatedSender);
+
+        fn TestRequestHandleRemoteAndPassHandlesRustRemote(sender: &mut RustAssociatedSender);
+
+        fn SetPlusSevenDisconnectCallback(
+            service: Pin<&mut PlusSevenMathService>,
+            handler_type: i32,
+        );
+
+        fn TestBadMessageToRustReceiver();
+
+        fn HaveSameGroupController(
+            first: UniquePtr<AssociatedEndpointRustAdapter>,
+            second: UniquePtr<AssociatedEndpointRustAdapter>,
+        ) -> bool;
+    }
+}

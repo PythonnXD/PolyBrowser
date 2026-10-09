@@ -1,0 +1,485 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.appearance.settings;
+
+import android.content.Context;
+import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
+import android.os.Bundle;
+
+import androidx.annotation.StringRes;
+import androidx.preference.Preference;
+
+import org.chromium.base.Callback;
+import org.chromium.base.ContextUtils;
+import org.chromium.base.DeviceInfo;
+import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.bookmarks.bar.BookmarkBarConstants;
+import org.chromium.chrome.browser.bookmarks.bar.BookmarkBarUtils;
+import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.night_mode.NightModeUtils;
+import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+import org.chromium.chrome.browser.preferences.Pref;
+import org.chromium.chrome.browser.preferences.PrefServiceUtil;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.settings.ChromeBaseSettingsFragment;
+import org.chromium.chrome.browser.settings.ChromeManagedPreferenceDelegate;
+import org.chromium.chrome.browser.settings.search.ChromeBaseSearchIndexProvider;
+import org.chromium.chrome.browser.toolbar.adaptive.AdaptiveToolbarStatePredictor;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarConfigUtils;
+import org.chromium.chrome.browser.ui.vertical_tabs.VerticalTabUtils;
+import org.chromium.components.bookmarks.BookmarkBarVisibilityState;
+import org.chromium.components.browser_ui.settings.ChromeSwitchPreference;
+import org.chromium.components.browser_ui.settings.CustomDividerFragment;
+import org.chromium.components.browser_ui.settings.SettingsUtils;
+import org.chromium.components.browser_ui.settings.search.SettingsIndexData;
+import org.chromium.components.feature_engagement.EventConstants;
+import org.chromium.components.prefs.PrefChangeRegistrar;
+import org.chromium.components.prefs.PrefChangeRegistrar.PrefObserver;
+
+/** Fragment to manage appearance settings. */
+@NullMarked
+public class AppearanceSettingsFragment extends ChromeBaseSettingsFragment
+        implements CustomDividerFragment {
+
+    public static final String PREF_BOOKMARK_BAR = "bookmark_bar";
+    public static final String PREF_BOOKMARK_BAR_SWITCH = "bookmark_bar_switch";
+    public static final String PREF_BOTTOM_BAR_SWITCH = "bottom_bar_switch";
+    public static final String PREF_TOOLBAR_SHORTCUT = "toolbar_shortcut";
+    public static final String PREF_UI_THEME = "ui_theme";
+    public static final String PREF_TAB_POSITION = "tab_position";
+
+    private static final String USER_ACTION_BOTTOM_BAR_ENABLED = "Settings.BottomBar.Enabled";
+    private static final String USER_ACTION_BOTTOM_BAR_DISABLED = "Settings.BottomBar.Disabled";
+
+    private final SettableMonotonicObservableSupplier<String> mPageTitle =
+            ObservableSuppliers.createMonotonic();
+    private boolean mUseProfileUserPrefs;
+
+    private @Nullable PrefChangeRegistrar mPrefChangeRegistrar;
+    private @Nullable PrefObserver mPrefObserver;
+    private @Nullable OnSharedPreferenceChangeListener mDevicePrefsListener;
+    private @Nullable OnSharedPreferenceChangeListener mTabPositionListener;
+
+    @Override
+    public void onCreatePreferences(@Nullable Bundle savedInstanceState, @Nullable String rootKey) {
+        mPageTitle.set(getTitle(getContext()));
+        SettingsUtils.addPreferencesFromResource(this, R.xml.appearance_preferences);
+
+        // This fragment may be used on Desktop or tablets. For Desktop we use the current Profile's
+        // UserPrefs. For tablets, we use the local device preference.
+        mUseProfileUserPrefs = DeviceInfo.isDesktop();
+        initBookmarkBarPref();
+        initToolbarShortcutPref();
+        initBottomBarPref();
+        initTabPositionPref();
+    }
+
+    @Override
+    @SuppressWarnings("UseSharedPreferencesManagerFromChromeCheck")
+    public void onDestroy() {
+        super.onDestroy();
+
+        if (mPrefChangeRegistrar != null) {
+            mPrefChangeRegistrar.removeObserver(
+                    shouldShowSubpage()
+                            ? Pref.BOOKMARK_BAR_VISIBILITY_STATE
+                            : Pref.SHOW_BOOKMARK_BAR);
+            mPrefChangeRegistrar.destroy();
+            mPrefChangeRegistrar = null;
+        }
+        if (mDevicePrefsListener != null) {
+            ContextUtils.getAppSharedPreferences()
+                    .unregisterOnSharedPreferenceChangeListener(mDevicePrefsListener);
+            mDevicePrefsListener = null;
+        }
+        if (mTabPositionListener != null) {
+            ContextUtils.getAppSharedPreferences()
+                    .unregisterOnSharedPreferenceChangeListener(mTabPositionListener);
+            mTabPositionListener = null;
+        }
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        updateBookmarkBarPref();
+        updateUiThemePref();
+        updateBottomBarPref();
+        updateTabPositionPref();
+
+        TrackerFactory.getTrackerForProfile(getProfile())
+                .notifyEvent(EventConstants.SETTINGS_APPEARANCE_OPENED);
+    }
+
+    @Override
+    public MonotonicObservableSupplier<String> getPageTitle() {
+        return mPageTitle;
+    }
+
+    public static String getTitle(Context context) {
+        return context.getString(R.string.appearance_settings);
+    }
+
+    // CustomDividerFragment implementation.
+
+    @Override
+    public boolean hasDivider() {
+        return false;
+    }
+
+    // Private methods.
+
+    private void initBookmarkBarPref() {
+        if (!shouldShowBookmarkPref(getContext())) {
+            removePreference(PREF_BOOKMARK_BAR);
+            removePreference(PREF_BOOKMARK_BAR_SWITCH);
+            return;
+        }
+
+        if (shouldShowSubpage()) {
+            removePreference(PREF_BOOKMARK_BAR_SWITCH);
+            if (mUseProfileUserPrefs) {
+                mPrefChangeRegistrar = PrefServiceUtil.createFor(getProfile());
+                mPrefObserver = this::updateBookmarkBarPref;
+                mPrefChangeRegistrar.addObserver(Pref.BOOKMARK_BAR_VISIBILITY_STATE, mPrefObserver);
+            } else {
+                mDevicePrefsListener =
+                        (sharedPreferences, key) -> {
+                            if (BookmarkBarConstants.BOOKMARK_BAR_BOOKMARK_BAR_VISIBILITY_STATE
+                                    .equals(key)) {
+                                updateBookmarkBarPref();
+                            }
+                        };
+                ContextUtils.getAppSharedPreferences()
+                        .registerOnSharedPreferenceChangeListener(mDevicePrefsListener);
+            }
+            return;
+        }
+
+        removePreference(PREF_BOOKMARK_BAR);
+        ChromeSwitchPreference bookmarkBarSwitch =
+                (ChromeSwitchPreference) findPreference(PREF_BOOKMARK_BAR_SWITCH);
+        assert bookmarkBarSwitch != null;
+        bookmarkBarSwitch.setManagedPreferenceDelegate(
+                new ChromeManagedPreferenceDelegate(getProfile()) {
+                    // If true, helper methods in ManagedPreferencesUtils will disable the switch
+                    // and display the text "Managed by your organization" with the business icon.
+                    @Override
+                    public boolean isPreferenceControlledByPolicy(Preference preference) {
+                        return BookmarkBarUtils.isUserPrefsShowBookmarkBarManagedByPolicy(
+                                getProfile());
+                    }
+
+                    // If true, helper methods in ManagedPreferencesUtils will display the text
+                    // "Recommended by your organization" with the business icon.
+                    @Override
+                    public @Nullable Boolean isPreferenceRecommendation(Preference preference) {
+                        if (!BookmarkBarUtils.isUserPrefsShowBookmarkBarRecommended(getProfile())) {
+                            // No recommendation exists.
+                            return null;
+                        }
+
+                        // On tablets, we use device-specific SharedPreferences. This requires
+                        // special treatment for enterprise policies; which are UserPrefs bound. If
+                        // a user has set a SharedPreference value, we must compare that value to
+                        // the UserPrefs policy's recommended value directly.
+                        if (BookmarkBarUtils.hasUserSetDevicePrefShowBookmarksBar()) {
+                            return BookmarkBarUtils.isDevicePrefShowBookmarksBarEnabled(
+                                            getProfile())
+                                    == BookmarkBarUtils.getUserPrefsShowBookmarkBarRecommendedValue(
+                                            getProfile());
+                        }
+
+                        // In the user has not set a SharedPreferences value (which is always the
+                        // case on Desktop), we can simply follow the standard UserPrefs flow.
+                        return BookmarkBarUtils.isUserPrefsShowBookmarkBarFollowingRecommendation(
+                                getProfile());
+                    }
+                });
+
+        if (mUseProfileUserPrefs) {
+            initBookmarkBarPrefForUserPrefs();
+        } else {
+            initBookmarkBarPrefForDevicePreference();
+        }
+    }
+
+    private void initBookmarkBarPrefForUserPrefs() {
+        mPrefChangeRegistrar = PrefServiceUtil.createFor(getProfile());
+        mPrefObserver =
+                () -> {
+                    updateBookmarkBarPref();
+                    Preference bookmarkBarSwitch = findPreference(PREF_BOOKMARK_BAR_SWITCH);
+                    if (bookmarkBarSwitch != null) {
+                        // This is the trigger to showing/hiding the
+                        // "recommended" icon & text.
+                        // Flow: switch is toggled ->
+                        // OnPreferenceChangeListener fired ->
+                        // #setDevicePrefShowBookmarksBar ->
+                        // pref updated in pref service & shared pref ->
+                        // OnSharedPreferenceChangeListener fired ->
+                        // this #onPreferenceChange is called ->
+                        // ManagedPreferencesUtils#onBindViewPreference
+                        // -> methods in our setManagedPreferenceDelegate are called.
+                        bookmarkBarSwitch.setSummary(bookmarkBarSwitch.getSummary());
+                    }
+                };
+
+        // We register a pref change listener for a pref that would be changed on this page so that
+        // we can account for users changing the pref using a different window in desktop mode.
+        mPrefChangeRegistrar.addObserver(Pref.SHOW_BOOKMARK_BAR, mPrefObserver);
+        ((ChromeSwitchPreference) findPreference(PREF_BOOKMARK_BAR_SWITCH))
+                .setOnPreferenceChangeListener(
+                        (pref, newValue) -> {
+                            BookmarkBarUtils.setUserPrefsShowBookmarksBar(
+                                    getProfile(),
+                                    (boolean) newValue,
+                                    /* fromKeyboardShortcut= */ false);
+                            return true;
+                        });
+    }
+
+    @SuppressWarnings("UseSharedPreferencesManagerFromChromeCheck")
+    private void initBookmarkBarPrefForDevicePreference() {
+        // Similar to UserPrefs above, we must have both an observer of changes to the device prefs,
+        // as well as the ability to set the device prefs via the toggle, since the value can be
+        // toggled by another window.
+        mDevicePrefsListener =
+                (sharedPreferences, key) -> {
+                    if (key != null
+                            && key.equals(BookmarkBarConstants.BOOKMARK_BAR_SHOW_BOOKMARK_BAR)) {
+                        updateBookmarkBarPref();
+                        Preference bookmarkBarSwitch = findPreference(PREF_BOOKMARK_BAR_SWITCH);
+                        if (bookmarkBarSwitch != null) {
+                            // Forces a redraw, and methods in our setManagedPreferenceDelegate are
+                            // called.
+                            bookmarkBarSwitch.setSummary(bookmarkBarSwitch.getSummary());
+                        }
+                    }
+                };
+        ContextUtils.getAppSharedPreferences()
+                .registerOnSharedPreferenceChangeListener(mDevicePrefsListener);
+
+        // setOnPreferenceChangeListener is the listener for the preference widget itself. It fires
+        // immediately when the user taps the toggle.
+        ((ChromeSwitchPreference) findPreference(PREF_BOOKMARK_BAR_SWITCH))
+                .setOnPreferenceChangeListener(
+                        (pref, newValue) -> {
+                            BookmarkBarUtils.setDevicePrefShowBookmarksBar(
+                                    (boolean) newValue, /* fromKeyboardShortcut= */ false);
+                            return true;
+                        });
+    }
+
+    private void initToolbarShortcutPref() {
+        shouldShowToolbarShortcutPrefAsync(
+                getContext(),
+                getProfile(),
+                (shouldShow) -> {
+                    if (!shouldShow) removePreference(PREF_TOOLBAR_SHORTCUT);
+                });
+    }
+
+    /** Initializes the bottom bar switch, or removes it when it should not be offered. */
+    private void initBottomBarPref() {
+        if (!BottomBarConfigUtils.shouldShowSettingsToggle(getContext())) {
+            removePreference(PREF_BOTTOM_BAR_SWITCH);
+            return;
+        }
+        ChromeSwitchPreference bottomBarSwitch = findPreference(PREF_BOTTOM_BAR_SWITCH);
+        assert bottomBarSwitch != null;
+        bottomBarSwitch.setOnPreferenceChangeListener(
+                (pref, newValue) -> {
+                    boolean enabled = (boolean) newValue;
+                    BottomBarConfigUtils.setBottomBarUserEnabled(enabled);
+                    RecordUserAction.record(
+                            enabled
+                                    ? USER_ACTION_BOTTOM_BAR_ENABLED
+                                    : USER_ACTION_BOTTOM_BAR_DISABLED);
+                    return true;
+                });
+    }
+
+    /**
+     * Syncs the bottom bar switch with the current pref value, if the switch is present. {@code
+     * TwoStatePreference#setChecked} does not invoke {@code OnPreferenceChangeListener}, so this
+     * does not record user actions when opening the fragment.
+     */
+    private void updateBottomBarPref() {
+        ChromeSwitchPreference bottomBarSwitch = findPreference(PREF_BOTTOM_BAR_SWITCH);
+        if (bottomBarSwitch == null) return;
+        bottomBarSwitch.setChecked(BottomBarConfigUtils.isBottomBarUserEnabled());
+    }
+
+    private void removePreference(String prefKey) {
+        getPreferenceScreen().removePreference(findPreference(prefKey));
+    }
+
+    private void updateBookmarkBarPref() {
+        if (!shouldShowBookmarkPref(getContext())) {
+            return;
+        }
+
+        Preference bookmarkBarPref = findPreference(PREF_BOOKMARK_BAR);
+        if (bookmarkBarPref != null) {
+            bookmarkBarPref.setSummary(getBookmarkBarVisibilityStateSummaryRes(getProfile()));
+            return;
+        }
+
+        ChromeSwitchPreference bookmarkBarSwitch =
+                (ChromeSwitchPreference) findPreference(PREF_BOOKMARK_BAR_SWITCH);
+        if (bookmarkBarSwitch == null) return;
+
+        if (mUseProfileUserPrefs) {
+            bookmarkBarSwitch.setChecked(
+                    BookmarkBarUtils.isUserPrefsShowBookmarksBarEnabled(getProfile()));
+        } else {
+            bookmarkBarSwitch.setChecked(
+                    BookmarkBarUtils.isDevicePrefShowBookmarksBarEnabled(getProfile()));
+        }
+    }
+
+    private void updateUiThemePref() {
+        findPreference(PREF_UI_THEME)
+                .setSummary(
+                        NightModeUtils.getThemeSettingTitle(
+                                getContext(), NightModeUtils.getThemeSetting()));
+    }
+
+    /** Initializes the tab position preference row and listens for state changes. */
+    @SuppressWarnings("UseSharedPreferencesManagerFromChromeCheck")
+    private void initTabPositionPref() {
+        if (!VerticalTabUtils.isVerticalTabsEligible(getContext())) {
+            removePreference(PREF_TAB_POSITION);
+            return;
+        }
+        mTabPositionListener =
+                (sharedPreferences, key) -> {
+                    if (ChromePreferenceKeys.VERTICAL_TABS_ENABLED.equals(key)) {
+                        updateTabPositionPref();
+                    }
+                };
+        ContextUtils.getAppSharedPreferences()
+                .registerOnSharedPreferenceChangeListener(mTabPositionListener);
+    }
+
+    /** Updates the summary text on the tab position preference row based on current state. */
+    private void updateTabPositionPref() {
+        Context context = getContext();
+        if (!VerticalTabUtils.isVerticalTabsEligible(context)) {
+            return;
+        }
+        Preference tabPositionPref = findPreference(PREF_TAB_POSITION);
+        if (tabPositionPref != null) {
+            boolean isVertical = VerticalTabUtils.isVerticalTabsEnabled(context);
+            tabPositionPref.setSummary(
+                    isVertical ? R.string.tab_position_vertical : R.string.tab_position_horizontal);
+        }
+    }
+
+    @Override
+    public @AnimationType int getAnimationType() {
+        return AnimationType.PROPERTY;
+    }
+
+    @Override
+    public @Nullable String getMainMenuKey() {
+        return "appearance";
+    }
+
+    @Nullable PrefObserver getPrefObserverForTesting() {
+        return mPrefObserver;
+    }
+
+    static @StringRes int getBookmarkBarVisibilityStateSummaryRes(Profile profile) {
+        @BookmarkBarVisibilityState
+        int state =
+                BookmarkBarUtils.shouldUseProfileUserPrefs()
+                        ? BookmarkBarUtils.getUserPrefsBookmarkBarVisibilityState(profile)
+                        : BookmarkBarUtils.getDevicePrefBookmarkBarVisibilityState(profile);
+
+        return switch (state) {
+            case BookmarkBarVisibilityState.ALWAYS_SHOW ->
+                    R.string.bookmark_bar_setting_always_show;
+            case BookmarkBarVisibilityState.ONLY_SHOW_ON_NTP ->
+                    R.string.bookmark_bar_setting_only_show_bookmarks_bar_on_ntp;
+            case BookmarkBarVisibilityState.ALWAYS_HIDE ->
+                    R.string.bookmark_bar_setting_always_hide;
+            default -> R.string.bookmark_bar_setting_always_hide;
+        };
+    }
+
+    static boolean shouldShowBookmarkPref(Context context) {
+        return BookmarkBarUtils.isDeviceBookmarkBarCompatible(context);
+    }
+
+    static boolean shouldShowSubpage() {
+        return ChromeFeatureList.sBookmarksBarNTP.isEnabled();
+    }
+
+    public static void shouldShowToolbarShortcutPrefAsync(
+            Context context, Profile profile, Callback<Boolean> callback) {
+        // LINT.IfChange(InitPrefToolbarShortcut)
+        new AdaptiveToolbarStatePredictor(
+                        context,
+                        profile,
+                        /* androidPermissionDelegate= */ null,
+                        /* behavior= */ null)
+                .recomputeUiState(uiState -> callback.onResult(uiState.canShowUi));
+        // LINT.ThenChange(//chrome/android/java/src/org/chromium/chrome/browser/settings/MainSettings.java:InitPrefToolbarShortcut)
+    }
+
+    public static final ChromeBaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
+            new ChromeBaseSearchIndexProvider(
+                    AppearanceSettingsFragment.class.getName(), R.xml.appearance_preferences) {
+
+                @Override
+                public void updateDynamicPreferences(
+                        Context context, SettingsIndexData indexData, Profile profile) {
+                    String prefFragment = AppearanceSettingsFragment.class.getName();
+
+                    if (!shouldShowBookmarkPref(context)) {
+                        indexData.removeEntryForKey(prefFragment, PREF_BOOKMARK_BAR);
+                        indexData.removeEntryForKey(prefFragment, PREF_BOOKMARK_BAR_SWITCH);
+                    } else if (shouldShowSubpage()) {
+                        indexData.removeEntryForKey(prefFragment, PREF_BOOKMARK_BAR_SWITCH);
+                        indexData.updateEntrySummaryForKey(
+                                prefFragment,
+                                PREF_BOOKMARK_BAR,
+                                getBookmarkBarVisibilityStateSummaryRes(profile));
+                    } else {
+                        indexData.removeEntryForKey(prefFragment, PREF_BOOKMARK_BAR);
+                    }
+
+                    if (!VerticalTabUtils.isVerticalTabsEligible(context)) {
+                        indexData.removeEntryForKey(prefFragment, PREF_TAB_POSITION);
+                    }
+
+                    if (!BottomBarConfigUtils.shouldShowSettingsToggle(context)) {
+                        indexData.removeEntryForKey(prefFragment, PREF_BOTTOM_BAR_SWITCH);
+                    }
+
+                    shouldShowToolbarShortcutPrefAsync(
+                            context,
+                            profile,
+                            (shouldShow) -> {
+                                if (!shouldShow) {
+                                    indexData.removeEntryForKey(
+                                            prefFragment, PREF_TOOLBAR_SHORTCUT);
+
+                                    // Resolve the index again to reflect the removal above.
+                                    indexData.resolveIndex();
+                                }
+                            });
+                }
+            };
+}

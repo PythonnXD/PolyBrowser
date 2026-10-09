@@ -1,0 +1,143 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("local_state_delegate") {
+  sources = [ "safe_browsing_local_state_delegate.h" ]
+}
+
+source_set("info_singleton") {
+  sources = [
+    "web_ui_info_singleton.cc",
+    "web_ui_info_singleton.h",
+  ]
+
+  public_deps = [
+    ":util",
+    "//components/safe_browsing:buildflags",
+    "//components/safe_browsing/core/browser",
+    "//components/safe_browsing/core/browser:download_check_result",
+    "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
+    "//components/safe_browsing/core/browser/hashprefix_realtime:hash_realtime_service",
+    "//components/safe_browsing/core/browser/realtime:url_lookup_service_base",
+    "//services/network/public/mojom",
+  ]
+
+  deps = [
+    ":event_observer",
+    "//components/safe_browsing/core/common:features",
+    "//components/sync/protocol",
+  ]
+}
+
+source_set("handler") {
+  check_includes_strict = true
+  public = [ "safe_browsing_ui_handler.h" ]
+  sources = [ "safe_browsing_ui_handler.cc" ]
+
+  public_deps = [
+    ":event_observer",
+    ":local_state_delegate",
+    ":util",
+    "//base",
+    "//components/safe_browsing/core/browser:download_check_result",
+    "//components/safe_browsing/core/common/proto:csd_proto",
+    "//mojo/public/cpp/bindings",
+    "//net",
+    "//services/network/public/mojom",
+  ]
+
+  deps = [
+    ":event_observer_impl",
+    ":info_singleton",
+    "//components/os_crypt/browser",
+    "//components/password_manager/core/browser:hash_password_manager",
+    "//components/safe_browsing/core/browser:referrer_chain_provider",
+    "//components/safe_browsing/core/browser/db:sb_local_database_manager",
+    "//components/safe_browsing/core/common:features",
+    "//components/safe_browsing/core/common/proto:csd_proto_extras",
+    "//components/user_prefs",
+  ]
+}
+
+source_set("event_observer") {
+  sources = [ "web_ui_info_singleton_event_observer.h" ]
+
+  public_deps = [
+    "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
+  ]
+
+  deps = [
+    "//base",
+    "//components/enterprise/common/proto:upload_request_response",
+    "//components/safe_browsing:buildflags",
+    "//components/safe_browsing/core/browser:download_check_result",
+    "//components/safe_browsing/core/common/proto:csd_proto",
+    "//components/safe_browsing/core/common/proto:realtimeapi_proto",
+    "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
+    "//components/sync/protocol",
+    "//url",
+  ]
+}
+
+source_set("event_observer_impl") {
+  sources = [
+    "web_ui_info_singleton_event_observer_impl.cc",
+    "web_ui_info_singleton_event_observer_impl.h",
+  ]
+
+  deps = [
+    ":event_observer",
+    ":util",
+    "//base",
+  ]
+}
+
+source_set("util") {
+  check_includes_strict = true
+  public = [ "safe_browsing_ui_util.h" ]
+  sources = [ "safe_browsing_ui_util.cc" ]
+
+  public_deps = [
+    ":event_observer",
+    "//base",
+    "//components/enterprise/common/proto:upload_request_response",
+    "//components/safe_browsing:buildflags",
+    "//components/safe_browsing/core/browser:download_check_result",
+    "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
+    "//components/safe_browsing/core/common/proto:csd_proto",
+    "//components/safe_browsing/core/common/proto:realtimeapi_proto",
+    "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
+    "//components/safe_browsing/core/common/proto:webui_proto",
+    "//components/sync/protocol",
+    "//net",
+    "//url",
+  ]
+
+  deps = [
+    "//base:i18n",
+    "//components/enterprise/common/proto:connectors_proto",
+    "//components/enterprise/common/proto:connectors_proto_extras",
+    "//components/enterprise/connectors/core:constants",
+    "//components/safe_browsing/core/browser:referring_app_info",
+    "//components/safe_browsing/core/common/proto:csd_proto_extras",
+    "//components/safe_browsing/core/common/proto:realtimeapi_proto_extras",
+    "//components/safe_browsing/core/common/proto:safebrowsingv5_proto_extras",
+  ]
+
+  if (!is_android) {
+    deps += [ "//components/enterprise/common/proto:upload_request_response_extras_to_value" ]
+  }
+}
+
+source_set("cr_safe_browsing_log") {
+  sources = [
+    "cr_safe_browsing_log.cc",
+    "cr_safe_browsing_log.h",
+  ]
+
+  deps = [
+    ":info_singleton",
+    "//base",
+  ]
+}

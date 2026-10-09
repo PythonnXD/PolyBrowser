@@ -1,0 +1,680 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module browser.context_hub.mojom;
+
+import "mojo/public/mojom/base/time.mojom";
+import "mojo/public/mojom/base/uuid.mojom";
+import "url/mojom/url.mojom";
+
+feature kAutoTabGroups {
+  const string name = "AutoTabGroups";
+  const bool default_state = false;
+};
+
+feature kAutoTodos {
+  const string name = "AutoTodos";
+  const bool default_state = false;
+};
+
+feature kRecordReplay {
+  const string name = "RecordReplay";
+  const bool default_state = false;
+};
+
+feature kSmartSearch {
+  const string name = "SmartSearch";
+  const bool default_state = false;
+};
+
+feature kTopics {
+  const string name = "Topics";
+  const bool default_state = false;
+};
+
+enum AutoTodoStatus {
+  kActive,
+  kCompleted,
+  kDismissed,
+};
+
+enum AutoTodoGroup {
+  kNoMatch,
+  kNudgeToClose,
+  kReadingList,
+  kUnfinishedAction,
+  kShoppingCart,
+};
+
+struct GmailReference {
+  url.mojom.Url message_url;
+  string subject;
+};
+
+struct PhotosReference {
+  url.mojom.Url photos_url;
+};
+
+struct DriveFile {
+  url.mojom.Url url;
+  string name;
+};
+
+union SourceReference {
+  GmailReference gmail;
+  PhotosReference photos;
+  DriveFile drive;
+};
+
+// Data for Gmail-based AutoTodos.
+struct FirstPartyData {
+  // Source URLs where the AutoTodo was generated from.
+  array<SourceReference> source_references;
+  // The URL to navigate to when the user clicks to start the item.
+  url.mojom.Url actionable_url;
+};
+
+// Data for Browser tab-based AutoTodos.
+struct ThirdPartyData {
+  // Associated tab Session ID.
+  int64 tab_id;
+  // Timestamp when the associated tab was last active.
+  mojo_base.mojom.Time last_active_timestamp;
+  // The group that this Tab-Todo belongs to.
+  AutoTodoGroup group_type;
+};
+
+union AutoTodoData {
+  // Data for Gmail-based AutoTodos.
+  FirstPartyData first_party;
+  // Data for Browser tab-based AutoTodos.
+  ThirdPartyData third_party;
+};
+
+// Represents an item in the Auto Todo list.
+struct AutoTodoItem {
+  string id;
+  string title;
+  string description;
+  // Status of the item.
+  AutoTodoStatus status;
+  // Importance score between 0 and 1 for the item.
+  float score;
+  // Type-specific data for the item.
+  AutoTodoData data;
+};
+
+// Metadata regarding the generation of Auto Todos.
+struct AutoTodosGenerationMetadata {
+  // Timestamp of the last successful generation.
+  mojo_base.mojom.Time last_generation_time;
+  // Whether the last generation attempt failed.
+  bool has_error;
+};
+
+enum EntryType {
+  kTab,
+  kTextSelection,
+};
+
+// Represents an entry stored in the memory bank.
+// See chrome/browser/context_hub/memory_bank/memory_bank_entry.h for field
+// descriptions.
+struct MemoryBankEntry {
+  int64 id;
+  EntryType type;
+  mojo_base.mojom.Time timestamp;
+  url.mojom.Url url;
+  string tab_title;
+  string? selected_text;
+  array<string> tags;
+  string? note;
+  string? collection;
+};
+
+struct TabInfo {
+  int64 id;
+  string title;
+  url.mojom.Url url;
+};
+
+struct TabGroup {
+  string label;
+  array<TabInfo> tabs;
+  // Unique identifier for the saved group managed by TabGroupSyncService,
+  // present for confirmed saved groups only.
+  mojo_base.mojom.Uuid? saved_guid;
+};
+
+enum ChatRole {
+  kUser,
+  kAssistant,
+};
+
+// Represents a cited source reference in a chat response.
+struct ChatReference {
+  string title;
+  url.mojom.Url url;
+};
+
+struct ChatMessage {
+  ChatRole role;
+  string content;
+};
+
+// Context provided to the WebUI dialog for previewing the item to be saved.
+struct SaveToMemoryBankContext {
+  // The URL of the page where the context originated.
+  url.mojom.Url url;
+  // The title of the tab where the context originated.
+  string tab_title;
+  // The text selected from the page by the user.
+  string? selected_text;
+  // Whether the item being saved is a text selection rather than a tab.
+  bool is_text_selection;
+};
+
+// User-specified annotations when saving a context item to the memory bank.
+struct MemoryBankEntryAnnotations {
+  // The collection name the entry should belong to. Null if not assigned to
+  // no collection.
+  string? collection;
+  // User-provided note for the entry. Null if no note is provided.
+  string? note;
+  // Tags associated with the entry for grouping. Null or empty if no tags
+  // are assigned.
+  array<string>? tags;
+};
+
+// Represents feedback on an Auto Todo item.
+struct AutoTodoItemFeedback {
+  // The ID of the Auto Todo item in question.
+  string todo_id;
+  // Whether the item was liked or disliked by the user. Used to gather quick
+  // feedback from teamfood users in a lightweight way.
+  bool liked;
+};
+
+// Represents a search result returned by the Smart Search feature.
+struct SmartSearchResult {
+  string description;
+  array<SourceReference> source_references;
+};
+
+// A browsing history visit belonging to a Topic.
+struct TopicVisit {
+  // URL of the visited page.
+  url.mojom.Url url;
+  // Title of the visited page.
+  string title;
+  // When the page was visited.
+  mojo_base.mojom.Time visit_time;
+};
+
+// A suggested way for the user to pick a Topic back up.
+struct TopicContinuationQuery {
+  // Human-readable title shown to the user.
+  string title;
+  // Query used to run the follow-up search.
+  string prompt;
+};
+
+// A page suggested in a TopicCollection.
+struct TopicCollectionItem {
+  // Display title of the page.
+  string title;
+  // URL of the page.
+  url.mojom.Url url;
+  // Name of the site the page belongs to, if known.
+  string? site_name;
+};
+
+// A titled group of pages related to a Topic, shown as a carousel on the topic
+// details page.
+struct TopicCollection {
+  // Display title of the collection.
+  string title;
+  // Pages in the collection, in display order.
+  array<TopicCollectionItem> items;
+};
+
+// A grouping of related browsing history shown in the Topics view.
+struct Topic {
+  // Stable identifier for the Topic.
+  string id;
+  // Display title of the Topic.
+  string title;
+  // When the Topic was created.
+  mojo_base.mojom.Time creation_time;
+  // Emoji representing the Topic, if there is one.
+  string? emoji;
+  // Long summary of the Topic, if there is one.
+  string? overview;
+  // Short summary of the Topic, if there is one.
+  string? short_overview;
+  // Visits belonging to the Topic.
+  array<TopicVisit> visits;
+  // Suggested follow-up searches for the Topic.
+  array<TopicContinuationQuery> continuation_queries;
+  // Groups of related pages, shown on the topic details page.
+  array<TopicCollection> collections;
+};
+
+// Represents either a topic ID or a full topic URL.
+union TopicIdOrUrl {
+  string topic_id;
+  url.mojom.Url topic_url;
+};
+
+// Defect categories a fishfood rater can select when disliking a Topic. The
+// comment on each value is the label shown to raters.
+// Persisted in profile prefs by integer value, so existing values must not be
+// renumbered.
+enum TopicDefectCategory {
+  // "Irrelevant information included"
+  kIrrelevantInformationIncluded = 0,
+  // "Related information missing"
+  kRelatedInformationMissing = 1,
+  // "Title wrong/vague"
+  kTitleWrongOrVague = 2,
+  // "Emoji wrong"
+  kEmojiWrong = 3,
+  // "Overview inaccurate"
+  kOverviewInaccurate = 4,
+  // "Too broad"
+  kTooBroad = 5,
+  // "Combines separate topics"
+  kCombinesSeparateTopics = 6,
+  // "Too narrow / fragmented"
+  kTooNarrowOrFragmented = 7,
+  // "Incidental browsing (not intended)"
+  kIncidentalBrowsing = 8,
+  // "Duplicate of another topic"
+  kDuplicateOfAnotherTopic = 9,
+  // "Sensitive topic shouldn't be shown"
+  kSensitiveTopic = 10,
+  // "Other"; `TopicFeedback.comment` is required when selected.
+  kOther = 11,
+};
+
+// What a Topic looked like when it was rated. Stored alongside the rating so
+// feedback remains interpretable if the Topic's id or contents later change.
+struct TopicSnapshot {
+  string title;
+  // Empty if the Topic had no emoji / overview when rated.
+  string emoji;
+  string overview;
+  // Visit times of the Topic's visits, used to join the rating back to
+  // history visits in the exported feedback bundle.
+  array<mojo_base.mojom.Time> visit_times;
+  // When the rating was last saved. Set by the browser in SetTopicFeedback();
+  // any value supplied by the WebUI is ignored.
+  mojo_base.mojom.Time time_rated;
+};
+
+// A fishfood rating of one of a Topic's continuation queries.
+struct TopicQueryFeedback {
+  // Index of the query in `Topic.continuation_queries` at rating time.
+  int32 index;
+  // Text of the rated query, so the rating is interpretable if queries change.
+  string query_text;
+  bool liked;
+};
+
+// Snapshot of the Topic a rater flagged as a duplicate of the rated Topic.
+struct DuplicateTopicSnapshot {
+  string id;
+  string title;
+  array<mojo_base.mojom.Time> visit_times;
+};
+
+// A fishfood rater's overall thumbs up/down on a Topic.
+// Persisted in profile prefs by integer value, so existing values must not be
+// renumbered.
+enum TopicRating {
+  // The rater has not given a thumbs up or down.
+  kUnrated = 0,
+  kLiked = 1,
+  kDisliked = 2,
+};
+
+// A fishfood rater's complete feedback on one Topic. Only collected when the
+// `fishfood_feedback` param of kTopics is enabled.
+struct TopicFeedback {
+  // Id of the rated Topic.
+  string id;
+  TopicSnapshot snapshot;
+  TopicRating rating;
+  array<TopicDefectCategory> defects;
+  // Free-text comment; empty if none. Required to be non-empty when `defects`
+  // contains kOther.
+  string comment;
+  array<TopicQueryFeedback> query_feedbacks;
+  // Visit times of visits the rater flagged as not belonging to the Topic.
+  array<mojo_base.mojom.Time> rejected_visits;
+  DuplicateTopicSnapshot? duplicate_of;
+};
+
+// Summary counts of the Topics fishfood feedback export.
+struct TopicsFeedbackExportStats {
+  // Number of resolved Topics.
+  uint32 topics;
+  // Number of exported history visits in the window.
+  uint32 visits;
+  // Number of exported visits in the window not linked to any Topic.
+  uint32 unclustered_visits;
+  // Number of stored Topics whose visits could not all be resolved on this
+  // device; these are not exported.
+  uint32 unresolvable_topics;
+};
+
+// A distinct minimized URL visited in the export window.
+struct TopicsFeedbackExportUrl {
+  url.mojom.Url url;
+  // Title of the most recent visit to `url`.
+  string title;
+  uint32 visit_count;
+};
+
+// A host visited in the export window, shown as a row the rater can redact.
+struct TopicsFeedbackExportDomain {
+  // Canonical host, e.g. "www.example.com".
+  string domain;
+  uint32 visit_count;
+  // Whether the export dialog should exclude this domain by default (internal
+  // Google hosts and Google Workspace surfaces).
+  bool default_excluded;
+  // Distinct URLs under `domain`, most visited first.
+  array<TopicsFeedbackExportUrl> urls;
+};
+
+// What the Topics fishfood feedback export would contain, shown to the rater
+// before generating the bundle.
+struct TopicsFeedbackExportPreview {
+  // Prefilled rater LDAP, from the primary account if it is an @google.com
+  // account; empty otherwise.
+  string ldap;
+  TopicsFeedbackExportStats stats;
+  // Hosts visited in the window, most visited first.
+  array<TopicsFeedbackExportDomain> domains;
+};
+
+// The rater's choices for generating the Topics fishfood feedback bundle.
+struct TopicsFeedbackExportOptions {
+  // Number of days of history to export. Clamped to [1, 14].
+  int32 window_days;
+  // Hosts whose visits are exported as redacted stubs (no URL or title). This
+  // is the complete list: the WebUI prefills it with the preview's
+  // `default_excluded` domains and applies the rater's overrides.
+  array<string> excluded_domains;
+  // Minimized URLs whose visits are exported as redacted stubs.
+  array<url.mojom.Url> excluded_urls;
+  // Whether to drop the page title of every exported visit.
+  bool strip_all_titles;
+  // Hosts whose visits are exported without a page title.
+  array<string> title_stripped_domains;
+  // Free-text description of Topics the rater expected but did not see.
+  string missing_topics;
+  // Rater LDAP written to the bundle.
+  string rater;
+};
+
+// Interface for the browser process to push updates to the WebUI page.
+// Implemented in the renderer process (the Context Hub WebUI).
+interface Page {
+  // Notifies the WebUI when the list of Auto Todos in the cache changes.
+  [RuntimeFeature=kAutoTodos]
+  OnAutoTodosChanged(array<AutoTodoItem> todos);
+
+  // Notifies the WebUI when First Party Auto Todos generation state changes.
+  [RuntimeFeature=kAutoTodos]
+  OnFirstPartyAutoTodosGenerationStateChanged(bool is_generating);
+
+  // Notifies the WebUI when Third Party Auto Todos generation state changes.
+  [RuntimeFeature=kAutoTodos]
+  OnThirdPartyAutoTodosGenerationStateChanged(bool is_generating);
+
+  // Notifies the WebUI when an entry is saved to the memory bank. If an entry
+  // with the same ID is already displayed, it should be replaced by `entry`.
+  OnMemoryBankEntryAdded(MemoryBankEntry entry);
+
+  // Notifies the WebUI when the annotations of an existing entry in the memory
+  // bank are updated. `annotations` replaces the entry's previous annotations.
+  OnMemoryBankEntryUpdated(int64 id, MemoryBankEntryAnnotations annotations);
+
+  // Notifies the WebUI when entries are deleted from the memory bank. `ids` may
+  // contain IDs that did not match an existing entry, which should be ignored.
+  OnMemoryBankEntriesDeleted(array<int64> ids);
+};
+
+// Factory used by the WebUI page (caller) to create a PageHandler in the
+// browser process (callee) for the Context Hub page.
+interface PageHandlerFactory {
+  // Creates a PageHandler instance and binds it to the given receiver and page
+  // remote.
+  CreatePageHandler(
+      pending_remote<Page> page, pending_receiver<PageHandler> handler);
+};
+
+// Provides access to context hub features.
+// The WebUI page (caller) uses this to interact with the browser
+// process (callee).
+interface PageHandler {
+  // Generates and saves 1P Auto Todos to the cache. Gated by kAutoTodos flag.
+  [RuntimeFeature=kAutoTodos]
+  GenerateFirstPartyAutoTodos() => (bool success);
+
+  // Returns stored Auto Todos from the cache, differentiated by whether they
+  // are first party or third party, along with generation metadata for each.
+  [RuntimeFeature=kAutoTodos]
+  GetAutoTodos() => (array<AutoTodoItem> first_party_todos,
+                     array<AutoTodoItem> third_party_todos,
+                     AutoTodosGenerationMetadata first_party_metadata,
+                     AutoTodosGenerationMetadata third_party_metadata);
+
+  // Updates an existing Auto Todo item in the cache, returns true if
+  // successful.
+  [RuntimeFeature=kAutoTodos]
+  UpdateAutoTodo(AutoTodoItem todo) => (bool success);
+
+  // Generates Tab-based Todos and stores them in the cache. Gated by kAutoTodos
+  // flag.
+  [RuntimeFeature=kAutoTodos]
+  GenerateTabBasedTodos() => (bool success);
+
+  // Clears all first-party (Workspace) Auto Todos from the cache.
+  [RuntimeFeature=kAutoTodos]
+  ClearFirstPartyAutoTodos() => (bool success);
+
+  // Clears all third-party (Browser) Auto Todos from the cache.
+  [RuntimeFeature=kAutoTodos]
+  ClearThirdPartyAutoTodos() => (bool success);
+
+  // Stores or updates feedback on an Auto Todo item in the cache.
+  [RuntimeFeature=kAutoTodos]
+  SetTodoFeedback(AutoTodoItemFeedback feedback) => ();
+
+  // Deletes feedback on an Auto Todo item by Todo item ID from the cache.
+  [RuntimeFeature=kAutoTodos]
+  DeleteTodoFeedback(string id) => ();
+
+  // Clears all todo feedback items from the cache.
+  [RuntimeFeature=kAutoTodos]
+  ClearTodoFeedbacks() => ();
+
+  // Returns all cached todo feedback items from the cache.
+  [RuntimeFeature=kAutoTodos]
+  GetTodoFeedbacks() => (array<AutoTodoItemFeedback> feedbacks);
+
+  // Returns initial context details for saving to memory bank.
+  GetSaveToMemoryBankContext() => (SaveToMemoryBankContext? context);
+
+  // Returns all entries currently stored in the memory bank.
+  GetAllMemoryBankEntries() => (array<MemoryBankEntry> entries);
+
+  // Deletes entries from the memory bank.
+  DeleteMemoryBankEntries(array<int64> ids) => ();
+
+  // Saves the current context entry to the memory bank with user annotations.
+  SaveMemoryBankEntry(MemoryBankEntryAnnotations annotations)
+      => (bool success);
+
+  // Returns all unique tags stored in the memory bank.
+  GetAllMemoryBankTags() => (array<string> tags);
+
+  // Returns all unique collections stored in the memory bank.
+  GetAllMemoryBankCollections() => (array<string> collections);
+
+  // Updates an existing memory bank entry with new user annotations.
+  UpdateMemoryBankEntryAnnotations(int64 id,
+                                   MemoryBankEntryAnnotations annotations)
+      => (bool success);
+
+  // Returns the list of open ungrouped tabs in the current window.
+  [RuntimeFeature=kAutoTabGroups]
+  GetTabs() => (array<TabInfo> tabs);
+
+  // Retrieves and groups related open tabs based on the user command.
+  // User command is inputted via WebUI textbox.
+  [RuntimeFeature=kAutoTabGroups]
+  RetrieveAndGroupTabs(string user_command) => (array<TabGroup> groups,
+                                                array<TabInfo> ungrouped_tabs,
+                                                ChatMessage? llm_response);
+
+  // Returns stored tab groups and chat history from the cache along with
+  // ungrouped tabs. Used on page start up.
+  [RuntimeFeature=kAutoTabGroups]
+  GetExistingTabGroupsAndChats() => (array<TabGroup> groups,
+                                     array<TabInfo> ungrouped_tabs,
+                                     array<ChatMessage> history);
+
+  // Switches to the specified tab.
+  SwitchToTab(int64 tab_id);
+
+  // Closes the specified tab.
+  CloseTab(int64 tab_id);
+
+  // Clears stored tab groups.
+  [RuntimeFeature=kAutoTabGroups]
+  ClearTabGroups() => ();
+
+  // Clears stored tab group chat history.
+  [RuntimeFeature=kAutoTabGroups]
+  ClearTabGroupChatHistory() => ();
+
+  // Sends a request to Gemini with the user command and selected memory bank
+  // entry IDs. If `save_to_history` is true, the turn is saved to the memory
+  // bank chat history.
+  AskGeminiWithContext(
+      string user_command, array<int64> memory_bank_entry_ids,
+      bool save_to_history)
+      => (ChatMessage response, array<ChatReference> references);
+
+  // Returns stored memory bank chat history.
+  GetMemoryBankChatHistory() => (array<ChatMessage> history);
+
+  // Clears stored memory bank chat history.
+  ClearMemoryBankChatHistory() => ();
+
+  // Confirms all suggested tab groups to the browser window and saves them
+  // to TabGroupSyncService.
+  [RuntimeFeature=kAutoTabGroups]
+  ConfirmAllTabGroups() => (bool success);
+
+  // Returns list of confirmed tab groups currently open or saved.
+  [RuntimeFeature=kAutoTabGroups]
+  GetConfirmedTabGroups() => (array<TabGroup> groups);
+
+  // Removes a confirmed tab group from TabGroupSyncService and ungroups its
+  // open tabs in the browser window without closing them.
+  [RuntimeFeature=kAutoTabGroups]
+  RemoveConfirmedTabGroup(mojo_base.mojom.Uuid saved_guid) => ();
+
+  // Closes an open confirmed tab group from the browser window without removing
+  // its saved state from TabGroupSyncService.
+  [RuntimeFeature=kAutoTabGroups]
+  CloseConfirmedTabGroup(mojo_base.mojom.Uuid saved_guid) => ();
+
+  // Removes all confirmed tab groups from TabGroupSyncService and ungroups
+  // their open tabs in the browser window.
+  [RuntimeFeature=kAutoTabGroups]
+  RemoveAllConfirmedTabGroups() => ();
+
+  // Executes the provided natural language query to search across Drive
+  // artifacts.
+  [RuntimeFeature=kSmartSearch]
+  ExecuteSmartSearch(string query) => (array<SmartSearchResult> results);
+
+  // Opens the specified URLs (capped to 10) into a new tab group. Guarded in
+  // PageHandler by kTopics or kSmartSearch enabled.
+  OpenUrlsInTabGroup(string group_label, array<url.mojom.Url> urls)
+      => (bool success);
+
+  // Returns the Topics stored for this profile, newest first by creation time.
+  // Topics that cannot be fully populated are omitted.
+  [RuntimeFeature=kTopics]
+  GetTopics() => (array<Topic> topics);
+
+  // Returns the Topic identified by `id`, or null if there is no such topic or
+  // it cannot be fully populated (i.e. it would be omitted by `GetTopics()`).
+  [RuntimeFeature=kTopics]
+  GetTopic(string id) => (Topic? topic);
+
+  // Returns the URL of a representative image for `page_url`, a page in one of
+  // a Topic's collections, or null if there is none or `page_url` is not a web
+  // URL.
+  [RuntimeFeature=kTopics]
+  GetTopicPageImageUrl(url.mojom.Url page_url) => (url.mojom.Url? image_url);
+
+  // Opens the specified topic (by topic ID or full URL) in a new tab.
+  [RuntimeFeature=kTopics]
+  OpenTopic(TopicIdOrUrl topic_id_or_url);
+
+  // Opens the Glic side panel bound to the tab hosting this page, offering
+  // `prompts` (capped to 3) as suggestion chips. If the panel is already
+  // showing for that tab, its suggestion chips are replaced with `prompts`
+  // without stealing focus. Safe to call on every page load. No-op if Glic is
+  // unavailable for the profile or if the page is not hosted in a tab.
+  [RuntimeFeature=kTopics]
+  OpenGlicPanel(array<string> prompts);
+
+  // Stores or replaces the fishfood feedback for the Topic identified by
+  // `feedback.id`, which must be non-empty. Persists across browser restarts
+  // while the `fishfood_feedback` param of kTopics is enabled.
+  [RuntimeFeature=kTopics]
+  SetTopicFeedback(TopicFeedback feedback) => ();
+
+  // Deletes the stored fishfood feedback for `topic_id` (must be non-empty),
+  // if any.
+  [RuntimeFeature=kTopics]
+  DeleteTopicFeedback(string topic_id) => ();
+
+  // Returns all stored fishfood Topic feedback.
+  [RuntimeFeature=kTopics]
+  GetTopicFeedbacks() => (array<TopicFeedback> feedbacks);
+
+  // Deletes all stored fishfood Topic feedback.
+  [RuntimeFeature=kTopics]
+  ClearTopicFeedbacks() => ();
+
+  // Returns what the fishfood feedback export would contain for the last
+  // `window_days` days of history (clamped to [1, 14]). Only callable while
+  // the `fishfood_feedback` param of kTopics is enabled.
+  [RuntimeFeature=kTopics]
+  GetTopicsFeedbackExportPreview(int32 window_days)
+      => (TopicsFeedbackExportPreview preview);
+
+  // Returns the fishfood feedback bundle as schema_version 1 JSON: Topics,
+  // minimized history visits in the window (redacted per `options`), stored
+  // Topic feedback and Chrome/Finch context. Only callable while the
+  // `fishfood_feedback` param of kTopics is enabled.
+  [RuntimeFeature=kTopics]
+  GenerateTopicsFeedbackBundle(TopicsFeedbackExportOptions options)
+      => (string json_bundle);
+
+  // Invokes Glic with auto-submit in actuation (AutoBrowse) mode to execute
+  // `prompt`.
+  [RuntimeFeature=kAutoTodos]
+  RunTodoTask(string prompt) => (bool success);
+};

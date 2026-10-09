@@ -1,0 +1,109 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("contextual_search") {
+  sources = [
+    "chrome_contextual_search_session_tab_validator.cc",
+    "chrome_contextual_search_session_tab_validator.h",
+    "contextual_search_service_factory.cc",
+    "contextual_search_service_factory.h",
+    "contextual_search_web_contents_helper.cc",
+    "contextual_search_web_contents_helper.h",
+  ]
+
+  deps = [
+    "//chrome/browser:browser_process",
+    "//chrome/browser/lens:lens_sapisid_generator",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/search_engines",
+    "//chrome/browser/signin",
+    "//chrome/common:channel_info",
+    "//components/contextual_search:public",
+    "//components/contextual_tasks/public",
+    "//components/lens:lens_identity_delegation_helper",
+    "//components/tabs:public",
+    "//components/url_deduplication",
+    "//components/version_info",
+    "//content/public/browser",
+  ]
+}
+
+source_set("contextual_cueing") {
+  sources = [
+    "contextual_search_cue_tab_state.cc",
+    "contextual_search_cue_tab_state.h",
+    "contextual_search_cue_target.cc",
+    "contextual_search_cue_target.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/contextual_cueing",
+    "//components/page_content_annotations/core",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//ui/base/unowned_user_data",
+    "//url",
+  ]
+
+  deps = [
+    ":contextual_search",
+    "//build:branding_buildflags",
+    "//chrome/app/theme:theme_resources",
+    "//chrome/browser/contextual_tasks",
+    "//chrome/browser/contextual_tasks:ui",
+    "//chrome/browser/optimization_guide",
+    "//chrome/browser/page_content_annotations",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/sync",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/contextual_search",
+    "//chrome/browser/ui/tabs:tabs_public",
+    "//components/contextual_search:public",
+    "//components/contextual_tasks/public:feature_list",
+    "//components/contextual_tasks/public:query_contextualizer",
+    "//components/lens",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/pdf/common:constants",
+    "//components/sync/service",
+    "//components/vector_icons",
+    "//ui/base",
+    "//ui/color",
+    "//ui/gfx",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "chrome_contextual_search_session_tab_validator_unittest.cc",
+    "contextual_search_cue_tab_state_unittest.cc",
+    "contextual_search_cue_target_unittest.cc",
+  ]
+  deps = [
+    ":contextual_cueing",
+    ":contextual_search",
+    "//base/test:test_support",
+    "//chrome/browser/contextual_cueing",
+    "//chrome/browser/history",
+    "//chrome/browser/page_content_annotations",
+    "//chrome/browser/signin",
+    "//chrome/browser/sync",
+    "//chrome/test:test_support",
+    "//chrome/test/base:chrome_render_view_host_test_harness",
+    "//components/contextual_tasks/public:feature_list",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/page_content_annotations/core:test_support",
+    "//components/pdf/common:constants",
+    "//components/sync:test_support",
+    "//components/tabs:test_support",
+    "//content/test:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/base/unowned_user_data",
+  ]
+  if (!is_android) {
+    deps += [ "//chrome/browser/ui/browser_window/test:test_support" ]
+  }
+}

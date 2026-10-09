@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/speculation-rules/prerender/resources/utils.js"></script>
+<script src="/speculation-rules/prerender/resources/deferred-promise-utils.js"></script>
+<script>
+
+const params = new URLSearchParams(location.search);
+
+// The main test page (restriction-web-auth.https.html) loads the initiator
+// page, then the initiator page will prerender itself with the `prerendering`
+// parameter.
+const isPrerendering = params.has('prerendering');
+
+if (!isPrerendering) {
+  loadInitiatorPage();
+} else {
+  const prerenderEventCollector = new PrerenderEventCollector();
+  // Pass an invalid RP ID ('127.0.0.1') that is validated by the browser's
+  // Authenticator service (blink.mojom.Authenticator) rather than the renderer.
+  // During prerendering, MojoBinderPolicyApplier defers binding
+  // blink.mojom.Authenticator until activation, at which point the browser
+  // immediately rejects the request with SecurityError without requiring a
+  // virtual authenticator.
+  const promise = navigator.credentials.get({
+    publicKey: {
+      challenge: new Uint8Array([1, 2, 3, 4]),
+      rpId: '127.0.0.1',
+    }
+  });
+  prerenderEventCollector.start(promise, 'navigator.credentials.get');
+}
+
+</script>

@@ -1,0 +1,17 @@
+Name: CastCore Publics
+Short Name: cast_core/public
+URL: https://chromium.googlesource.com/cast_core/public
+Version: N/A
+Date: 2026-03-02
+Revision: 1629985cfc0b065310738512a000b6e68716aa03
+Update Mechanism: Autoroll
+License: Apache-2.0
+License File: LICENSE
+Security Critical: yes
+Shipped: yes
+
+Description:
+Public components, such as protos, used by gRPC-based CastCore services and
+clients.
+
+Local Modifications: None

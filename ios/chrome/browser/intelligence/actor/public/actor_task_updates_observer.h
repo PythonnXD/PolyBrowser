@@ -1,0 +1,63 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_PUBLIC_ACTOR_TASK_UPDATES_OBSERVER_H_
+#define IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_PUBLIC_ACTOR_TASK_UPDATES_OBSERVER_H_
+
+#import <Foundation/Foundation.h>
+
+#import "ios/chrome/browser/intelligence/actor/public/actor_types.h"
+
+namespace web {
+class WebStateID;
+}
+
+// The ActorTask updates observer protocol (1-to-N). Used for passive
+// state broadcasts. All methods are posted to the current sequence, never
+// called synchronously, and carry a snapshot of the task at posting time. An
+// observer receives a notification if and only if it was posted after the
+// observer registers and is delivered before it unregisters. The first one is
+// `didRegisterAsObserverForTaskID:`, if implemented.
+@protocol ActorTaskUpdatesObserver <NSObject>
+
+// TODO(crbug.com/501043031): Remove @optional when API stabilizes.
+@optional
+
+// Posted after the UI registers as an observer. Provides the initial status so
+// the UI knows what to draw right away.
+- (void)didRegisterAsObserverForTaskID:(actor::ActorTaskId)taskID
+                             taskTitle:(NSString*)taskTitle
+                            taskUpdate:(NSString*)taskUpdate
+                          currentState:(actor::ActorTaskState)state
+                             webStates:(NSArray<NSNumber*>*)webStatesIDs;
+
+// Called when a WebState is added to an active task.
+- (void)actorTaskWithID:(actor::ActorTaskId)taskID
+         didAddWebState:(web::WebStateID)webStateID;
+
+// Called when an existing task's state changes.
+- (void)actorTaskWithID:(actor::ActorTaskId)taskID
+         didChangeState:(actor::ActorTaskState)newState
+              fromState:(actor::ActorTaskState)oldState;
+
+// Called just before a tool is about to be executed.
+- (void)actorTaskWithID:(actor::ActorTaskId)taskID
+        willExecuteTool:(actor::ToolType)toolType
+             taskUpdate:(NSString*)taskUpdate
+             onWebState:(web::WebStateID)webStateID;
+
+// Called when a task stops.
+// TODO(crbug.com/565875367): Remove once observers migrate to
+// `ActorTaskLifecycleObserver`.
+- (void)actorTaskDidStopWithID:(actor::ActorTaskId)taskID
+                    finalState:(actor::ActorTaskState)finalState;
+
+// Called when a pending user confirmation prompt has been resolved by the
+// user.
+- (void)actorTaskDidResolveConfirmationInterruptWithID:
+    (actor::ActorTaskId)taskID;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_PUBLIC_ACTOR_TASK_UPDATES_OBSERVER_H_

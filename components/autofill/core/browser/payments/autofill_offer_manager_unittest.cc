@@ -1,0 +1,307 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/payments/autofill_offer_manager.h"
+
+#include <memory>
+#include <tuple>
+
+#include "base/functional/bind.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "base/time/time.h"
+#include "components/autofill/core/browser/data_manager/test_personal_data_manager.h"
+#include "components/autofill/core/browser/foundations/test_autofill_client.h"
+#include "components/autofill/core/browser/payments/offer_notification_options.h"
+#include "components/autofill/core/browser/payments/test_payments_autofill_client.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_util.h"
+#include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
+#include "components/autofill/core/common/autofill_clock.h"
+#include "components/autofill/core/common/autofill_payments_features.h"
+#include "components/strings/grit/components_strings.h"
+#include "components/sync/test/test_sync_service.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "url/gurl.h"
+
+using testing::_;
+using testing::ElementsAre;
+using testing::Field;
+using testing::Pair;
+using testing::Pointee;
+
+namespace autofill {
+namespace {
+
+const char kTestGuid[] = "00000000-0000-0000-0000-000000000001";
+const char kTestGuid2[] = "00000000-0000-0000-0000-000000000002";
+const char kTestNumber[] = "4234567890123456";  // Visa
+const char kTestUrl[] = "http://www.example.com/";
+const char kOfferDetailsUrl[] = "http://pay.google.com";
+
+class MockPaymentsAutofillClient : public payments::TestPaymentsAutofillClient {
+ public:
+  explicit MockPaymentsAutofillClient(AutofillClient* client)
+      : TestPaymentsAutofillClient(client) {}
+  ~MockPaymentsAutofillClient() override = default;
+
+  MOCK_METHOD(void,
+              UpdateOfferNotification,
+              (const AutofillOfferData&, const OfferNotificationOptions&),
+              (override));
+  MOCK_METHOD(void, DismissOfferNotification, (), (override));
+};
+
+class MockAutofillClient : public TestAutofillClient {
+ public:
+  MockAutofillClient() {
+    set_payments_autofill_client(
+        std::make_unique<testing::NiceMock<MockPaymentsAutofillClient>>(this));
+  }
+};
+
+}  // namespace
+// The anonymous namespace needs to end here because of `friend`ships between
+// the tests and the production code.
+
+class AutofillOfferManagerTest : public testing::Test {
+ public:
+  AutofillOfferManagerTest() {
+    feature_list_.InitWithFeatures(
+        /*enabled_features=*/
+        {features::kAutofillEnableWalletDirectOffers,
+         features::kAutofillEnableWalletDirectOffersNotificationBubble},
+        /*disabled_features=*/{});
+  }
+  ~AutofillOfferManagerTest() override = default;
+
+  void SetUp() override {
+    personal_data_manager().SetSyncServiceForTest(&sync_service_);
+    autofill_offer_manager_ =
+        std::make_unique<AutofillOfferManager>(&payments_data_manager());
+  }
+
+  CreditCard CreateCreditCard(std::string guid,
+                              std::string number = kTestNumber,
+                              int64_t instrument_id = 0) {
+    CreditCard card = CreditCard();
+    test::SetCreditCardInfo(&card, "Jane Doe", number.c_str(),
+                            test::NextMonth().c_str(), test::NextYear().c_str(),
+                            "1");
+    card.set_guid(guid);
+    card.set_instrument_id(instrument_id);
+    card.set_record_type(CreditCard::RecordType::kMaskedServerCard);
+
+    payments_data_manager().AddServerCreditCard(card);
+    return card;
+  }
+
+  AutofillOfferData CreateCreditCardOfferForCard(
+      const CreditCard& card,
+      std::string offer_reward_amount,
+      bool expired = false,
+      std::vector<GURL> merchant_origins = {GURL(kTestUrl)}) {
+    std::string offer_id = "4444";
+    base::Time expiry = expired ? AutofillClock::Now() - base::Days(2)
+                                : AutofillClock::Now() + base::Days(2);
+    std::vector<int64_t> eligible_instrument_id = {card.instrument_id()};
+    GURL offer_details_url = GURL(kOfferDetailsUrl);
+    DisplayStrings display_strings;
+    display_strings.value_prop_text = "5% cash back when you use this card.";
+    display_strings.see_details_text = "Terms apply.";
+    display_strings.usage_instructions_text =
+        "Check out with this card to activate.";
+
+    AutofillOfferData offer_data = AutofillOfferData::GPayCardLinkedOffer(
+        offer_id, expiry, merchant_origins, offer_details_url, display_strings,
+        eligible_instrument_id, offer_reward_amount);
+    return offer_data;
+  }
+
+  // Simulates a navigation to `url` in the primary main frame.
+  void NavigateTo(const GURL& url) {
+    autofill_client_.set_last_committed_primary_main_frame_url(url);
+    autofill_offer_manager_->UpdateOfferNotificationVisibility(
+        autofill_client_);
+  }
+
+  MockPaymentsAutofillClient& payments_autofill_client() {
+    return static_cast<MockPaymentsAutofillClient&>(
+        *autofill_client_.GetPaymentsAutofillClient());
+  }
+
+  TestPersonalDataManager& personal_data_manager() {
+    return autofill_client_.GetPersonalDataManager();
+  }
+
+  TestPaymentsDataManager& payments_data_manager() {
+    return autofill_client_.GetPersonalDataManager()
+        .test_payments_data_manager();
+  }
+
+ protected:
+  base::test::ScopedFeatureList feature_list_;
+  base::test::TaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+  syncer::TestSyncService sync_service_;
+  MockAutofillClient autofill_client_;
+  std::unique_ptr<AutofillOfferManager> autofill_offer_manager_;
+};
+
+// Verify that URLs with card linked offers available are marked as eligible.
+TEST_F(AutofillOfferManagerTest, IsUrlEligible) {
+  CreditCard card1 = CreateCreditCard(kTestGuid, kTestNumber, 100);
+  CreditCard card2 = CreateCreditCard(kTestGuid2, "4111111111111111", 101);
+  payments_data_manager().AddAutofillOfferData(CreateCreditCardOfferForCard(
+      card1, "5%", /*expired=*/false,
+      {GURL("http://www.google.com"), GURL("http://www.youtube.com")}));
+  payments_data_manager().AddAutofillOfferData(CreateCreditCardOfferForCard(
+      card2, "10%", /*expired=*/false, {GURL("http://maps.google.com")}));
+
+  EXPECT_TRUE(
+      autofill_offer_manager_->IsUrlEligible(GURL("http://www.google.com")));
+  EXPECT_FALSE(
+      autofill_offer_manager_->IsUrlEligible(GURL("http://www.example.com")));
+  EXPECT_TRUE(
+      autofill_offer_manager_->IsUrlEligible(GURL("http://maps.google.com")));
+}
+
+// Verify no offer is returned given a mismatch URL.
+TEST_F(AutofillOfferManagerTest, GetOfferForUrl_ReturnNothingWhenFindNoMatch) {
+  CreditCard card1 = CreateCreditCard(kTestGuid, kTestNumber, 100);
+  payments_data_manager().AddAutofillOfferData(CreateCreditCardOfferForCard(
+      card1, "5%", /*expired=*/false,
+      {GURL("http://www.google.com"), GURL("http://www.youtube.com")}));
+
+  const AutofillOfferData* result =
+      autofill_offer_manager_->GetOfferForUrl(GURL("http://www.example.com"));
+  EXPECT_EQ(nullptr, result);
+}
+
+// Verify the correct card linked offer is returned given an eligible URL.
+TEST_F(AutofillOfferManagerTest,
+       GetOfferForUrl_ReturnCorrectOfferWhenFindMatch) {
+  CreditCard card1 = CreateCreditCard(kTestGuid, kTestNumber, 100);
+  CreditCard card2 = CreateCreditCard(kTestGuid2, "4111111111111111", 101);
+
+  AutofillOfferData offer1 = CreateCreditCardOfferForCard(
+      card1, "5%", /*expired=*/false,
+      /*merchant_origins=*/
+      {GURL("http://www.google.com"), GURL("http://www.youtube.com")});
+  AutofillOfferData offer2 = CreateCreditCardOfferForCard(
+      card2, "10%", /*expired=*/false,
+      /*merchant_origins=*/
+      {GURL("http://www.example.com"), GURL("http://www.example2.com")});
+  payments_data_manager().AddAutofillOfferData(offer1);
+  payments_data_manager().AddAutofillOfferData(offer2);
+
+  const AutofillOfferData* result =
+      autofill_offer_manager_->GetOfferForUrl(GURL("http://www.example.com"));
+  EXPECT_EQ(offer2, *result);
+}
+
+// Verify that shown notifications are remembered per offer.
+TEST_F(AutofillOfferManagerTest, MarkNotificationShown) {
+  EXPECT_FALSE(autofill_offer_manager_->HasShownNotification("1"));
+
+  autofill_offer_manager_->MarkNotificationShown("1");
+
+  EXPECT_TRUE(autofill_offer_manager_->HasShownNotification("1"));
+  EXPECT_FALSE(autofill_offer_manager_->HasShownNotification("2"));
+}
+
+// Hidden tabs must not set up an offer notification the user cannot see.
+TEST_F(AutofillOfferManagerTest, HiddenTab_DoesNotUpdateNotification) {
+  payments_autofill_client().set_is_tab_visible_for_offer_notification(false);
+  payments_data_manager().AddAutofillOfferData(
+      test::GetPromoCodeOfferData(GURL(kTestUrl)));
+
+  EXPECT_CALL(payments_autofill_client(), UpdateOfferNotification).Times(0);
+  EXPECT_CALL(payments_autofill_client(), DismissOfferNotification).Times(0);
+
+  NavigateTo(GURL(kTestUrl));
+}
+
+// The automatic show is granted only once per offer. A hidden tab must not
+// consume it on behalf of the tab the user is actually looking at.
+TEST_F(AutofillOfferManagerTest, HiddenTab_DoesNotConsumeAutomaticShow) {
+  payments_autofill_client().set_is_tab_visible_for_offer_notification(false);
+  payments_data_manager().AddAutofillOfferData(
+      test::GetPromoCodeOfferData(GURL(kTestUrl)));
+  NavigateTo(GURL(kTestUrl));
+
+  EXPECT_CALL(
+      payments_autofill_client(),
+      UpdateOfferNotification(
+          _, Field(&OfferNotificationOptions::show_notification_automatically,
+                   true)));
+
+  payments_autofill_client().set_is_tab_visible_for_offer_notification(true);
+  NavigateTo(GURL(kTestUrl));
+}
+
+// Verify that if several offers apply to a URL, the first matching one in the
+// order returned by `PaymentsDataManager::GetAutofillOffers()` is returned.
+TEST_F(AutofillOfferManagerTest, GetOfferForUrl_ReturnsFirstMatchingOffer) {
+  payments_data_manager().AddAutofillOfferData(test::GetPromoCodeOfferData(
+      GURL("https://www.other.com/"), /*is_expired=*/false, "other_site"));
+  payments_data_manager().AddAutofillOfferData(test::GetPromoCodeOfferData(
+      GURL(kTestUrl), /*is_expired=*/false, "first_match"));
+  payments_data_manager().AddAutofillOfferData(test::GetPromoCodeOfferData(
+      GURL(kTestUrl), /*is_expired=*/false, "second_match"));
+
+  const AutofillOfferData* result =
+      autofill_offer_manager_->GetOfferForUrl(GURL(kTestUrl));
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->GetOfferId(), "first_match");
+}
+
+// Verify that a Wallet direct offer applies to any URL with the same eTLD+1 as
+// its merchant origin, but not to look-alike hosts.
+TEST_F(AutofillOfferManagerTest, WalletDirectOffer_MatchesSameDomain) {
+  payments_data_manager().AddAutofillOfferData(test::GetPromoCodeOfferData(
+      GURL("https://example.com/"), /*is_expired=*/false, "offer"));
+
+  for (const char* url :
+       {"https://example.com/", "https://example.com/shop?item=1#top",
+        "https://www.example.com/", "https://store.example.com/shop",
+        "https://a.b.example.com/"}) {
+    SCOPED_TRACE(url);
+    EXPECT_TRUE(autofill_offer_manager_->IsUrlEligible(GURL(url)));
+    const AutofillOfferData* offer =
+        autofill_offer_manager_->GetOfferForUrl(GURL(url));
+    ASSERT_TRUE(offer);
+    EXPECT_EQ(offer->GetOfferId(), "offer");
+  }
+
+  for (const char* url :
+       {"https://notexample.com/", "https://example.com.evil.com/",
+        "https://example.org/"}) {
+    SCOPED_TRACE(url);
+    EXPECT_FALSE(autofill_offer_manager_->IsUrlEligible(GURL(url)));
+    EXPECT_FALSE(autofill_offer_manager_->GetOfferForUrl(GURL(url)));
+  }
+}
+
+// Verify that a Wallet direct offer for a subdomain also applies to its parent
+// domain and to sibling subdomains.
+TEST_F(AutofillOfferManagerTest,
+       WalletDirectOffer_SubdomainMatchesParentAndSiblings) {
+  payments_data_manager().AddAutofillOfferData(test::GetPromoCodeOfferData(
+      GURL("https://store.example.com/"), /*is_expired=*/false, "offer"));
+
+  for (const char* url : {"https://store.example.com/shop",
+                          "https://example.com/", "https://www.example.com/"}) {
+    SCOPED_TRACE(url);
+    EXPECT_TRUE(autofill_offer_manager_->IsUrlEligible(GURL(url)));
+  }
+  EXPECT_FALSE(
+      autofill_offer_manager_->IsUrlEligible(GURL("https://notexample.com/")));
+}
+
+}  // namespace autofill

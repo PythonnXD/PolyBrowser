@@ -1,0 +1,213 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/app_menu/app_menu_footer_view.h"
+
+#include <memory>
+#include <optional>
+#include <utility>
+
+#include "base/check.h"
+#include "base/functional/bind.h"
+#include "build/build_config.h"
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/views/app_menu/action_app_menu_manager.h"
+#include "chrome/browser/ui/views/app_menu/app_menu_action_item.h"
+#include "chrome/browser/ui/views/app_menu/app_menu_footer_button.h"
+#include "chrome/browser/ui/views/chrome_layout_provider.h"
+#include "ui/actions/actions.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/color/color_id.h"
+#include "ui/compositor/layer.h"
+#include "ui/events/event.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
+#include "ui/views/accessibility/view_accessibility.h"
+#include "ui/views/actions/action_view_controller.h"
+#include "ui/views/controls/menu/menu_config.h"
+#include "ui/views/controls/menu/menu_item_view.h"
+#include "ui/views/controls/separator.h"
+#include "ui/views/view_class_properties.h"
+
+namespace {
+
+enum class FooterContainer {
+  kLeft,
+  kRight,
+  kBottom,
+};
+
+FooterContainer GetFooterContainerForAction(actions::ActionId action_id) {
+  switch (action_id) {
+    case kActionShowManagementPage:
+    case kActionChromeEnterpriseReleaseNotes:
+      return FooterContainer::kBottom;
+#if BUILDFLAG(IS_MAC)
+    case kActionOptions:
+#else
+    case kActionExit:
+#endif
+      return FooterContainer::kRight;
+    default:
+      return FooterContainer::kLeft;
+  }
+}
+
+}  // namespace
+
+AppMenuFooterView::AppMenuFooterView(
+    views::MenuItemView* parent_menu_item,
+    actions::ActionItem* footer_action_item,
+    views::ActionViewController* action_view_controller,
+    base::flat_map<int, raw_ptr<actions::BaseAction>>* command_to_action_map,
+    ExecuteCommandCallback execute_command_callback,
+    PopulateSubmenuCallback populate_submenu_callback) {
+  CHECK(parent_menu_item);
+  CHECK(footer_action_item);
+  CHECK(action_view_controller);
+  CHECK(command_to_action_map);
+  CHECK(execute_command_callback);
+  CHECK(populate_submenu_callback);
+
+  GetViewAccessibility().SetRole(ax::mojom::Role::kMenu);
+
+  const auto* provider = ChromeLayoutProvider::Get();
+
+  // The outer footer view arranges the top row, optional separator, and
+  // optional bottom row vertically.
+  SetOrientation(views::BoxLayout::Orientation::kVertical);
+
+  // Top sub-container: holds the left container, expanding spacer, and right
+  // container.
+  top_container_ = AddChildView(std::make_unique<views::BoxLayoutView>());
+  top_container_->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
+  top_container_->SetCrossAxisAlignment(
+      views::BoxLayout::CrossAxisAlignment::kCenter);
+  top_container_->SetInsideBorderInsets(
+      provider->GetInsetsMetric(INSETS_ACTION_APP_MENU_FOOTER_MARGIN));
+
+  // Left sub-container: holds the Settings and Help action items (or just Help
+  // on Mac).
+  left_container_ =
+      top_container_->AddChildView(std::make_unique<views::BoxLayoutView>());
+  left_container_->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
+  left_container_->SetCrossAxisAlignment(
+      views::BoxLayout::CrossAxisAlignment::kCenter);
+  left_container_->SetBetweenChildSpacing(provider->GetDistanceMetric(
+      DISTANCE_ACTION_APP_MENU_FOOTER_BUTTON_SPACING));
+
+  // Spacer: expands to push the right container to the right edge and
+  // absorbs any extra width during menu expansion/localization.
+  auto* spacer = top_container_->AddChildView(std::make_unique<views::View>());
+  top_container_->SetFlexForView(spacer, 1);
+
+  // Right sub-container: holds the Exit action item (or Settings on Mac).
+  right_container_ =
+      top_container_->AddChildView(std::make_unique<views::BoxLayoutView>());
+  right_container_->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
+  right_container_->SetCrossAxisAlignment(
+      views::BoxLayout::CrossAxisAlignment::kCenter);
+
+  auto bottom_container = std::make_unique<views::BoxLayoutView>();
+  bottom_container->SetOrientation(views::BoxLayout::Orientation::kVertical);
+  bottom_container->SetCrossAxisAlignment(
+      views::BoxLayout::CrossAxisAlignment::kStretch);
+
+  // Populate footer buttons from child action items.
+  for (const auto& footer_child :
+       footer_action_item->GetChildren().children()) {
+    actions::ActionItem* footer_child_ptr = footer_child->GetActionItem();
+    if (!footer_child_ptr->GetVisible()) {
+      continue;
+    }
+    std::optional<actions::ActionId> action_id =
+        footer_child_ptr->GetActionId();
+    CHECK(action_id.has_value());
+
+    // If this item has children, create the hidden submenu item
+    // directly on parent_menu_item and populate it.
+    views::MenuItemView* submenu_item = nullptr;
+    const bool has_submenu = !footer_child->GetChildren().children().empty();
+    if (has_submenu) {
+      submenu_item =
+          parent_menu_item->AppendSubMenu(action_id.value(), std::u16string());
+      submenu_item->SetVisible(false);
+      populate_submenu_callback.Run(submenu_item, footer_child.get());
+    }
+
+    auto button = std::make_unique<AppMenuFooterButton>(submenu_item);
+
+    action_view_controller->CreateActionViewRelationship(
+        button.get(), footer_child_ptr->GetAsWeakPtr());
+
+    (*command_to_action_map)[action_id.value()] = footer_child.get();
+
+    if (!has_submenu) {
+      button->SetCallback(base::BindRepeating(
+          [](const ExecuteCommandCallback& callback, actions::ActionId id,
+             const ui::Event& event) { callback.Run(id, event.flags()); },
+          execute_command_callback, action_id.value()));
+    }
+
+    if (const ui::ElementIdentifier element_id =
+            footer_child->GetProperty(views::kElementIdentifierKey)) {
+      button->SetProperty(views::kElementIdentifierKey, element_id);
+    }
+
+    if (std::u16string* text_override =
+            footer_child->GetProperty(AppMenuActionItem::kTextOverrideKey)) {
+      button->SetText(*text_override);
+    }
+    if (ui::ImageModel* icon_override =
+            footer_child->GetProperty(AppMenuActionItem::kIconOverrideKey)) {
+      button->SetImageModel(*icon_override);
+    }
+
+    switch (GetFooterContainerForAction(action_id.value())) {
+      case FooterContainer::kBottom: {
+        auto* button_ptr = bottom_container->AddChildView(std::move(button));
+        button_ptr->SetUseRowStyle(true);
+        break;
+      }
+      case FooterContainer::kRight: {
+        auto* button_ptr = right_container_->AddChildView(std::move(button));
+        button_ptr->SetUseRowStyle(false);
+        break;
+      }
+      case FooterContainer::kLeft: {
+        auto* button_ptr = left_container_->AddChildView(std::move(button));
+        button_ptr->SetUseRowStyle(false);
+        break;
+      }
+    }
+  }
+
+  if (!bottom_container->children().empty()) {
+    separator_ = AddChildView(std::make_unique<views::Separator>());
+    separator_->SetOrientation(views::Separator::Orientation::kHorizontal);
+    separator_->SetColorId(ui::kColorMenuSeparator);
+    separator_->SetProperty(
+        views::kMarginsKey,
+        gfx::Insets::TLBR(
+            0, 0,
+            provider->GetDistanceMetric(
+                DISTANCE_ACTION_APP_MENU_FOOTER_SEPARATOR_BOTTOM_MARGIN),
+            0));
+
+    bottom_container->SetInsideBorderInsets(provider->GetInsetsMetric(
+        INSETS_ACTION_APP_MENU_FOOTER_BOTTOM_CONTAINER));
+    bottom_container->SetPaintToLayer();
+    bottom_container->layer()->SetFillsBoundsOpaquely(false);
+    const int menu_radius =
+        provider->GetCornerRadiusMetric(views::ShapeContextTokens::kMenuRadius);
+    bottom_container->layer()->SetRoundedCornerRadius(
+        gfx::RoundedCornersF(0, 0, menu_radius, menu_radius));
+    bottom_container->layer()->SetIsFastRoundedCorner(true);
+    bottom_container_ = AddChildView(std::move(bottom_container));
+  }
+}
+
+AppMenuFooterView::~AppMenuFooterView() = default;
+
+BEGIN_METADATA(AppMenuFooterView)
+END_METADATA

@@ -1,0 +1,381 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ui.side_ui;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.content.res.Resources;
+import android.os.SystemClock;
+import android.transition.ChangeBounds;
+import android.transition.Transition;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.PointerIcon;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+
+import androidx.annotation.IntDef;
+import androidx.annotation.Px;
+import androidx.annotation.StringRes;
+
+import org.chromium.base.MathUtils;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.ui.side_ui.SideUiCoordinator.AnchorSide;
+import org.chromium.chrome.browser.ui.side_ui.SideUiCoordinator.UiUpdateRequest;
+import org.chromium.chrome.browser.ui.side_ui.SideUiCoordinator.UiUpdateRequest.UpdateReason;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
+/**
+ * Owns the resize handle for one {@link AnchorSide}, and translates drag gestures on it into {@link
+ * SideUiContainer#onResizeLive} and {@link SideUiContainer#onResizeCommitted} calls.
+ *
+ * <p>The handle is a strip overlaying the inner edge of the anchor container, i.e. the edge facing
+ * the web contents. Its width comes from {@link SideUiContainer#getResizeHandleWidthPx}, and it
+ * draws a bar at its center, or at {@link SideUiContainer#getResizeHandleBarInsetPx} from the
+ * container's inner edge. It also changes the pointer icon on hover.
+ *
+ * <p>The handle {@link View} is created lazily the first time the bound container is resizable, and
+ * is removed when the container's {@link View} is detached from the anchor container.
+ */
+// The handle is a drag affordance with no click action; accessibility is provided through the
+// handle's content description and dedicated accessibility actions.
+@SuppressLint({"ClickableViewAccessibility", "RtlHardcoded"})
+@NullMarked
+/* package */ final class SideUiResizeHandler implements View.OnTouchListener {
+
+    /**
+     * Gesture transitions on the handle. Both {@link MotionEvent#ACTION_MOVE} states fire per
+     * frame, so they are throttled to {@link #MOVE_THROTTLE_MS} and can be compared against each
+     * other. The other states are recorded once per touch event, so that the unexpected ones can be
+     * read as a rate over the expected ones.
+     */
+    // LINT.IfChange(AndroidSideUiResizeHandleTouchState)
+    @IntDef({
+        TouchState.DRAG_STARTED,
+        TouchState.MOVE_WITH_DRAG,
+        TouchState.COMMITTED_ON_UP,
+        TouchState.COMMITTED_ON_CANCEL,
+        TouchState.DRAG_STARTED_WITH_STALE_DRAG,
+        TouchState.MOVE_WITHOUT_DRAG,
+        TouchState.UP_WITHOUT_DRAG,
+        TouchState.CANCEL_WITHOUT_DRAG
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    /* package */ @interface TouchState {
+        // Expected states, in the order a gesture goes through them.
+        int DRAG_STARTED = 0;
+        int MOVE_WITH_DRAG = 1;
+        int COMMITTED_ON_UP = 2;
+        int COMMITTED_ON_CANCEL = 3;
+
+        // Unexpected states, in the same order.
+        int DRAG_STARTED_WITH_STALE_DRAG = 4;
+        int MOVE_WITHOUT_DRAG = 5;
+        int UP_WITHOUT_DRAG = 6;
+        int CANCEL_WITHOUT_DRAG = 7;
+        int COUNT = 8;
+    }
+
+    // LINT.ThenChange(//tools/metrics/histograms/metadata/android/enums.xml:AndroidSideUiResizeHandleTouchState)
+
+    /**
+     * The minimum time between two {@link MotionEvent#ACTION_MOVE} records, in ms. Moves fire per
+     * frame, so they are throttled to keep them from swamping the other states.
+     */
+    private static final int MOVE_THROTTLE_MS = 50;
+
+    /**
+     * The value the move timestamps are reset to, one throttle window before the epoch of {@link
+     * SystemClock#elapsedRealtime()}, so that the next move of either state is never throttled.
+     */
+    private static final long NO_MOVE_RECORDED = -MOVE_THROTTLE_MS;
+
+    /* package */ static final String TOUCH_STATE_HISTOGRAM =
+            "Android.SideUi.ResizeHandle.TouchState";
+
+    private final Context mContext;
+    private final SideUiContainer mContainer;
+    private final @AnchorSide int mAnchorSide;
+    private final ViewGroup mAnchorContainer;
+    private final ViewGroup mAnchorContainerParent;
+    private final SideUiCoordinator mSideUiCoordinator;
+
+    private @Nullable View mHandleView;
+
+    /** The raw X coordinate where the in-progress drag started, or null if there isn't one. */
+    private @Nullable Float mDragStartRawX;
+
+    /**
+     * The container's rendered width in px when the in-progress drag started, i.e. what its {@link
+     * View} was laid out at, or null if there isn't one.
+     */
+    private @Nullable @Px Integer mDragStartWidthPx;
+
+    /**
+     * The {@link SystemClock#elapsedRealtime()} of the last {@link TouchState#MOVE_WITH_DRAG}
+     * record, or {@link #NO_MOVE_RECORDED} if none was recorded since the last {@link
+     * MotionEvent#ACTION_DOWN}.
+     */
+    private long mLastMoveWithDragRecordTimeMs = NO_MOVE_RECORDED;
+
+    /**
+     * The {@link SystemClock#elapsedRealtime()} of the last {@link TouchState#MOVE_WITHOUT_DRAG}
+     * record, or {@link #NO_MOVE_RECORDED} if none was recorded since the last {@link
+     * MotionEvent#ACTION_DOWN}.
+     */
+    private long mLastMoveWithoutDragRecordTimeMs = NO_MOVE_RECORDED;
+
+    /**
+     * @param context The {@link Context} used to create the handle {@link View}.
+     * @param anchorContainer The anchor container that hosts the handle.
+     * @param anchorContainerParent The parent of the anchor containers. It covers the web contents,
+     *     and shows the resize pointer icon while a drag moves the pointer off the handle.
+     * @param container The {@link SideUiContainer} this handler serves.
+     * @param sideUiCoordinator The {@link SideUiCoordinator} notified after each drag event.
+     */
+    /* package */ SideUiResizeHandler(
+            Context context,
+            ViewGroup anchorContainer,
+            ViewGroup anchorContainerParent,
+            SideUiContainer container,
+            SideUiCoordinator sideUiCoordinator) {
+        mContext = context;
+        mAnchorContainer = anchorContainer;
+        mAnchorContainerParent = anchorContainerParent;
+        mContainer = container;
+        mAnchorSide = container.getAnchorSide();
+        mSideUiCoordinator = sideUiCoordinator;
+    }
+
+    /** Syncs the handle with the bound container's state after a UI update. */
+    /* package */ void onUiUpdateCompleted() {
+        if (!isAnchorContainerShown()) {
+            if (mHandleView != null) mHandleView.setVisibility(View.GONE);
+            return;
+        }
+
+        if (!mContainer.supportsManualResize()) {
+            // Use INVISIBLE rather than GONE, so that the handle keeps being laid out at the
+            // container's current inner edge. If an animated resize makes the container resizable
+            // again (e.g. pinning a hover-expanded rail), ChangeBounds then animates the handle
+            // from the old edge to the new one, instead of the handle popping up at the new edge.
+            if (mHandleView != null) mHandleView.setVisibility(View.INVISIBLE);
+            return;
+        }
+
+        if (mHandleView == null) {
+            // AnchorSide is physical, so use physical gravities to keep the handle on the inner
+            // edge in RTL.
+            int gravity = mAnchorSide == AnchorSide.LEFT ? Gravity.RIGHT : Gravity.LEFT;
+            mHandleView =
+                    createHandleView(
+                            mContext,
+                            mAnchorContainer,
+                            gravity,
+                            mContainer.getResizeHandleWidthPx(),
+                            mContainer.getResizeHandleBarInsetPx(),
+                            mContainer.getResizeHandleContentDescriptionRes(),
+                            /* onTouchListener= */ this);
+            mAnchorContainer.addView(mHandleView);
+        }
+
+        assert mHandleView != null;
+        mHandleView.setVisibility(View.VISIBLE);
+        // The container's View is added after the handle when the container is (re)attached, so
+        // keep the handle on top to make sure it receives touch events.
+        if (mAnchorContainer.getChildAt(mAnchorContainer.getChildCount() - 1) != mHandleView) {
+            mHandleView.bringToFront();
+        }
+    }
+
+    /** Removes the handle when the bound container's {@link View} is detached. */
+    /* package */ void destroyHandleView() {
+        if (mHandleView == null) return;
+
+        clearDragState();
+        mAnchorContainer.removeView(mHandleView);
+        mHandleView = null;
+    }
+
+    /**
+     * Returns a {@link Transition} that moves the handle along with the container's inner edge
+     * during an animated resize, or null if the handle isn't laid out.
+     *
+     * <p>The anchor container is animated with {@link ChangeBounds}, which lays out its children
+     * only once on transition start, so without this the handle would jump to its final position
+     * right away. An {@link View#INVISIBLE} handle is targeted too, so that it moves from the right
+     * starting position if it is shown by the same update.
+     */
+    /* package */ @Nullable Transition createResizeTransition() {
+        if (mHandleView == null || mHandleView.getVisibility() == View.GONE) return null;
+        return new ChangeBounds().addTarget(mHandleView);
+    }
+
+    // View.OnTouchListener implementation:
+    @Override
+    public boolean onTouch(View view, MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                // A stale drag means the previous gesture never delivered its ACTION_UP or
+                // ACTION_CANCEL. The state below replaces it, so the new drag is unaffected.
+                recordTouchState(
+                        isDragging()
+                                ? TouchState.DRAG_STARTED_WITH_STALE_DRAG
+                                : TouchState.DRAG_STARTED);
+                // Let the next gesture record its first move of either state right away.
+                mLastMoveWithDragRecordTimeMs = NO_MOVE_RECORDED;
+                mLastMoveWithoutDragRecordTimeMs = NO_MOVE_RECORDED;
+                mDragStartRawX = event.getRawX();
+                mDragStartWidthPx = mContainer.getView().getWidth();
+                // Pointer icons are resolved from the view under the pointer. The anchor container
+                // parent covers the web contents and falls back to its own icon when no child
+                // provides one, so it keeps the resize icon while the drag moves off the handle.
+                mAnchorContainerParent.setPointerIcon(getResizePointerIcon(mContext));
+                // Make sure no ancestor steals the gesture halfway through the drag.
+                if (view.getParent() != null) {
+                    view.getParent().requestDisallowInterceptTouchEvent(true);
+                }
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                long nowMs = SystemClock.elapsedRealtime();
+                if (!isDragging()) {
+                    if (nowMs - mLastMoveWithoutDragRecordTimeMs >= MOVE_THROTTLE_MS) {
+                        recordTouchState(TouchState.MOVE_WITHOUT_DRAG);
+                        mLastMoveWithoutDragRecordTimeMs = nowMs;
+                    }
+                    return false;
+                }
+                if (nowMs - mLastMoveWithDragRecordTimeMs >= MOVE_THROTTLE_MS) {
+                    recordTouchState(TouchState.MOVE_WITH_DRAG);
+                    mLastMoveWithDragRecordTimeMs = nowMs;
+                }
+                mContainer.onResizeLive(computeProposedWidthPx(event));
+                mSideUiCoordinator.updateUi(
+                        new UiUpdateRequest(
+                                mContainer.getSideUiId(),
+                                /* suppressAnimations= */ true,
+                                UpdateReason.RESIZE_LIVE));
+                return true;
+            case MotionEvent.ACTION_UP:
+                if (!isDragging()) {
+                    recordTouchState(TouchState.UP_WITHOUT_DRAG);
+                    return false;
+                }
+                recordTouchState(TouchState.COMMITTED_ON_UP);
+                @Px int proposedWidthPx = computeProposedWidthPx(event);
+                mContainer.onResizeCommitted(proposedWidthPx);
+                mSideUiCoordinator.updateUi(
+                        new UiUpdateRequest(
+                                mContainer.getSideUiId(),
+                                /* suppressAnimations= */ true,
+                                UpdateReason.RESIZE_COMMITTED));
+                clearDragState();
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                if (!isDragging()) {
+                    recordTouchState(TouchState.CANCEL_WITHOUT_DRAG);
+                    return false;
+                }
+                recordTouchState(TouchState.COMMITTED_ON_CANCEL);
+                // Commit the width the drag started from, so the container drops the transient
+                // width recorded during the drag.
+                mContainer.onResizeCommitted(assumeNonNull(mDragStartWidthPx));
+                mSideUiCoordinator.updateUi(
+                        new UiUpdateRequest(
+                                mContainer.getSideUiId(),
+                                /* suppressAnimations= */ true,
+                                UpdateReason.RESIZE_COMMITTED));
+                clearDragState();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** Returns whether the anchor container is currently taking up space. */
+    private boolean isAnchorContainerShown() {
+        return mAnchorContainer.getVisibility() != View.GONE && mAnchorContainer.getWidth() > 0;
+    }
+
+    /** Returns whether a drag is in progress. */
+    private boolean isDragging() {
+        assert (mDragStartRawX == null) == (mDragStartWidthPx == null)
+                : "The drag start states should always be set and cleared together.";
+        return mDragStartRawX != null;
+    }
+
+    private void clearDragState() {
+        mDragStartRawX = null;
+        mDragStartWidthPx = null;
+        mAnchorContainerParent.setPointerIcon(null);
+    }
+
+    /** Returns the width implied by the pointer position of {@code event}, without clamping. */
+    private @Px int computeProposedWidthPx(MotionEvent event) {
+        int deltaX = Math.round(event.getRawX() - assumeNonNull(mDragStartRawX));
+        // Dragging right grows a left-anchored container, and shrinks a right-anchored one.
+        return assumeNonNull(mDragStartWidthPx)
+                + MathUtils.flipSignIf(deltaX, mAnchorSide == AnchorSide.RIGHT);
+    }
+
+    private static void recordTouchState(@TouchState int state) {
+        RecordHistogram.recordEnumeratedHistogram(TOUCH_STATE_HISTOGRAM, state, TouchState.COUNT);
+    }
+
+    private static PointerIcon getResizePointerIcon(Context context) {
+        return PointerIcon.getSystemIcon(context, PointerIcon.TYPE_HORIZONTAL_DOUBLE_ARROW);
+    }
+
+    /**
+     * Creates the handle {@link View}: a strip with a bar drawn at its center, or at {@code
+     * containerBarInsetPx} from the edge given by {@code gravity}. The caller is responsible for
+     * adding it to {@code parent}.
+     */
+    private static View createHandleView(
+            Context context,
+            ViewGroup parent,
+            int gravity,
+            @Px @Nullable Integer containerHandleWidthPx,
+            @Px @Nullable Integer containerBarInsetPx,
+            @StringRes int contentDescriptionRes,
+            View.OnTouchListener onTouchListener) {
+        View handleView =
+                LayoutInflater.from(context)
+                        .inflate(R.layout.side_ui_resize_handle, parent, /* attachToRoot= */ false);
+        var layoutParams = (FrameLayout.LayoutParams) handleView.getLayoutParams();
+        layoutParams.gravity = gravity;
+        if (containerHandleWidthPx != null) layoutParams.width = containerHandleWidthPx;
+        handleView.setLayoutParams(layoutParams);
+        if (containerBarInsetPx != null) {
+            View barView = handleView.findViewById(R.id.side_ui_resize_handle_bar);
+            var barLayoutParams = (FrameLayout.LayoutParams) barView.getLayoutParams();
+            barLayoutParams.gravity = gravity | Gravity.CENTER_VERTICAL;
+            if (gravity == Gravity.RIGHT) {
+                barLayoutParams.rightMargin = containerBarInsetPx;
+            } else {
+                barLayoutParams.leftMargin = containerBarInsetPx;
+            }
+            barView.setLayoutParams(barLayoutParams);
+        }
+        if (contentDescriptionRes != Resources.ID_NULL) {
+            handleView.setContentDescription(context.getString(contentDescriptionRes));
+        }
+        handleView.setPointerIcon(getResizePointerIcon(context));
+        handleView.setOnTouchListener(onTouchListener);
+        return handleView;
+    }
+
+    /* package */ @Nullable View getHandleViewForTesting() {
+        return mHandleView;
+    }
+}

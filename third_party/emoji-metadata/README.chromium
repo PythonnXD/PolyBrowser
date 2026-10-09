@@ -1,0 +1,17 @@
+Name: emoji-metadata
+Short Name: emoji-metadata
+URL: https://github.com/googlefonts/emoji-metadata
+Version: N/A
+Date: 2026-09-25
+Revision: 173b9b26e8fcbcbe64e1ecbf073a21a96b95c6b1
+Update Mechanism: Autoroll
+License: Apache-2.0
+License File: LICENSE
+Security Critical: no
+Shipped: yes
+
+Description:
+This is an import of the emoji metadata repository from the source URL above.
+The emoji metadata repository contains a JSON file with an ordering for emoji
+which can be used in an emoji picker.  This ordering also includes full skin
+tone support.  It is currently used for the Chrome OS emoji picker.

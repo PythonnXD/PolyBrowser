@@ -1,0 +1,455 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/webid/delegation/jwt_signer.h"
+
+#include "base/base64.h"
+#include "base/base64url.h"
+#include "base/containers/span.h"
+#include "base/functional/callback.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
+#include "base/logging.h"
+#include "base/values.h"
+#include "content/browser/webid/delegation/sd_jwt.h"
+#include "crypto/ecdsa_utils.h"
+#include "crypto/keypair.h"
+#include "crypto/random.h"
+#include "crypto/sha2.h"
+#include "crypto/sign.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+#include "url/origin.h"
+
+namespace content::sdjwt {
+
+using ::testing::NiceMock;
+
+namespace {
+std::vector<uint8_t> TestSha256(std::string_view data) {
+  std::string str = crypto::SHA256HashString(data);
+  std::vector<uint8_t> result(str.begin(), str.end());
+  return result;
+}
+}  // namespace
+
+class JwtSignerTest : public testing::Test {
+ protected:
+  JwtSignerTest() = default;
+  ~JwtSignerTest() override = default;
+
+  void SetUp() override {}
+
+  void TearDown() override {}
+};
+
+void VerifyEs256(const std::vector<uint8_t>& public_key,
+                 const base::span<const uint8_t>& signature,
+                 const std::string& message) {
+  std::optional<crypto::keypair::PublicKey> pub_key =
+      crypto::keypair::PublicKey::FromSubjectPublicKeyInfo(public_key);
+  ASSERT_TRUE(pub_key);
+  std::optional<std::vector<uint8_t>> der_signature =
+      crypto::ConvertEcdsaRawSignatureToDer(*pub_key, signature);
+  ASSERT_TRUE(der_signature);
+  EXPECT_TRUE(crypto::sign::Verify(crypto::sign::ECDSA_SHA256, *pub_key,
+                                   base::as_byte_span(message),
+                                   *der_signature));
+}
+
+void VerifyRs256(const std::vector<uint8_t>& public_key,
+                 base::span<const uint8_t> signature,
+                 const std::string& message) {
+  std::optional<crypto::keypair::PublicKey> pub_key =
+      crypto::keypair::PublicKey::FromSubjectPublicKeyInfo(public_key);
+  ASSERT_TRUE(pub_key);
+  EXPECT_TRUE(crypto::sign::Verify(crypto::sign::RSA_PKCS1_SHA256, *pub_key,
+                                   base::as_byte_span(message), signature));
+}
+
+void VerifyEdDsa(const crypto::keypair::PublicKey& public_key,
+                 base::span<const uint8_t> signature,
+                 const std::string& message) {
+  EXPECT_TRUE(crypto::sign::Verify(crypto::sign::SignatureKind::ED25519,
+                                   public_key, base::as_byte_span(message),
+                                   signature));
+}
+
+TEST_F(JwtSignerTest, JwtSigner) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEcP256();
+  std::vector<uint8_t> public_key = private_key.ToSubjectPublicKeyInfo();
+
+  const std::string message = "hello wold";
+  auto signer = CreateJwtSigner(std::move(private_key));
+  auto signature = std::move(signer).Run(message);
+
+  VerifyEs256(public_key, base::as_byte_span(*signature), message);
+}
+
+TEST_F(JwtSignerTest, JwtSignerRs256) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateRsa2048();
+  std::vector<uint8_t> public_key = private_key.ToSubjectPublicKeyInfo();
+
+  const std::string message = "hello wold";
+  auto signer = CreateJwtSigner(std::move(private_key));
+  auto signature = std::move(signer).Run(message);
+
+  VerifyRs256(public_key, base::as_byte_span(*signature), message);
+}
+
+TEST_F(JwtSignerTest, ExportPublicKeyRs256) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateRsa2048();
+  auto jwk = ExportPublicKey(private_key);
+  ASSERT_TRUE(jwk);
+  EXPECT_EQ(jwk->kty, "RSA");
+  EXPECT_EQ(jwk->alg, "RS256");
+  EXPECT_TRUE(jwk->crv.empty());
+  EXPECT_FALSE(jwk->n.empty());
+  EXPECT_FALSE(jwk->e.empty());
+}
+
+TEST_F(JwtSignerTest, CreateJwt) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEcP256();
+  std::vector<uint8_t> public_key = private_key.ToSubjectPublicKeyInfo();
+
+  Header header;
+  header.typ = "jwt";
+  header.alg = "ES256";
+
+  Payload payload;
+  payload.iss = "https://issuer.example";
+  payload.sub = "goto@google.com";
+
+  Jwt issued;
+  issued.header = JSONString(header.Serialize()->value());
+  issued.payload = JSONString(payload.Serialize()->value());
+
+  auto success = issued.Sign(CreateJwtSigner(std::move(private_key)));
+
+  EXPECT_TRUE(success);
+
+  auto signature = base::Base64UrlDecode(
+      issued.signature.value(), base::Base64UrlDecodePolicy::IGNORE_PADDING);
+
+  EXPECT_TRUE(signature);
+
+  std::string header_base64;
+  base::Base64UrlEncode(issued.header.value(),
+                        base::Base64UrlEncodePolicy::OMIT_PADDING,
+                        &header_base64);
+
+  std::string payload_base64;
+  base::Base64UrlEncode(issued.payload.value(),
+                        base::Base64UrlEncodePolicy::OMIT_PADDING,
+                        &payload_base64);
+
+  std::string message = header_base64 + "." + payload_base64;
+  VerifyEs256(public_key, base::as_byte_span(*signature), message);
+}
+
+TEST_F(JwtSignerTest, ExportPublicKeyEc256) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEcP256();
+  auto jwk = ExportPublicKey(private_key);
+  ASSERT_TRUE(jwk);
+  EXPECT_EQ(jwk->kty, "EC");
+  EXPECT_EQ(jwk->alg, "ES256");
+  EXPECT_EQ(jwk->crv, "P-256");
+  EXPECT_FALSE(jwk->x.empty());
+  EXPECT_FALSE(jwk->y.empty());
+}
+
+TEST_F(JwtSignerTest, CreateSdJwtKb) {
+  auto holder_private_key = crypto::keypair::PrivateKey::GenerateEcP256();
+  auto jwk = ExportPublicKey(holder_private_key);
+
+  auto issuer_private_key = crypto::keypair::PrivateKey::GenerateEcP256();
+
+  Header header;
+  header.typ = "jwt";
+  header.alg = "ES256";
+
+  Payload payload;
+  payload.iss = "https://issuer.example";
+
+  Disclosure name;
+  name.salt = Disclosure::CreateSalt();
+  name.name = "name";
+  name.value = "Sam";
+
+  payload._sd = {*name.Digest(base::BindRepeating(TestSha256))};
+
+  ConfirmationKey confirmation;
+  confirmation.jwk = *jwk;
+  payload.cnf = confirmation;
+
+  auto issuer_json = ExportPublicKey(issuer_private_key);
+
+  EXPECT_TRUE(issuer_json);
+  EXPECT_TRUE(issuer_json->Serialize());
+
+  Jwt issued;
+  issued.header = JSONString(header.Serialize()->value());
+  issued.payload = JSONString(payload.Serialize()->value());
+  auto signer = CreateJwtSigner(std::move(issuer_private_key));
+  auto success = issued.Sign(std::move(signer));
+
+  EXPECT_TRUE(success);
+
+  auto presentation = SdJwt::Disclose(
+      {{name.name, JSONString(name.Serialize().value())}}, {"name"});
+  EXPECT_TRUE(presentation);
+
+  SdJwt sd_jwt;
+  sd_jwt.jwt = issued;
+  sd_jwt.disclosures = *presentation;
+
+  std::optional<SdJwtKb> sd_jwt_kb = SdJwtKb::Create(
+      sd_jwt, "https://verifier.example", "__fake_nonce__",
+      base::Time::FromTimeT(1234), base::BindRepeating(TestSha256),
+      CreateJwtSigner(std::move(holder_private_key)));
+
+  EXPECT_TRUE(sd_jwt_kb);
+}
+
+TEST_F(JwtSignerTest, InvalidKeyType) {
+  // Create a key that is not the supported EC, RSA or ED methods.
+  auto private_key = crypto::keypair::PrivateKey::GenerateEcP384();
+
+  // Test CreateJwtSigner with an EcP384 key type.
+  auto signer = CreateJwtSigner(private_key);
+  auto signature = std::move(signer).Run("message");
+  EXPECT_FALSE(signature);
+
+  // Test ExportPublicKey with an EcP384 key type.
+  auto jwk = ExportPublicKey(private_key);
+  EXPECT_FALSE(jwk);
+}
+
+TEST_F(JwtSignerTest, SignWithEd25519AndExportPublicKey) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEd25519();
+
+  // Test CreateJwtSigner with an Ed25519 key type.
+  auto signer = CreateJwtSigner(private_key);
+  auto signature = std::move(signer).Run("message");
+  EXPECT_TRUE(signature);
+
+  // Test ExportPublicKey with an Ed25519 key type.
+  auto jwk = ExportPublicKey(private_key);
+  EXPECT_TRUE(jwk);
+}
+
+TEST_F(JwtSignerTest, MismatchedKeyTypes) {
+  // Test SignJwtRs256 with an EC key.
+  auto ec_private_key = crypto::keypair::PrivateKey::GenerateEcP256();
+  auto rs256_signer = CreateJwtSigner(std::move(ec_private_key));
+  auto rs256_signature = std::move(rs256_signer).Run("message");
+  EXPECT_TRUE(rs256_signature);
+
+  // Test SignJwtEs256 with an RSA key.
+  auto rsa_private_key = crypto::keypair::PrivateKey::GenerateRsa2048();
+  auto es256_signer = CreateJwtSigner(std::move(rsa_private_key));
+  auto es256_signature = std::move(es256_signer).Run("message");
+  EXPECT_TRUE(es256_signature);
+}
+
+TEST_F(JwtSignerTest, JwtSignerEdDsa) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEd25519();
+  auto public_key_raw = private_key.ToEd25519PublicKey();
+  auto public_key =
+      crypto::keypair::PublicKey::FromEd25519PublicKey(public_key_raw);
+
+  const std::string message = "hello wold";
+  auto signer = CreateJwtSigner(std::move(private_key));
+  auto signature = std::move(signer).Run(message);
+
+  ASSERT_TRUE(signature);
+
+  VerifyEdDsa(public_key, base::as_byte_span(*signature), message);
+}
+
+TEST_F(JwtSignerTest, JwtVerifierEdDsa) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEd25519();
+  auto jwk = ExportPublicKey(private_key);
+  ASSERT_TRUE(jwk);
+
+  const std::string message = "hello world";
+  auto signer = CreateJwtSigner(std::move(private_key));
+  auto signature = std::move(signer).Run(message);
+
+  ASSERT_TRUE(signature);
+
+  Header header;
+  header.alg = "EdDSA";
+  auto verifier = CreateJwtVerifier(*jwk, header);
+  EXPECT_TRUE(std::move(verifier).Run(message, base::as_byte_span(*signature)));
+}
+
+TEST_F(JwtSignerTest, JwtVerifierEs256) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEcP256();
+  auto jwk = ExportPublicKey(private_key);
+  ASSERT_TRUE(jwk);
+
+  const std::string message = "hello world";
+  auto signer = CreateJwtSigner(std::move(private_key));
+  auto signature = std::move(signer).Run(message);
+
+  ASSERT_TRUE(signature);
+
+  Header header;
+  header.alg = "ES256";
+  auto verifier = CreateJwtVerifier(*jwk, header);
+  EXPECT_TRUE(std::move(verifier).Run(message, base::as_byte_span(*signature)));
+}
+
+TEST_F(JwtSignerTest, JwtVerifierRs256) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateRsa2048();
+  auto jwk = ExportPublicKey(private_key);
+  ASSERT_TRUE(jwk);
+
+  const std::string message = "hello world";
+  auto signer = CreateJwtSigner(std::move(private_key));
+  auto signature = std::move(signer).Run(message);
+
+  ASSERT_TRUE(signature);
+
+  Header header;
+  header.alg = "RS256";
+  auto verifier = CreateJwtVerifier(*jwk, header);
+  EXPECT_TRUE(std::move(verifier).Run(message, base::as_byte_span(*signature)));
+}
+
+TEST_F(JwtSignerTest, JwtVerificationUnsupported) {
+  Jwk jwk;
+  jwk.kty = "unknown";
+
+  Jwt token;
+  token.header = JSONString("header");
+  token.payload = JSONString("payload");
+  token.signature = Base64String("signature");
+
+  Header header;
+  header.alg = "unknown";
+  auto verifier = CreateJwtVerifier(jwk, header);
+  EXPECT_FALSE(token.Verify(std::move(verifier)));
+}
+
+TEST_F(JwtSignerTest, ExportPublicKeyEdDsa) {
+  crypto::keypair::PrivateKey private_key =
+      crypto::keypair::PrivateKey::GenerateEd25519();
+  std::optional<Jwk> jwk = ExportPublicKey(private_key);
+
+  ASSERT_TRUE(jwk.has_value());
+  EXPECT_EQ(jwk->kty, "OKP");
+  EXPECT_EQ(jwk->crv, "Ed25519");
+  // Fully specified per RFC 9864, not the deprecated polymorphic "EdDSA".
+  // Callers emit this verbatim into Signature-Key and the KB-JWT header.
+  EXPECT_EQ(jwk->alg, "Ed25519");
+  EXPECT_FALSE(jwk->x.empty());
+
+  std::array<uint8_t, 32> public_key_raw = private_key.ToEd25519PublicKey();
+  std::string expected_x;
+  base::Base64UrlEncode(public_key_raw,
+                        base::Base64UrlEncodePolicy::OMIT_PADDING, &expected_x);
+  EXPECT_EQ(jwk->x, expected_x);
+}
+
+// RFC 9864 deprecated the polymorphic "EdDSA" identifier. Ed25519 signatures
+// have to verify under either spelling while issuers migrate.
+TEST_F(JwtSignerTest, JwtVerifierFullySpecifiedEd25519) {
+  auto private_key = crypto::keypair::PrivateKey::GenerateEd25519();
+  auto jwk = ExportPublicKey(private_key);
+  ASSERT_TRUE(jwk);
+
+  const std::string message = "hello world";
+  auto signer = CreateJwtSigner(std::move(private_key));
+  auto signature = std::move(signer).Run(message);
+
+  ASSERT_TRUE(signature);
+
+  Header header;
+  header.alg = "Ed25519";
+  auto verifier = CreateJwtVerifier(*jwk, header);
+  EXPECT_TRUE(std::move(verifier).Run(message, base::as_byte_span(*signature)));
+}
+
+// Every key this module produces carries a fully-specified `alg` ready to be
+// emitted verbatim, so callers never have to derive one.
+TEST_F(JwtSignerTest, ExportedKeysCarryFullySpecifiedAlg) {
+  auto ed25519 =
+      ExportPublicKey(crypto::keypair::PrivateKey::GenerateEd25519());
+  ASSERT_TRUE(ed25519);
+  EXPECT_EQ(ed25519->alg, "Ed25519");
+
+  auto p256 = ExportPublicKey(crypto::keypair::PrivateKey::GenerateEcP256());
+  ASSERT_TRUE(p256);
+  EXPECT_EQ(p256->alg, "ES256");
+
+  auto rsa = ExportPublicKey(crypto::keypair::PrivateKey::GenerateRsa2048());
+  ASSERT_TRUE(rsa);
+  EXPECT_EQ(rsa->alg, "RS256");
+
+  // None of them is the polymorphic identifier RFC 9864 deprecated.
+  for (const auto* jwk : {&*ed25519, &*p256, &*rsa}) {
+    EXPECT_NE(jwk->alg, "EdDSA");
+  }
+}
+
+// Each case signs correctly and only varies the header's `alg`, so a rejection
+// can only come from the alg/key consistency check rather than from a bad
+// signature.
+TEST_F(JwtSignerTest, JwtVerifierEnforcesAlgMatchesKey) {
+  const std::string message = "hello world";
+
+  const struct {
+    const char* name;
+    crypto::keypair::PrivateKey (*generate)();
+    std::vector<std::string> accepted;
+    std::vector<std::string> rejected;
+  } kCases[] = {
+      // "EdDSA" is deprecated by RFC 9864 but still accepted on input.
+      {"Ed25519",
+       &crypto::keypair::PrivateKey::GenerateEd25519,
+       {"Ed25519", "EdDSA"},
+       {"", "ES256", "RS256", "none"}},
+      // The polymorphic identifier is only ever an alias for Ed25519 here, so
+      // it must not be accepted for other key types.
+      {"ES256",
+       &crypto::keypair::PrivateKey::GenerateEcP256,
+       {"ES256"},
+       {"", "Ed25519", "EdDSA", "RS256"}},
+      {"RS256",
+       &crypto::keypair::PrivateKey::GenerateRsa2048,
+       {"RS256"},
+       {"", "Ed25519", "EdDSA", "ES256"}},
+  };
+
+  for (const auto& test_case : kCases) {
+    SCOPED_TRACE(test_case.name);
+
+    auto private_key = test_case.generate();
+    auto jwk = ExportPublicKey(private_key);
+    ASSERT_TRUE(jwk);
+    auto signature = CreateJwtSigner(std::move(private_key)).Run(message);
+    ASSERT_TRUE(signature);
+
+    for (const std::string& alg : test_case.accepted) {
+      SCOPED_TRACE(alg);
+      Header header;
+      header.alg = alg;
+      EXPECT_TRUE(CreateJwtVerifier(*jwk, header)
+                      .Run(message, base::as_byte_span(*signature)));
+    }
+
+    for (const std::string& alg : test_case.rejected) {
+      SCOPED_TRACE(alg);
+      Header header;
+      header.alg = alg;
+      EXPECT_FALSE(CreateJwtVerifier(*jwk, header)
+                       .Run(message, base::as_byte_span(*signature)));
+    }
+  }
+}
+
+}  // namespace content::sdjwt

@@ -1,0 +1,497 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.fusebox;
+
+import android.app.Activity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewStub;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import androidx.annotation.DrawableRes;
+import androidx.annotation.IdRes;
+import androidx.core.graphics.Insets;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.window.layout.WindowMetrics;
+import androidx.window.layout.WindowMetricsCalculator;
+
+import org.chromium.base.task.PostTask;
+import org.chromium.base.task.TaskTraits;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.omnibox.R;
+import org.chromium.chrome.browser.omnibox.fusebox.FuseboxCoordinator.CurrentTabPlacement;
+import org.chromium.chrome.browser.omnibox.fusebox.FuseboxCoordinator.PopupState;
+import org.chromium.components.omnibox.OmniboxCapabilities;
+import org.chromium.ui.base.LocalizationUtils;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.insets.InsetObserver;
+import org.chromium.ui.insets.InsetObserver.WindowInsetObserver;
+import org.chromium.ui.listmenu.ListMenuUtils;
+import org.chromium.ui.util.CommonOnLayoutChangeListeners;
+import org.chromium.ui.widget.AnchoredPopupWindow;
+import org.chromium.ui.widget.RectProvider;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/** A popup for the Fusebox component. */
+@NullMarked
+class FuseboxPopup {
+    /* package */ final AnchoredPopupWindow mPopupWindow;
+    /* package */ final ViewGroup mViewGroup;
+    /* package */ final FuseboxScrollView mScrollView;
+    /* package */ final View mAddCurrentTab;
+
+    /** Divider below the "Add current tab" button; only present when it is placed on top. */
+    /* package */ final @Nullable View mCurrentTabTopDivider;
+
+    /* package */ final View mTabButton;
+    /* package */ final View mCameraButton;
+    /* package */ final View mGalleryButton;
+    /* package */ final View mFileButton;
+    /* package */ final View mDriveButton;
+    /* package */ final View mMoreOptionsButton;
+    /* package */ final LinearLayout mAccordionContainer;
+    /* package */ final View mToolsDivider;
+    /* package */ final TextView mToolsHeader;
+
+    /** Container for tools pinned outside the accordion, below the pinned current tab. */
+    /* package */ final ViewGroup mPinnedToolsContainer;
+
+    /* package */ final View mPinnedSectionTopDivider;
+    /* package */ final View mPinnedSectionBottomDivider;
+    /* package */ final View mModelsDivider;
+    /* package */ final TextView mModelsHeader;
+    /* package */ final TextView mAttachmentsHeader;
+    /* package */ final View mAttachmentsContainer;
+    /* package */ final TextView mRecentTabsHeader;
+    /* package */ final ViewGroup mRecentTabsContainer;
+    /* package */ final View mRecentTabsDivider;
+
+    /** Attachment buttons laid out as carousel tiles; empty when there is no carousel. */
+    /* package */ final List<View> mCarouselTiles;
+
+    /** Attachment buttons laid out as list rows; disjoint from {@link #mCarouselTiles}. */
+    /* package */ final List<View> mListAttachmentButtons;
+
+    /* package */ final Set<View> mDynamicThemedButtons = new HashSet<>();
+    /* package */ final List<View> mDividers;
+    /* package */ final List<TextView> mHeaders;
+    /* package */ final WindowAndroid mWindowAndroid;
+
+    private final Activity mActivity;
+    private final DynamicRectProvider mDynamicRectProvider;
+    private final @Nullable InsetObserver mInsetObserver;
+    private final int mInitialScrollPaddingBottom;
+    private @PopupState int mCurrentState = PopupState.HIDDEN;
+    private boolean mIsFirstShow = true;
+    private @Nullable Integer mPreviousAccessibilityImportance;
+    private @Nullable View mCachedContentView;
+
+    private final RectProvider.Observer mDynamicRectObserver =
+            new RectProvider.Observer() {
+                @Override
+                public void onRectChanged() {
+                    updateLayout();
+                }
+
+                @Override
+                public void onRectHidden() {}
+            };
+
+    private final WindowInsetObserver mWindowInsetObserver =
+            new WindowInsetObserver() {
+                @Override
+                public void onInsetChanged() {
+                    updateLayout();
+                }
+
+                @Override
+                public void onKeyboardInsetChanged(int inset) {
+                    // The popup covers the ime, so we don't need to do anything when it changes.
+                }
+            };
+
+    FuseboxPopup(
+            Activity activity,
+            WindowAndroid windowAndroid,
+            AnchoredPopupWindow popupWindow,
+            View contentView,
+            DynamicRectProvider dynamicRectProvider,
+            boolean isBottomSheet,
+            boolean useCarousel,
+            boolean useScrollableCarousel,
+            @CurrentTabPlacement int currentTabPlacement) {
+        mActivity = activity;
+        mWindowAndroid = windowAndroid;
+        mPopupWindow = popupWindow;
+        mPopupWindow.setClippingEnabled(false);
+        mPopupWindow.addOnDismissListener(this::restoreBackgroundAccessibility);
+        mDynamicRectProvider = dynamicRectProvider;
+        mDynamicRectProvider.startObserving(mDynamicRectObserver);
+        mInsetObserver = windowAndroid.getInsetObserver();
+        if (mInsetObserver != null) {
+            mInsetObserver.addObserver(mWindowInsetObserver);
+        }
+
+        mViewGroup = contentView.findViewById(R.id.fusebox_view_group);
+        mViewGroup.addOnLayoutChangeListener(
+                CommonOnLayoutChangeListeners.createHeightChangedListener(
+                        () -> {
+                            PostTask.postTask(TaskTraits.UI_DEFAULT, this::updateLayout);
+                        }));
+        mScrollView = contentView.findViewById(R.id.fusebox_scroll_view);
+        mScrollView.setLayoutDirection(
+                LocalizationUtils.isLayoutRtl()
+                        ? View.LAYOUT_DIRECTION_RTL
+                        : View.LAYOUT_DIRECTION_LTR);
+        mInitialScrollPaddingBottom = mScrollView.getPaddingBottom();
+
+        if (isBottomSheet) {
+            mScrollView.setOnSwipeDownListener(this::dismiss);
+            int topPadding =
+                    mActivity
+                            .getResources()
+                            .getDimensionPixelSize(R.dimen.fusebox_bottom_sheet_top_padding);
+            mViewGroup.setPaddingRelative(
+                    mViewGroup.getPaddingStart(),
+                    topPadding,
+                    mViewGroup.getPaddingEnd(),
+                    mViewGroup.getPaddingBottom());
+            contentView.findViewById(R.id.fusebox_drag_handle).setVisibility(View.VISIBLE);
+        } else {
+            // Row highlights span the full width, so keep them inside the rounded corners.
+            ListMenuUtils.clipContentViewOutline(mScrollView, R.attr.popupBgCornerRadius);
+        }
+
+        ViewStub stub = contentView.findViewById(R.id.fusebox_attachments_stub);
+        stub.setLayoutResource(
+                useCarousel
+                        ? useScrollableCarousel
+                                ? R.layout.fusebox_horizontal_scrollable_attachments
+                                : R.layout.fusebox_horizontal_attachments
+                        : R.layout.fusebox_vertical_attachments);
+        mAttachmentsContainer = stub.inflate();
+
+        mAddCurrentTab = contentView.findViewById(getAddCurrentTabId(currentTabPlacement));
+        mCurrentTabTopDivider =
+                currentTabPlacement == CurrentTabPlacement.ABOVE_ATTACHMENTS
+                        ? contentView.findViewById(R.id.fusebox_current_tab_top_divider)
+                        : null;
+        mTabButton = contentView.findViewById(R.id.fusebox_pick_tabs_button);
+        mCameraButton = contentView.findViewById(R.id.fusebox_camera_button);
+        mGalleryButton = contentView.findViewById(R.id.fusebox_pick_picture_button);
+        // Only the carousel layouts have file/drive copies. The vertical layout relies on the
+        // accordion copies, which directly follow it.
+        boolean fileAndDriveInCarousel =
+                currentTabPlacement == CurrentTabPlacement.WITH_ATTACHMENTS && useCarousel;
+        mFileButton =
+                contentView.findViewById(
+                        fileAndDriveInCarousel
+                                ? R.id.fusebox_pick_file_button
+                                : R.id.fusebox_pick_file_button_accordion);
+        mDriveButton =
+                contentView.findViewById(
+                        fileAndDriveInCarousel
+                                ? R.id.fusebox_pick_drive_button
+                                : R.id.fusebox_pick_drive_button_accordion);
+        mMoreOptionsButton = contentView.findViewById(R.id.fusebox_more_options_button);
+        mAccordionContainer = contentView.findViewById(R.id.fusebox_accordion_container);
+        mToolsDivider = contentView.findViewById(R.id.fusebox_tools_divider);
+        mToolsHeader = contentView.findViewById(R.id.fusebox_tools_header);
+        mPinnedToolsContainer = contentView.findViewById(R.id.fusebox_pinned_tools_container);
+        mPinnedSectionTopDivider =
+                contentView.findViewById(R.id.fusebox_pinned_section_top_divider);
+        mPinnedSectionBottomDivider =
+                contentView.findViewById(R.id.fusebox_pinned_section_bottom_divider);
+
+        initializeItem(mAddCurrentTab, R.string.fusebox_add_tab, 0, 0);
+        initializeItem(
+                mTabButton,
+                R.string.omnibox_navattach_tabs,
+                R.drawable.ic_grid_view_24dp,
+                R.string.accessibility_omnibox_add_tabs);
+        initializeItem(
+                mCameraButton,
+                R.string.photo_picker_camera,
+                R.drawable.photo_camera_24dp,
+                R.string.accessibility_omnibox_add_camera_picture);
+        initializeItem(
+                mGalleryButton,
+                OmniboxCapabilities.isDesktopPlatform()
+                        ? R.string.omnibox_navattach_add_images
+                        : R.string.omnibox_navattach_gallery,
+                R.drawable.add_photo_alternate_24dp,
+                R.string.accessibility_omnibox_add_images);
+        initializeItem(
+                mFileButton,
+                OmniboxCapabilities.isDesktopPlatform()
+                        ? R.string.omnibox_navattach_add_files
+                        : R.string.omnibox_navattach_files,
+                isBottomSheet && currentTabPlacement != CurrentTabPlacement.WITH_ATTACHMENTS
+                        ? R.drawable.ic_folder_24dp
+                        : R.drawable.ic_attach_file_24dp,
+                R.string.accessibility_omnibox_add_files);
+        initializeItem(
+                mDriveButton,
+                R.string.omnibox_navattach_drive,
+                R.drawable.gs_drive_vd_theme_24,
+                R.string.accessibility_omnibox_add_from_drive);
+        initializeItem(
+                mMoreOptionsButton,
+                R.string.fusebox_more_options,
+                0,
+                R.string.fusebox_more_options);
+        ImageView startIcon = mMoreOptionsButton.findViewById(R.id.start_icon);
+        startIcon.setVisibility(View.GONE);
+        updateMoreOptionsButtonIcon(/* expand= */ false);
+
+        mModelsDivider = contentView.findViewById(R.id.fusebox_models_divider);
+        mModelsHeader = contentView.findViewById(R.id.fusebox_models_header);
+
+        mAttachmentsHeader = contentView.findViewById(R.id.fusebox_attachments_header);
+        mRecentTabsDivider = contentView.findViewById(R.id.fusebox_recent_tabs_divider);
+        mRecentTabsHeader = contentView.findViewById(R.id.fusebox_recent_tabs_header);
+        mRecentTabsContainer = contentView.findViewById(R.id.fusebox_recent_tabs_container);
+
+        List<View> allAttachments =
+                List.of(
+                        mAddCurrentTab,
+                        mTabButton,
+                        mGalleryButton,
+                        mCameraButton,
+                        mFileButton,
+                        mDriveButton);
+
+        // TODO(crbug.com/568855804): Clean up the carousel and attachment list split logic after a
+        // variation is chosen.
+        if (!useCarousel) {
+            mCarouselTiles = List.of();
+            mListAttachmentButtons = allAttachments;
+        } else if (fileAndDriveInCarousel) {
+            // The current tab shares the carousel with file/drive under the same placement.
+            mCarouselTiles = allAttachments;
+            mListAttachmentButtons = List.of();
+        } else {
+            mCarouselTiles = List.of(mTabButton, mGalleryButton, mCameraButton);
+            mListAttachmentButtons = List.of(mAddCurrentTab, mFileButton, mDriveButton);
+        }
+
+        mDividers =
+                mCurrentTabTopDivider != null
+                        ? List.of(
+                                mCurrentTabTopDivider,
+                                mPinnedSectionTopDivider,
+                                mPinnedSectionBottomDivider,
+                                mRecentTabsDivider,
+                                mToolsDivider,
+                                mModelsDivider)
+                        : List.of(
+                                mPinnedSectionTopDivider,
+                                mPinnedSectionBottomDivider,
+                                mRecentTabsDivider,
+                                mToolsDivider,
+                                mModelsDivider);
+        mHeaders = List.of(mRecentTabsHeader, mToolsHeader, mModelsHeader);
+    }
+
+    void destroy() {
+        if (mInsetObserver != null) {
+            mInsetObserver.removeObserver(mWindowInsetObserver);
+        }
+        mScrollView.setOnSwipeDownListener(null);
+        mDynamicRectProvider.stopObserving(mDynamicRectObserver);
+    }
+
+    /** Show the popup window. */
+    void show() {
+        mPopupWindow.show();
+    }
+
+    /**
+     * Apply the requested PopupState to the popup. This may involve switching the anchor and
+     * updating the content size.
+     *
+     * @param state The target state of the popup.
+     */
+    void setPopupState(@PopupState int state) {
+        mCurrentState = state;
+        if (state == PopupState.BOTTOM) {
+            mPopupWindow.setAnimationStyle(R.style.FuseboxBottomSheetAnimation);
+            hideBackgroundAccessibility();
+        } else {
+            mPopupWindow.setAnimationStyle(0);
+            restoreBackgroundAccessibility();
+        }
+
+        // ALWAYS update the DynamicRectProvider state first.
+        // This ensures it correctly unregisters layout observers when transitioning to HIDDEN.
+        mDynamicRectProvider.setPopupState(state);
+
+        if (state == PopupState.HIDDEN) {
+            dismiss();
+            return;
+        }
+
+        updateLayout();
+        if (mIsFirstShow) {
+            mIsFirstShow = false;
+            // Defer showing the popup window by one main-looper tick when transitioning from
+            // HIDDEN on the very first show so that pending PropertyModel view-binder callbacks
+            // (e.g., model selection buttons) finish populating content views into mViewGroup.
+            updateDesiredWidth();
+            PostTask.postTask(TaskTraits.UI_DEFAULT, this::show);
+        } else {
+            show();
+        }
+    }
+
+    private void hideBackgroundAccessibility() {
+        if (mPreviousAccessibilityImportance != null) return;
+        mCachedContentView = mActivity.findViewById(android.R.id.content);
+        if (mCachedContentView != null) {
+            mPreviousAccessibilityImportance = mCachedContentView.getImportantForAccessibility();
+            mCachedContentView.setImportantForAccessibility(
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        }
+    }
+
+    private void restoreBackgroundAccessibility() {
+        if (mPreviousAccessibilityImportance == null) return;
+        if (mCachedContentView != null) {
+            mCachedContentView.setImportantForAccessibility(mPreviousAccessibilityImportance);
+            mCachedContentView = null;
+        }
+        mPreviousAccessibilityImportance = null;
+    }
+
+    /**
+     * Sets whether the accordion container functions as an expandable accordion. When disabled, the
+     * container remains permanently visible.
+     */
+    void setAccordionEnabled(boolean enabled) {
+        if (!enabled) {
+            mAccordionContainer.setVisibility(View.VISIBLE);
+            mAccordionContainer.setAlpha(1f);
+            mAccordionContainer.setTranslationY(0f);
+        } else {
+            mAccordionContainer.setVisibility(View.GONE);
+        }
+    }
+
+    /** Toggles the accordion menu. */
+    void setAccordionExpanded(boolean expand) {
+        updateMoreOptionsButtonIcon(expand);
+        mAccordionContainer.setVisibility(expand ? View.VISIBLE : View.GONE);
+        updateLayout();
+    }
+
+    private void updateMoreOptionsButtonIcon(boolean expand) {
+        ImageView endIcon = mMoreOptionsButton.findViewById(R.id.end_icon);
+        @DrawableRes
+        int iconRes =
+                expand
+                        ? R.drawable.ic_expand_less_black_24dp
+                        : R.drawable.ic_expand_more_black_24dp;
+        endIcon.setImageResource(iconRes);
+        endIcon.setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * Update the layout of the popup if it is showing. This is useful when contents change
+     * visibility.
+     */
+    void updateLayout() {
+        if (!isShowing() || mCurrentState == PopupState.HIDDEN) return;
+        updateInsets();
+        updateDesiredWidth();
+    }
+
+    private void initializeItem(View item, int textRes, int iconRes, int a11yRes) {
+        TextView actionText = item.findViewById(R.id.action_text);
+        actionText.setText(textRes);
+
+        if (iconRes != 0) {
+            ImageView actionIcon = item.findViewById(R.id.start_icon);
+            actionIcon.setImageResource(iconRes);
+        }
+
+        if (a11yRes != 0) {
+            item.setContentDescription(item.getContext().getString(a11yRes));
+        }
+    }
+
+    /** Dismiss the popup window. */
+    void dismiss() {
+        mPopupWindow.dismiss();
+    }
+
+    /** Returns whether the popup window is currently showing. */
+    boolean isShowing() {
+        return mPopupWindow.isShowing();
+    }
+
+    /** Returns the current {@link PopupState} of the popup. */
+    @PopupState
+    int getPopupState() {
+        return mCurrentState;
+    }
+
+    private boolean shouldApplyBottomInsets(WindowInsetsCompat insets) {
+        if (!mActivity.isInMultiWindowMode()) return true;
+
+        WindowMetrics windowMetrics =
+                WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(mActivity);
+        WindowMetrics maxWindowMetrics =
+                WindowMetricsCalculator.getOrCreate().computeMaximumWindowMetrics(mActivity);
+
+        int currentBottom = windowMetrics.getBounds().bottom;
+        int maxBottom = maxWindowMetrics.getBounds().bottom;
+
+        Insets navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+
+        return (maxBottom - currentBottom) <= navBarInsets.bottom;
+    }
+
+    private void updateInsets() {
+        if (mInsetObserver == null || mCurrentState != PopupState.BOTTOM) return;
+
+        WindowInsetsCompat insets = mInsetObserver.getLastRawWindowInsets();
+        if (insets == null) return;
+
+        int bottomPadding = mInitialScrollPaddingBottom;
+        if (shouldApplyBottomInsets(insets)) {
+            Insets navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            bottomPadding += navBarInsets.bottom;
+        }
+
+        mScrollView.setPaddingRelative(
+                mScrollView.getPaddingStart(),
+                mScrollView.getPaddingTop(),
+                mScrollView.getPaddingEnd(),
+                bottomPadding);
+    }
+
+    private void updateDesiredWidth() {
+        int width = mDynamicRectProvider.getPopupWidth(mCurrentState, mViewGroup.getResources());
+        mPopupWindow.updateDesiredContentSize(width, /* height= */ 0, /* updateLayout= */ true);
+    }
+
+    private static @IdRes int getAddCurrentTabId(@CurrentTabPlacement int placement) {
+        return switch (placement) {
+            case CurrentTabPlacement.ABOVE_ATTACHMENTS -> R.id.fusebox_add_current_tab_top;
+            case CurrentTabPlacement.WITH_ATTACHMENTS -> R.id.fusebox_add_current_tab;
+            case CurrentTabPlacement.BELOW_ATTACHMENTS -> R.id.fusebox_add_current_tab_pinned;
+            default -> {
+                assert false : "Unknown CurrentTabPlacement: " + placement;
+                yield R.id.fusebox_add_current_tab;
+            }
+        };
+    }
+}

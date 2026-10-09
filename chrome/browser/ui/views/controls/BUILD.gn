@@ -1,0 +1,87 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+
+assert(toolkit_views)
+
+source_set("controls") {
+  public = [
+    "hover_button.h",
+    "hover_button_controller.h",
+    "page_switcher_view.h",
+    "rich_controls_container_view.h",
+    "rich_hover_button.h",
+    "site_icon_text_and_origin_view.h",
+    "subpage_view.h",
+  ]
+  sources = [
+    "hover_button.cc",
+    "hover_button_controller.cc",
+    "page_switcher_view.cc",
+    "rich_controls_container_view.cc",
+    "rich_hover_button.cc",
+    "site_icon_text_and_origin_view.cc",
+    "subpage_view.cc",
+  ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/views:layout_provider",
+    "//components/content_settings/core/common",
+    "//ui/base",
+    "//ui/menus",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui:layout_constants",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views/accessibility",
+    "//chrome/browser/ui/views/web_apps",
+    "//components/constrained_window",
+    "//components/content_settings/browser/ui",
+    "//components/strings:components_strings",
+    "//components/user_education/views",
+    "//components/web_modal",
+    "//content/public/browser",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "rich_hover_button_unittest.cc" ]
+  deps = [
+    ":controls",
+    "//chrome/test:test_support",
+    "//testing/gtest",
+    "//ui/base",
+    "//ui/views",
+    "//ui/views:test_support",
+  ]
+}
+
+if (!is_chromeos) {
+  source_set("browser_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [
+      "button/button_dump_accessibility_events_browsertest.cc",
+      "button/checkbox_dump_accessibility_events_browsertest.cc",
+      "label_dump_accessibility_events_browsertest.cc",
+      "slider/slider_dump_accessibility_events_browsertest.cc",
+      "textfield/textfield_dump_accessibility_events_browsertest.cc",
+    ]
+    deps = [
+      "//base",
+      "//base/test:test_support",
+      "//build:buildflag_header_h",
+      "//chrome/browser/ui/views/accessibility:dump_accessibility_events_views_browsertest_base",
+      "//content/test:test_support",
+      "//ui/accessibility",
+      "//ui/events:test_support",
+      "//ui/gfx/range",
+      "//ui/views",
+    ]
+  }
+}

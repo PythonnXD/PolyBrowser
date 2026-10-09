@@ -1,0 +1,161 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_TOASTS_API_TOAST_SPECIFICATION_H_
+#define CHROME_BROWSER_UI_TOASTS_API_TOAST_SPECIFICATION_H_
+
+#include <concepts>
+#include <memory>
+#include <optional>
+#include <utility>
+
+#include "base/check.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
+#include "base/types/pass_key.h"
+#include "base/values.h"
+#include "ui/gfx/vector_icon_types.h"
+
+class BrowserWindowInterface;
+
+// ToastSpecification details what the toast should contain when shown.
+class ToastSpecification {
+ public:
+  using ActionButtonCallback =
+      base::RepeatingCallback<void(BrowserWindowInterface*)>;
+  using ActionButtonDataCallback =
+      base::RepeatingCallback<void(BrowserWindowInterface*,
+                                   const base::Value&)>;
+
+  class Builder final {
+   public:
+    Builder(const gfx::VectorIcon& icon, int body_string_id);
+    explicit Builder(const gfx::VectorIcon& icon);
+    explicit Builder(int body_string_id);
+    Builder();
+    Builder(const Builder& other) = delete;
+    Builder& operator=(const Builder&) = delete;
+
+    ~Builder();
+
+    // Adds a "X" close button to the toast. However, if the toast have a menu,
+    // the close button will be a rounded dismiss button instead.
+    Builder& AddCloseButton();
+
+    // Adds a rounded action button toast with the `action_button_string_id`
+    // for the label. All toasts with an action button must also have a close
+    // button.
+    Builder& AddActionButton(int action_button_string_id,
+                             ActionButtonCallback callback);
+
+    // Adds a rounded action button whose `callback` receives the identifier
+    // passed in `ToastParams::action_button_callback_data` when the toast is
+    // invoked. All toasts with an action button must also have a close button.
+    template <std::same_as<base::Value> T = base::Value>
+    Builder& AddActionButton(
+        int action_button_string_id,
+        base::RepeatingCallback<void(BrowserWindowInterface*, const T&)>
+            callback) {
+      toast_specification_->AddActionButton(action_button_string_id,
+                                            std::move(callback));
+      return *this;
+    }
+
+    // Adds a three dot menu to the toast. Toasts with an action button are not
+    // allowed to have menu because they must have an "X" close button instead.
+    // If the specification includes a menu, the `ToastParams` that are used
+    // to show the Toast must have a non-null `menu_model` member.
+    Builder& AddMenu();
+
+    // Toasts by default are scoped to the active tab when they are triggered.
+    // Globally scoped toasts will not immediately dismiss when the user
+    // switches tabs or navigates to another site and will rely on timing out to
+    // dismiss.
+    Builder& AddGlobalScoped();
+
+    // Adds a property to allow tab-scoped toasts to survive navigation
+    // events (like form submissions).
+    Builder& SetPersistOnNavigation();
+
+    // Replaces the leading static icon with an animated throbber spinner.
+    Builder& SetHasThrobber();
+
+    // Explicitly marks this toast as an actionable toast (allows the user to
+    // interact with it in some way).
+    // NOTE: Only use this for toasts that do not have actionable buttons /
+    // menus but have interactions tied to the toast that are handled outside
+    // the toast framework such as keyboard shortcuts.
+    Builder& SetToastAsActionable();
+
+    std::unique_ptr<ToastSpecification> Build();
+
+   private:
+    void ValidateSpecification();
+
+    std::unique_ptr<ToastSpecification> toast_specification_;
+  };
+
+  ToastSpecification(base::PassKey<ToastSpecification::Builder>,
+                     const gfx::VectorIcon& icon,
+                     int string_id);
+  ToastSpecification(base::PassKey<ToastSpecification::Builder>,
+                     const gfx::VectorIcon& icon);
+  ToastSpecification(base::PassKey<ToastSpecification::Builder>, int string_id);
+  explicit ToastSpecification(base::PassKey<ToastSpecification::Builder>);
+  ~ToastSpecification();
+
+  int body_string_id() const { return body_string_id_; }
+  bool has_icon() const { return icon_ != nullptr; }
+  const gfx::VectorIcon& icon() const {
+    CHECK(icon_);
+    return *icon_;
+  }
+  bool has_close_button() const { return has_close_button_; }
+  std::optional<int> action_button_string_id() const {
+    return action_button_string_id_;
+  }
+  const ActionButtonCallback& action_button_callback() const {
+    return action_button_callback_;
+  }
+  bool has_action_button_data_callback() const {
+    return !action_button_data_callback_.is_null();
+  }
+  base::RepeatingClosure GetActionButtonCallback(
+      BrowserWindowInterface* browser_window_interface,
+      std::optional<base::Value> data = std::nullopt) const;
+
+  bool has_menu() const { return has_menu_; }
+  bool is_global_scope() const { return is_global_scope_; }
+  bool persist_on_navigation() const { return persist_on_navigation_; }
+  bool has_throbber() const { return has_throbber_; }
+  bool is_actionable() const {
+    return has_close_button() || has_menu() || has_actionable_override();
+  }
+  bool has_actionable_override() const { return actionable_toast_override_; }
+
+  void AddCloseButton();
+  void AddActionButton(int string_id, ActionButtonCallback callback);
+  void AddActionButton(int string_id, ActionButtonDataCallback callback);
+  void AddMenu();
+  void AddGlobalScope();
+  void SetPersistOnNavigation();
+  void SetHasThrobber();
+  void SetToastAsActionable();
+
+ private:
+  const raw_ptr<const gfx::VectorIcon> icon_ = nullptr;
+  int body_string_id_ = 0;
+  bool has_close_button_ = false;
+  bool has_menu_ = false;
+  std::optional<int> action_button_string_id_;
+  ActionButtonCallback action_button_callback_;
+  ActionButtonDataCallback action_button_data_callback_;
+  bool is_global_scope_ = false;
+  bool persist_on_navigation_ = false;
+  bool has_throbber_ = false;
+  bool actionable_toast_override_ = false;
+};
+
+#endif  // CHROME_BROWSER_UI_TOASTS_API_TOAST_SPECIFICATION_H_

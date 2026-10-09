@@ -1,0 +1,323 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.download.dialogs;
+
+import android.content.Context;
+import android.graphics.Typeface;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
+
+import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.IntDef;
+
+import org.chromium.base.Callback;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.download.R;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.components.browser_ui.util.DownloadUtils;
+import org.chromium.ui.UiUtils;
+import org.chromium.ui.modaldialog.DialogDismissalCause;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.modaldialog.ModalDialogProperties;
+import org.chromium.ui.modelutil.PropertyModel;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Dialog for confirming that user want to download a file, using the default model dialog from
+ * ModalDialogManager. Downloads with Safe Browsing warnings may trigger a different dialog (see
+ * {@link DownloadWarningBypassDialog}).
+ */
+// TODO(yawfrempong): Rename class since the dialog is not specific to files that are considered
+// dangerous.
+@NullMarked
+public class DangerousDownloadDialog {
+    /**
+     * Events related to the download dialog, used for UMA reporting and to communicate the result
+     * of the dialog. These values are persisted to logs. Entries should not be renumbered and
+     * numeric values should never be reused.
+     */
+    @IntDef({
+        DangerousDownloadDialogEvent.DANGEROUS_DOWNLOAD_DIALOG_SHOW,
+        DangerousDownloadDialogEvent.DANGEROUS_DOWNLOAD_DIALOG_CONFIRM,
+        DangerousDownloadDialogEvent.DANGEROUS_DOWNLOAD_DIALOG_CANCEL,
+        DangerousDownloadDialogEvent.DANGEROUS_DOWNLOAD_DIALOG_DISMISS,
+        DangerousDownloadDialogEvent.DANGEROUS_DOWNLOAD_DIALOG_DISMISSED_BY_NATIVE
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface DangerousDownloadDialogEvent {
+        int DANGEROUS_DOWNLOAD_DIALOG_SHOW = 0;
+        int DANGEROUS_DOWNLOAD_DIALOG_CONFIRM = 1;
+        int DANGEROUS_DOWNLOAD_DIALOG_CANCEL = 2;
+        int DANGEROUS_DOWNLOAD_DIALOG_DISMISS = 3;
+        int DANGEROUS_DOWNLOAD_DIALOG_DISMISSED_BY_NATIVE = 4;
+
+        int COUNT = 5;
+    }
+
+    private @Nullable ModalDialogManager mModalDialogManager;
+    private @Nullable PropertyModel mModel;
+    private @Nullable Callback<Integer> mCallback;
+
+    public DangerousDownloadDialog() {}
+
+    /** Dismisses the dialog if it is currently showing without invoking the result callback. */
+    public void dismiss() {
+        mCallback = null;
+        if (mModalDialogManager != null && mModel != null) {
+            mModalDialogManager.dismissDialog(mModel, DialogDismissalCause.DISMISSED_BY_NATIVE);
+        }
+        mModalDialogManager = null;
+        mModel = null;
+    }
+
+    /**
+     * Called to show a warning dialog for a download.
+     *
+     * @param context Context for showing the dialog.
+     * @param modalDialogManager Manager for managing the modal dialog.
+     * @param fileName Name of the download file.
+     * @param totalBytes Total bytes of the file.
+     * @param downloadDomain Domain name to associate with the downloaded file.
+     * @param iconId Icon ID of the warning dialog.
+     * @param callback Callback to run when the dialog closes (unless dismissed programmatically via
+     *     {@link #dismiss()}), receiving a {@link DangerousDownloadDialogEvent} value indicating
+     *     confirmation, cancellation, or dismissal.
+     * @param isDangerous The danger status of the download file.
+     */
+    public void show(
+            Context context,
+            ModalDialogManager modalDialogManager,
+            String fileName,
+            long totalBytes,
+            String downloadDomain,
+            int iconId,
+            Callback<Integer> callback,
+            boolean isDangerous) {
+        mModalDialogManager = modalDialogManager;
+        mCallback = callback;
+        var resources = context.getResources();
+        var controller =
+                new ModalDialogProperties.Controller() {
+                    @Override
+                    public void onClick(PropertyModel model, int buttonType) {
+                        boolean acceptDownload =
+                                buttonType == ModalDialogProperties.ButtonType.POSITIVE;
+                        @DangerousDownloadDialogEvent
+                        int event =
+                                acceptDownload
+                                        ? DangerousDownloadDialogEvent
+                                                .DANGEROUS_DOWNLOAD_DIALOG_CONFIRM
+                                        : DangerousDownloadDialogEvent
+                                                .DANGEROUS_DOWNLOAD_DIALOG_CANCEL;
+                        if (mCallback != null) {
+                            mCallback.onResult(event);
+                        }
+                        if (mModalDialogManager != null) {
+                            mModalDialogManager.dismissDialog(
+                                    model,
+                                    acceptDownload
+                                            ? DialogDismissalCause.POSITIVE_BUTTON_CLICKED
+                                            : DialogDismissalCause.NEGATIVE_BUTTON_CLICKED);
+                        }
+                        recordDownloadDialogEvent(event, isDangerous);
+                    }
+
+                    @Override
+                    public void onDismiss(PropertyModel model, int dismissalCause) {
+                        if (dismissalCause == DialogDismissalCause.DISMISSED_BY_NATIVE) {
+                            recordDownloadDialogEvent(
+                                    DangerousDownloadDialogEvent
+                                            .DANGEROUS_DOWNLOAD_DIALOG_DISMISSED_BY_NATIVE,
+                                    isDangerous);
+                        } else if (dismissalCause != DialogDismissalCause.POSITIVE_BUTTON_CLICKED
+                                && dismissalCause != DialogDismissalCause.NEGATIVE_BUTTON_CLICKED) {
+                            if (mCallback != null) {
+                                mCallback.onResult(
+                                        DangerousDownloadDialogEvent
+                                                .DANGEROUS_DOWNLOAD_DIALOG_DISMISS);
+                                recordDownloadDialogEvent(
+                                        DangerousDownloadDialogEvent
+                                                .DANGEROUS_DOWNLOAD_DIALOG_DISMISS,
+                                        isDangerous);
+                            }
+                        }
+                        mModalDialogManager = null;
+                        mModel = null;
+                        mCallback = null;
+                    }
+                };
+
+        PropertyModel.Builder builder =
+                new PropertyModel.Builder(ModalDialogProperties.ALL_KEYS)
+                        .with(ModalDialogProperties.CONTROLLER, controller)
+                        .with(
+                                ModalDialogProperties.NEGATIVE_BUTTON_TEXT,
+                                resources.getString(R.string.cancel))
+                        .with(
+                                ModalDialogProperties.BUTTON_TAP_PROTECTION_PERIOD_MS,
+                                UiUtils.PROMPT_INPUT_PROTECTION_SHORT_DELAY_MS);
+
+        if (isDangerous) {
+            builder.with(
+                            ModalDialogProperties.TITLE,
+                            resources.getString(R.string.dangerous_download_dialog_title))
+                    .with(
+                            ModalDialogProperties.MESSAGE_PARAGRAPHS,
+                            getDangerousMessageParagraphs(
+                                    context, fileName, totalBytes, downloadDomain))
+                    .with(
+                            ModalDialogProperties.POSITIVE_BUTTON_TEXT,
+                            resources.getString(R.string.dangerous_download_dialog_confirm_text))
+                    .with(
+                            ModalDialogProperties.BUTTON_STYLES,
+                            ModalDialogProperties.ButtonStyles.PRIMARY_OUTLINE_NEGATIVE_OUTLINE);
+        } else {
+            builder.with(
+                            ModalDialogProperties.TITLE,
+                            resources.getString(R.string.non_dangerous_download_dialog_title))
+                    .with(
+                            ModalDialogProperties.MESSAGE_PARAGRAPHS,
+                            getNonDangerousMessageParagraphs(context, downloadDomain))
+                    .with(
+                            ModalDialogProperties.POSITIVE_BUTTON_TEXT,
+                            resources.getString(
+                                    R.string.non_dangerous_download_dialog_confirm_text))
+                    .with(
+                            ModalDialogProperties.BUTTON_STYLES,
+                            ModalDialogProperties.ButtonStyles.PRIMARY_FILLED_NEGATIVE_OUTLINE);
+        }
+        recordDownloadDialogEvent(
+                DangerousDownloadDialogEvent.DANGEROUS_DOWNLOAD_DIALOG_SHOW, isDangerous);
+        @ModalDialogManager.ModalDialogType
+        int dialogType =
+                ChromeFeatureList.sMaliciousApkDownloadCheck.isEnabled()
+                        ? ModalDialogManager.ModalDialogType.APP
+                        : ModalDialogManager.ModalDialogType.TAB;
+        if (ChromeFeatureList.sMaliciousApkDownloadCheck.isEnabled()) {
+            builder.with(ModalDialogProperties.CANCEL_ON_TOUCH_OUTSIDE, false)
+                    .with(
+                            ModalDialogProperties.APP_MODAL_DIALOG_BACK_PRESS_HANDLER,
+                            new OnBackPressedCallback(true) {
+                                @Override
+                                public void handleOnBackPressed() {}
+                            });
+        }
+        mModel = builder.build();
+        modalDialogManager.showDialog(mModel, dialogType);
+    }
+
+    /**
+     * Selects the appropriate message string template and inserts formatted substitutions.
+     *
+     * @return an ArrayList suitable for setting as MESSAGE_PARAGRAPHS property for the dialog.
+     */
+    private static ArrayList<CharSequence> getDangerousMessageParagraphs(
+            Context context, String fileName, long totalBytes, String downloadDomain) {
+        boolean hasSize = totalBytes > 0;
+        boolean hasDownloadDomain = !downloadDomain.isEmpty();
+
+        int stringResId;
+        int numSubstitutions;
+        if (hasSize && hasDownloadDomain) {
+            stringResId = R.string.dangerous_download_dialog_text_with_size_and_domain;
+            numSubstitutions = 3;
+        } else if (hasSize) {
+            stringResId = R.string.dangerous_download_dialog_text_with_size;
+            numSubstitutions = 2;
+        } else if (hasDownloadDomain) {
+            stringResId = R.string.dangerous_download_dialog_text_with_domain;
+            numSubstitutions = 2;
+        } else {
+            stringResId = R.string.dangerous_download_dialog_text;
+            numSubstitutions = 1;
+        }
+        CharSequence messageTemplate = context.getString(stringResId);
+        ArrayList<CharSequence> substitutions = new ArrayList<CharSequence>();
+
+        SpannableString formattedFileName = new SpannableString(fileName);
+        formattedFileName.setSpan(
+                new StyleSpan(Typeface.BOLD),
+                0,
+                fileName.length(),
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        substitutions.add(formattedFileName);
+
+        if (hasSize) {
+            String formattedSize = DownloadUtils.getStringForBytes(context, totalBytes);
+            substitutions.add(formattedSize);
+        }
+
+        if (hasDownloadDomain) {
+            SpannableString formattedDownloadDomain = new SpannableString(downloadDomain);
+            formattedDownloadDomain.setSpan(
+                    new ForegroundColorSpan(SemanticColorUtils.getDefaultTextColorLink(context)),
+                    0,
+                    downloadDomain.length(),
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            substitutions.add(formattedDownloadDomain);
+        }
+
+        assert substitutions.size() == numSubstitutions;
+        CharSequence message =
+                TextUtils.expandTemplate(
+                        messageTemplate, substitutions.toArray(new CharSequence[0]));
+        return new ArrayList<>(List.of(message));
+    }
+
+    /**
+     * Selects the appropriate message string template and inserts formatted substitutions.
+     *
+     * @return an ArrayList suitable for setting as MESSAGE_PARAGRAPHS property for the dialog.
+     */
+    private static ArrayList<CharSequence> getNonDangerousMessageParagraphs(
+            Context context, String downloadDomain) {
+        CharSequence messageTemplate;
+        if (downloadDomain.isEmpty()) {
+            messageTemplate = context.getString(R.string.non_dangerous_download_dialog_text);
+            return new ArrayList<>(List.of(messageTemplate));
+        }
+
+        messageTemplate =
+                context.getString(R.string.non_dangerous_download_dialog_text_with_domain);
+        ArrayList<CharSequence> substitutions = new ArrayList<CharSequence>();
+        SpannableString formattedDownloadDomain = new SpannableString(downloadDomain);
+        formattedDownloadDomain.setSpan(
+                new ForegroundColorSpan(SemanticColorUtils.getDefaultTextColorLink(context)),
+                0,
+                downloadDomain.length(),
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        substitutions.add(formattedDownloadDomain);
+
+        CharSequence message =
+                TextUtils.expandTemplate(
+                        messageTemplate, substitutions.toArray(new CharSequence[0]));
+        return new ArrayList<>(List.of(message));
+    }
+
+    /**
+     * Collects download dialog UI event metrics.
+     *
+     * @param event The UI event to collect.
+     */
+    private static void recordDownloadDialogEvent(
+            @DangerousDownloadDialogEvent int event, boolean isDangerous) {
+        RecordHistogram.recordEnumeratedHistogram(
+                isDangerous
+                        ? "Download.DangerousDialog.Events"
+                        : "Download.NonDangerousDialog.Events",
+                event,
+                DangerousDownloadDialogEvent.COUNT);
+    }
+}

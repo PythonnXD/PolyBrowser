@@ -1,0 +1,63 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("language_detection") {
+  sources = [ "language_detection_model_service_factory.h" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/profiles:profile",
+    "//components/language_detection/core/browser:language_detection_model_service",
+  ]
+}
+
+source_set("impl") {
+  sources = [ "language_detection_model_service_factory.cc" ]
+  deps = [
+    ":language_detection",
+    "//chrome/browser/optimization_guide",
+    "//components/translate/core/common",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [ "language_detection_model_service_browsertest.cc" ]
+  data = [
+    "//chrome/test/data/optimization_guide/",
+    "//chrome/test/data/workers/",
+    "//components/test/data/translate/",
+  ]
+  deps = [
+    ":language_detection",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser/optimization_guide",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/omnibox",
+    "//chrome/test:test_support",
+    "//chrome/test/base:chrome_test_utils",
+    "//components/language_detection/content/common",
+    "//components/metrics:content",
+    "//components/optimization_guide/core",
+    "//components/optimization_guide/core:test_support",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//content/public/browser",
+    "//content/public/common",
+    "//content/test:test_support",
+    "//mojo/public/cpp/bindings",
+    "//net",
+    "//net:test_support",
+    "//testing/gtest",
+    "//third_party/blink/public/common:headers",
+  ]
+  if (!is_android) {
+    deps += [
+      "//chrome/browser/ui/browser_window",
+      "//chrome/test:test_support_ui",
+    ]
+  } else {
+    deps += [ "//chrome/test:test_support_ui_android" ]
+  }
+}

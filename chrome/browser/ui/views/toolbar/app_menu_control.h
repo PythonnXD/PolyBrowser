@@ -1,0 +1,78 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_TOOLBAR_APP_MENU_CONTROL_H_
+#define CHROME_BROWSER_UI_VIEWS_TOOLBAR_APP_MENU_CONTROL_H_
+
+#include "base/timer/elapsed_timer.h"
+#include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
+#include "ui/views/bubble/bubble_dialog_delegate_view.h"
+
+class AppMenuButtonObserver;
+namespace views {
+class AccessiblePaneView;
+class DialogDelegate;
+class MenuItemView;
+class View;
+}
+
+// Interface for controlling the app menu, which may be implemented by a Views
+// button or a WebUI-based control.
+class AppMenuControl {
+ public:
+  virtual ~AppMenuControl() = default;
+
+  // Returns the bubble anchor for the app menu.
+  virtual views::BubbleAnchor GetAnchor() = 0;
+
+  // Returns true if the control is drawn on screen.
+  virtual bool IsDrawn() const = 0;
+
+  // Returns true if the app menu is currently showing.
+  virtual bool IsMenuShowing() const = 0;
+
+  // Returns the dialog delegate for any dialog currently anchored to the app
+  // menu, or nullptr if none exists.
+  virtual views::DialogDelegate* GetDialogDelegate() = 0;
+
+  // Closes the app menu if it is currently showing.
+  virtual void CloseMenu() = 0;
+
+  // Shows the app menu simulating user activation (handles promo checks,
+  // animations, and default mnemonic flags).
+  virtual void ShowMenu() = 0;
+
+  // Shows the app menu directly with specified MenuRunner::RunTypes flags.
+  virtual void ShowMenuWithFlags(int run_types) = 0;
+
+  // Test hooks for inspecting and interacting with the open menu.
+  virtual views::MenuItemView* GetRootMenuItemViewForTesting() = 0;
+  virtual void ExecuteCommandForTesting(int command_id,
+                                        int mouse_event_flags) = 0;
+  virtual void SetMenuTimerForTesting(base::ElapsedTimer timer) = 0;
+
+  // Adds or removes an observer to be notified of app menu events.
+  virtual void AddObserver(AppMenuButtonObserver* observer) = 0;
+  virtual void RemoveObserver(AppMenuButtonObserver* observer) = 0;
+
+  // Returns true if the app menu button is focused.
+  virtual bool HasFocus() const = 0;
+
+  // Focuses the app menu button.
+  virtual void Focus(views::AccessiblePaneView* pane) = 0;
+
+  // Updates the icon type and severity.
+  virtual void SetTypeAndSeverity(
+      AppMenuIconController::TypeAndSeverity type_and_severity) = 0;
+
+  // Sets whether the window is maximized or fullscreen.
+  virtual void SetIsMaximizedOrFullscreen(bool maximized_or_fullscreen) = 0;
+
+  // Returns the views::View that represents this control for pane focusing.
+  // - For Views: returns the button itself (AppMenuButton).
+  // - For WebUI: returns the parent WebUIToolbarWebView hosting the WebUI.
+  virtual views::View* GetFocusablePaneView() = 0;
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_TOOLBAR_APP_MENU_CONTROL_H_

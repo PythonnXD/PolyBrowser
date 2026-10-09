@@ -1,0 +1,7 @@
+{
+    "name": "test extension",
+    "manifest_version": 3,
+    "version": "1.0",
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAonZAEiUrRWGuYYXjwEM1bGyY4JqtGxTMBsEWovOPEDfZaT8lgptcgSjRtmrzRyzC+pl4DU9lbkYqLQQRYRmbEarhXqvBYTIDb8YLPw9VpZmEaCI4kKA1B92UvMUiVerSgFNO3vb0Q1I6mcjHRr5HcormwlPd2rBOTINdMKZm/THbRRLIcHOsEbYEOZp3sCayroVjSlhTh2mcZttbxsyA7lro7W7VTjhHtS5ja8fbotfIDuNuI/jJ4DY1aPKAENyHPr1S9VWdzD0znnbaILI8b74+4wjNMOaua56QCBlj/9p+ZTmPg+tDRyLYnJUpMo+o5SMlPgv0GsyDBvLbw5sdvwIDAQAB",
+    "description": "A simple extension with a defined id (gcgachbpjjonjloecffgdajegokngglh) for accessibility testing."
+}

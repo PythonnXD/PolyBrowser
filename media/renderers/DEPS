@@ -1,0 +1,10 @@
+# Do NOT add net/ or ui/base without a great reason, they're huge!
+include_rules = [
+  "+media/audio",
+  "+media/base",
+  "+media/filters",
+  "+media/gfx",
+  "+media/renderers",
+  "+media/video",
+  "+ui/gfx",
+]

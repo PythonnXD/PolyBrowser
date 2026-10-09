@@ -1,0 +1,90 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/chrome_build.gni")
+import("//chrome/updater/branding.gni")
+
+if (is_win || is_mac || is_linux) {
+  copy("old_updater") {
+    testonly = true
+    sources = []
+
+    foreach(arch_suffix,
+            [
+              "",
+              "_sans_iid",
+            ]) {
+      if (is_win && is_chrome_branded) {
+        sources += [
+          "chrome_win_arm64" + arch_suffix + "/cipd/UpdaterSetup_test.exe",
+          "chrome_win_x86" + arch_suffix + "/cipd/UpdaterSetup_test.exe",
+          "chrome_win_x86_64" + arch_suffix + "/cipd/UpdaterSetup_test.exe",
+        ]
+      }
+
+      if (is_win && !is_chrome_branded) {
+        sources += [
+          "chromium_win_arm64" + arch_suffix + "/cipd/UpdaterSetup_test.exe",
+          "chromium_win_x86" + arch_suffix + "/cipd/UpdaterSetup_test.exe",
+          "chromium_win_x86_64" + arch_suffix + "/cipd/UpdaterSetup_test.exe",
+        ]
+      }
+
+      if (is_mac && is_chrome_branded) {
+        sources += [
+          "chrome_mac_universal" + arch_suffix + "/cipd/GoogleUpdater_test.app/Contents/Helpers/GoogleSoftwareUpdate.bundle/Contents/Helpers/ksadmin",
+          "chrome_mac_universal" + arch_suffix + "/cipd/GoogleUpdater_test.app/Contents/Helpers/GoogleSoftwareUpdate.bundle/Contents/Helpers/ksinstall",
+          "chrome_mac_universal" + arch_suffix + "/cipd/GoogleUpdater_test.app/Contents/Helpers/GoogleSoftwareUpdate.bundle/Contents/Info.plist",
+          "chrome_mac_universal" + arch_suffix + "/cipd/GoogleUpdater_test.app/Contents/Helpers/GoogleSoftwareUpdate.bundle/Contents/MacOS/GoogleSoftwareUpdate",
+          "chrome_mac_universal" + arch_suffix + "/cipd/GoogleUpdater_test.app/Contents/Helpers/GoogleSoftwareUpdate.bundle/Contents/Resources/GoogleSoftwareUpdateAgent.app/Contents/MacOS/GoogleSoftwareUpdateAgent",
+          "chrome_mac_universal" + arch_suffix +
+              "/cipd/GoogleUpdater_test.app/Contents/Helpers/launcher",
+          "chrome_mac_universal" + arch_suffix +
+              "/cipd/GoogleUpdater_test.app/Contents/Info.plist",
+          "chrome_mac_universal" + arch_suffix +
+              "/cipd/GoogleUpdater_test.app/Contents/MacOS/GoogleUpdater_test",
+          "chrome_mac_universal" + arch_suffix +
+              "/cipd/GoogleUpdater_test.app/Contents/PkgInfo",
+        ]
+      }
+
+      if (is_mac && !is_chrome_branded) {
+        # Derive the bundle's names from the branding, like the tests do, so
+        # that open-source builds with their own branding can provide theirs.
+        _test_app = "${updater_product_full_name}_test.app"
+        _keystone = "$_test_app/Contents/Helpers/${keystone_app_name}.bundle"
+        _agent = "$_keystone/Contents/Resources/${keystone_app_name}Agent.app"
+        foreach(_cpu,
+                [
+                  "amd64",
+                  "arm64",
+                ]) {
+          _dir = "chromium_mac_${_cpu}$arch_suffix/cipd"
+          sources += [
+            "$_dir/$_agent/Contents/Info.plist",
+            "$_dir/$_agent/Contents/MacOS/${keystone_app_name}Agent",
+            "$_dir/$_keystone/Contents/Helpers/ksadmin",
+            "$_dir/$_keystone/Contents/Helpers/ksinstall",
+            "$_dir/$_keystone/Contents/Info.plist",
+            "$_dir/$_keystone/Contents/MacOS/$keystone_app_name",
+            "$_dir/$_test_app/Contents/Helpers/launcher",
+            "$_dir/$_test_app/Contents/Info.plist",
+            "$_dir/$_test_app/Contents/MacOS/${updater_product_full_name}_test",
+            "$_dir/$_test_app/Contents/PkgInfo",
+          ]
+        }
+      }
+
+      if (is_linux && is_chrome_branded) {
+        sources += [ "chrome_linux64" + arch_suffix + "/cipd/updater_test" ]
+      }
+
+      if (is_linux && !is_chrome_branded) {
+        sources += [ "chromium_linux64" + arch_suffix + "/cipd/updater_test" ]
+      }
+    }
+
+    outputs = [ "$root_build_dir/old_updater/{{source_target_relative}}" ]
+  }
+}

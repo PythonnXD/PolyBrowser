@@ -1,0 +1,515 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <string_view>
+#include <vector>
+
+#include "base/strings/strcat.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/autofill/payments/payments_ui_constants.h"
+#include "chrome/browser/ui/browser_commands.h"
+#include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/views/autofill/payments/offer_notification_bubble_views_test_base.h"
+#include "chrome/browser/ui/views/controls/subpage_view.h"
+#include "chrome/browser/ui/views/location_bar/icon_label_bubble_view.h"
+#include "chrome/browser/ui/views/page_action/page_action_view_interface.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/interactive_test_utils.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/autofill/core/browser/data_manager/payments/payments_data_manager_test_api.h"
+#include "components/autofill/core/browser/data_model/payments/autofill_offer_data.h"
+#include "components/autofill/core/browser/test_utils/test_autofill_clock.h"
+#include "components/strings/grit/components_strings.h"
+#include "content/public/test/browser_test.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/actions/actions.h"
+#include "ui/base/clipboard/clipboard.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/window_open_disposition.h"
+#include "ui/views/accessibility/view_accessibility.h"
+#include "ui/views/controls/button/label_button.h"
+#include "ui/views/interaction/element_tracker_views.h"
+#include "ui/views/test/widget_test.h"
+#include "ui/views/widget/widget.h"
+#include "ui/views/widget/widget_delegate.h"
+
+namespace autofill {
+
+struct OfferNotificationBubbleViewsInteractiveUiTestData {
+  std::string name;
+  AutofillOfferData::OfferType offer_type;
+};
+
+std::string GetTestName(
+    const ::testing::TestParamInfo<
+        OfferNotificationBubbleViewsInteractiveUiTestData>& info) {
+  return info.param.name;
+}
+
+class OfferNotificationBubbleViewsInteractiveUiTest
+    : public OfferNotificationBubbleViewsTestBase,
+      public testing::WithParamInterface<
+          OfferNotificationBubbleViewsInteractiveUiTestData> {
+ public:
+  OfferNotificationBubbleViewsInteractiveUiTest()
+      : test_offer_type_(GetParam().offer_type) {}
+
+  ~OfferNotificationBubbleViewsInteractiveUiTest() override = default;
+  OfferNotificationBubbleViewsInteractiveUiTest(
+      const OfferNotificationBubbleViewsInteractiveUiTest&) = delete;
+  OfferNotificationBubbleViewsInteractiveUiTest& operator=(
+      const OfferNotificationBubbleViewsInteractiveUiTest&) = delete;
+
+  void ShowBubbleForOfferAndVerify() {
+    switch (test_offer_type_) {
+      case AutofillOfferData::OfferType::GPAY_CARD_LINKED_OFFER:
+        ShowBubbleForCardLinkedOfferAndVerify();
+        break;
+      case AutofillOfferData::OfferType::GPAY_PROMO_CODE_OFFER:
+        ShowBubbleForGPayPromoCodeOfferAndVerify();
+        break;
+      case AutofillOfferData::OfferType::WALLET_DIRECT_OFFER:
+        ShowBubbleForWalletDirectOfferAndVerify();
+        break;
+      case AutofillOfferData::OfferType::UNKNOWN:
+        NOTREACHED();
+    }
+  }
+
+  void ShowBubbleForCardLinkedOfferAndVerify() {
+    NavigateTo(chrome::ChromeUINewTabPageURLAsGURL());
+    // Set the initial origin that the bubble will be displayed on.
+    SetUpCardLinkedOfferDataWithDomains(
+        {GetUrl("www.merchantsite1.test", "/"),
+         GetUrl("www.merchantsite2.test", "/")});
+    ResetEventWaiterForSequence({DialogEvent::BUBBLE_SHOWN});
+    NavigateToAndWaitForForm(GetUrl("www.merchantsite1.test", "/first"));
+    ASSERT_TRUE(WaitForObservedEvent());
+    EXPECT_TRUE(IsIconVisible());
+    EXPECT_TRUE(GetOfferNotificationBubbleViews());
+  }
+
+  void ShowBubbleForGPayPromoCodeOfferAndVerify() {
+    NavigateTo(chrome::ChromeUINewTabPageURLAsGURL());
+    // Set the initial origin that the bubble will be displayed on.
+    SetUpGPayPromoCodeOfferDataWithDomains(
+        {GetUrl("www.merchantsite1.test", "/"),
+         GetUrl("www.merchantsite2.test", "/")});
+    ResetEventWaiterForSequence({DialogEvent::BUBBLE_SHOWN});
+    NavigateToAndWaitForForm(GetUrl("www.merchantsite1.test", "/first"));
+    ASSERT_TRUE(WaitForObservedEvent());
+    EXPECT_TRUE(IsIconVisible());
+    EXPECT_TRUE(GetOfferNotificationBubbleViews());
+  }
+
+  void ShowBubbleForWalletDirectOfferAndVerify() {
+    NavigateTo(chrome::ChromeUINewTabPageURLAsGURL());
+    // Set the initial origin that the bubble will be displayed on.
+    SetUpWalletDirectOfferDataWithDomains(
+        {GetUrl("www.merchantsite1.test", "/"),
+         GetUrl("www.merchantsite2.test", "/")});
+    ResetEventWaiterForSequence({DialogEvent::BUBBLE_SHOWN});
+    NavigateToAndWaitForForm(GetUrl("www.merchantsite1.test", "/first"));
+    ASSERT_TRUE(WaitForObservedEvent());
+    EXPECT_TRUE(IsIconVisible());
+    EXPECT_TRUE(GetOfferNotificationBubbleViews());
+  }
+
+  void CloseBubbleWithReason(views::Widget::ClosedReason closed_reason) {
+    ASSERT_TRUE(GetOfferNotificationBubbleViews());
+    auto* widget = GetOfferNotificationBubbleViews()->GetWidget();
+    ASSERT_TRUE(widget);
+    views::test::WidgetDestroyedWaiter destroyed_waiter(widget);
+    widget->CloseWithReason(closed_reason);
+    destroyed_waiter.Wait();
+    EXPECT_FALSE(GetOfferNotificationBubbleViews());
+    EXPECT_TRUE(IsIconVisible());
+  }
+
+  void InvokeActionAndReshowBubble() {
+    auto* icon = GetOfferNotificationPageActionView();
+    EXPECT_TRUE(icon);
+    ResetEventWaiterForSequence({DialogEvent::BUBBLE_SHOWN});
+    actions::ActionManager::Get()
+        .FindAction(kActionOffersAndRewardsForPage)
+        ->InvokeAction();
+    ASSERT_TRUE(WaitForObservedEvent());
+    EXPECT_TRUE(IsIconVisible());
+    EXPECT_TRUE(GetOfferNotificationBubbleViews());
+  }
+
+  void ClearNotificationActiveDomainsForTesting() {
+    GetOfferManager()->ClearShownNotificationIdsForTesting();
+  }
+
+  TestAutofillClock test_clock_;
+  const AutofillOfferData::OfferType test_offer_type_;
+};
+
+// TODO(crbug.com/40228302): Split parameterized tests that are
+// applicable for only one offer type.
+
+INSTANTIATE_TEST_SUITE_P(
+    GPayCardLinked,
+    OfferNotificationBubbleViewsInteractiveUiTest,
+    testing::Values(OfferNotificationBubbleViewsInteractiveUiTestData{
+        "GPayCardLinked",
+        AutofillOfferData::OfferType::GPAY_CARD_LINKED_OFFER,
+    }),
+    &GetTestName);
+
+INSTANTIATE_TEST_SUITE_P(
+    GPayPromoCode,
+    OfferNotificationBubbleViewsInteractiveUiTest,
+    testing::Values(OfferNotificationBubbleViewsInteractiveUiTestData{
+        "GPayPromoCode", AutofillOfferData::OfferType::GPAY_PROMO_CODE_OFFER}),
+    &GetTestName);
+
+INSTANTIATE_TEST_SUITE_P(
+    WalletDirectOffer,
+    OfferNotificationBubbleViewsInteractiveUiTest,
+    testing::Values(OfferNotificationBubbleViewsInteractiveUiTestData{
+        "WalletDirectOffer",
+        AutofillOfferData::OfferType::WALLET_DIRECT_OFFER}),
+    &GetTestName);
+
+// TODO(crbug.com/40285326): This fails with the field trial testing config.
+class OfferNotificationBubbleViewsInteractiveUiTestNoTestingConfig
+    : public OfferNotificationBubbleViewsInteractiveUiTest {
+ public:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    OfferNotificationBubbleViewsInteractiveUiTest::SetUpCommandLine(
+        command_line);
+    command_line->AppendSwitch("disable-field-trial-config");
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    GPayPromoCode,
+    OfferNotificationBubbleViewsInteractiveUiTestNoTestingConfig,
+    testing::Values(OfferNotificationBubbleViewsInteractiveUiTestData{
+        "GPayPromoCode", AutofillOfferData::OfferType::GPAY_PROMO_CODE_OFFER}),
+    &GetTestName);
+
+// TODO(crbug.com/40817360): Flaky failures.
+#if BUILDFLAG(IS_LINUX)
+#define MAYBE_Navigation DISABLED_Navigation
+#else
+#define MAYBE_Navigation Navigation
+#endif
+IN_PROC_BROWSER_TEST_P(
+    OfferNotificationBubbleViewsInteractiveUiTestNoTestingConfig,
+    MAYBE_Navigation) {
+  const struct {
+    GURL url_navigated_to;
+    bool bubble_should_be_visible;
+  } test_cases[] = {
+      // Different page on same domain keeps bubble.
+      {GetUrl("www.merchantsite1.test", "/second/"), true},
+      // Different domain not in offer's list dismisses bubble.
+      {GetUrl("www.about.test", "/"), false},
+      // Other subdomain of a domain in the offer's list keeps bubble.
+      {GetUrl("support.merchantsite1.test", "/first/"), true},
+      // Different domain in the offer's list keeps bubble.
+      {GetUrl("www.merchantsite2.test", "/first/"), true},
+  };
+
+  // Set the initial origin that the bubble will be displayed on.
+  SetUpOfferDataWithDomains(test_offer_type_,
+                            {GetUrl("www.merchantsite1.test", "/"),
+                             GetUrl("www.merchantsite2.test", "/")});
+
+  for (const auto& test_case : test_cases) {
+    SCOPED_TRACE(base::StrCat(
+        {test_case.url_navigated_to.spec(), ", bubble should be=",
+         test_case.bubble_should_be_visible ? "visible" : "invisible"}));
+    ClearNotificationActiveDomainsForTesting();
+    NavigateTo(chrome::ChromeUINewTabPageURLAsGURL());
+
+    ResetEventWaiterForSequence({DialogEvent::BUBBLE_SHOWN});
+    NavigateToAndWaitForForm(GetUrl("www.merchantsite1.test", "/first"));
+    ASSERT_TRUE(WaitForObservedEvent());
+
+    // Bubble should be visible.
+    ASSERT_TRUE(IsIconVisible());
+    ASSERT_TRUE(GetOfferNotificationBubbleViews());
+
+    auto navigate = [&]() {
+      NavigateToAndWaitForForm(test_case.url_navigated_to);
+    };
+
+    // Navigate to a different url, and verify bubble/icon visibility.
+    if (test_case.bubble_should_be_visible) {
+      navigate();
+    } else {
+      views::test::WidgetDestroyedWaiter destroyed_waiter(
+          GetOfferNotificationBubbleViews()->GetWidget());
+      navigate();
+      destroyed_waiter.Wait();
+    }
+
+    EXPECT_EQ(test_case.bubble_should_be_visible, IsIconVisible());
+    EXPECT_EQ(test_case.bubble_should_be_visible,
+              !!GetOfferNotificationBubbleViews());
+  }
+}
+
+// Offers are pushed to the client through sync, and so they routinely arrive
+// after the user has already navigated to the offer's merchant. The
+// notification must show when that happens, not just on navigation.
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       OfferArrivesAfterNavigation) {
+  NavigateToAndWaitForForm(GetUrl("www.merchantsite1.test", "/first"));
+  ASSERT_FALSE(IsIconVisible());
+
+  ResetEventWaiterForSequence({DialogEvent::BUBBLE_SHOWN});
+  SetUpOfferDataWithDomains(test_offer_type_,
+                            {GetUrl("www.merchantsite1.test", "/")});
+  ASSERT_TRUE(WaitForObservedEvent());
+
+  EXPECT_TRUE(IsIconVisible());
+  EXPECT_TRUE(GetOfferNotificationBubbleViews());
+}
+
+// Verifies the behavior of the offer notification bubble on different tabs.
+// The steps are:
+// 1. Creates the offer with two applicable merchant sites
+// 2. Creates the setup that foreground tab is a blank website, the first
+// background tab is merchant site 1, the second background tab is merchant
+// site 2.
+// 3. Checks that on the current blank site the offer notification bubble will
+// not be shown.
+// 4. Switches to the tab of merchant site 1. Makes sure the bubble and the icon
+// are both visible.
+// 5. Switches to the blank site. Makes sure the bubble and icon will be gone.
+// 6. Switches to merchant site 2. Makes sure the icon is visible but the bubble
+// is not, since we have shown the offer bubble in the tab of merchant site 1.
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       CrossTabTracking) {
+  SetUpOfferDataWithDomains(test_offer_type_,
+                            {GetUrl("www.merchantsite1.test", "/"),
+                             GetUrl("www.merchantsite2.test", "/")});
+
+  // Makes sure the foreground tab is a blank site.
+  NavigateTo(GURL("about:blank"));
+
+  // Creates first background tab.
+  ui_test_utils::NavigateToURLWithDisposition(
+      browser(), GetUrl("www.merchantsite1.test", "/"),
+      WindowOpenDisposition::NEW_BACKGROUND_TAB,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
+  OfferNotificationBubbleControllerImpl* controller =
+      static_cast<OfferNotificationBubbleControllerImpl*>(
+          OfferNotificationBubbleController::GetOrCreate(
+              browser()->GetTabStripModel()->GetWebContentsAt(1)));
+  ASSERT_TRUE(controller);
+  AddEventObserverToController(controller);
+
+  // Creates another merchant website in a second background tab.
+  ui_test_utils::NavigateToURLWithDisposition(
+      browser(), GetUrl("www.merchantsite2.test", "/"),
+      WindowOpenDisposition::NEW_BACKGROUND_TAB,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
+  controller = static_cast<OfferNotificationBubbleControllerImpl*>(
+      OfferNotificationBubbleController::GetOrCreate(
+          browser()->GetTabStripModel()->GetWebContentsAt(2)));
+  ASSERT_TRUE(controller);
+  AddEventObserverToController(controller);
+
+  // On current page notification should not be active.
+  EXPECT_FALSE(IsIconVisible());
+  EXPECT_FALSE(GetOfferNotificationBubbleViews());
+
+  // Change to the first background tab.
+  ResetEventWaiterForSequence({DialogEvent::BUBBLE_SHOWN});
+  browser()->GetTabStripModel()->ActivateTabAt(1);
+  ASSERT_TRUE(WaitForObservedEvent());
+  // Icon should always be visible, and the bubble should be visible too.
+  EXPECT_TRUE(IsIconVisible());
+  ASSERT_TRUE(GetOfferNotificationBubbleViews());
+
+  // Change back to the "original tab". The destroyed_waiter will wail until the
+  // bubble is successfully dismissed and destroyed before proceeding with the
+  // checks.
+  views::test::WidgetDestroyedWaiter destroyed_waiter(
+      GetOfferNotificationBubbleViews()->GetWidget());
+  browser()->GetTabStripModel()->ActivateTabAt(0);
+  destroyed_waiter.Wait();
+  // The icon and the bubble should not be visible.
+  EXPECT_FALSE(IsIconVisible());
+  EXPECT_FALSE(GetOfferNotificationBubbleViews());
+
+  // Change to the second background tab.
+  browser()->GetTabStripModel()->ActivateTabAt(2);
+  // Icon should be visible and the bubble should not be visible.
+  EXPECT_TRUE(IsIconVisible());
+  EXPECT_FALSE(GetOfferNotificationBubbleViews());
+}
+
+// Tests that bubble behaves correctly after user dismisses it.
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       DismissBubble) {
+  // Applies to card-linked offers only, as promo code offers do not have an OK
+  // button.
+  if (test_offer_type_ !=
+      AutofillOfferData::OfferType::GPAY_CARD_LINKED_OFFER) {
+    return;
+  }
+
+  ShowBubbleForOfferAndVerify();
+
+  // Dismiss the bubble by clicking the ok button.
+  CloseBubbleWithReason(views::Widget::ClosedReason::kAcceptButtonClicked);
+
+  // Navigates to another valid domain will not reshow the bubble.
+  NavigateToAndWaitForForm(GetUrl("www.merchantsite1.test", "/second"));
+  EXPECT_FALSE(GetOfferNotificationBubbleViews());
+  EXPECT_TRUE(IsIconVisible());
+
+  // Navigates to an invalid domain will dismiss the icon.
+  NavigateToAndWaitForForm(GetUrl("www.about.test", "/"));
+  EXPECT_FALSE(GetOfferNotificationBubbleViews());
+  EXPECT_FALSE(IsIconVisible());
+}
+
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       ShowGPayPromoCodeBubble) {
+  // Applies to GPay promo code offers only.
+  if (test_offer_type_ != AutofillOfferData::OfferType::GPAY_PROMO_CODE_OFFER) {
+    return;
+  }
+
+  ShowBubbleForOfferAndVerify();
+  ASSERT_TRUE(GetOfferNotificationBubbleViews());
+  ASSERT_TRUE(IsIconVisible());
+
+  auto* promo_code_styled_label =
+      GetOfferNotificationBubbleViews()->promo_code_label_.get();
+  auto* promo_code_usage_instructions_ =
+      GetOfferNotificationBubbleViews()->instructions_label_.get();
+
+  EXPECT_EQ(promo_code_styled_label->GetText(),
+            base::ASCIIToUTF16(GetDefaultTestValuePropText()) + u" " +
+                base::ASCIIToUTF16(GetDefaultTestSeeDetailsText()));
+  EXPECT_EQ(promo_code_usage_instructions_->GetText(),
+            base::ASCIIToUTF16(GetDefaultTestUsageInstructionsText()));
+
+  // Simulate clicking on see details part of the text.
+  GetOfferNotificationBubbleViews()->OnOfferDetailsLinkClicked();
+  EXPECT_EQ(
+      browser()->GetTabStripModel()->GetActiveWebContents()->GetVisibleURL(),
+      GURL(GetDefaultTestDetailsUrlString()));
+}
+
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       ShowWalletDirectOfferBubble) {
+  // Applies to Wallet direct offers only.
+  if (test_offer_type_ != AutofillOfferData::OfferType::WALLET_DIRECT_OFFER) {
+    return;
+  }
+
+  ShowBubbleForOfferAndVerify();
+  ASSERT_TRUE(GetOfferNotificationBubbleViews());
+  ASSERT_TRUE(IsIconVisible());
+
+  EXPECT_EQ(GetOfferNotificationBubbleViews()
+                ->GetWidget()
+                ->widget_delegate()
+                ->GetWindowTitle(),
+            base::ASCIIToUTF16(GetDefaultTestOfferShortTitle()));
+  std::vector<size_t> offsets;
+  EXPECT_EQ(
+      GetOfferNotificationBubbleViews()->wallet_direct_offer_label_->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_AUTOFILL_WALLET_DIRECT_OFFER_REMINDER_BODY_TEXT, std::u16string(),
+          std::u16string(), &offsets));
+
+  // Simulate clicking on the terms and conditions link.
+  GetOfferNotificationBubbleViews()->OnOfferDetailsLinkClicked();
+  EXPECT_EQ(
+      browser()->GetTabStripModel()->GetActiveWebContents()->GetVisibleURL(),
+      GURL(GetDefaultTestDetailsUrlString()));
+}
+
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       ReshowOfferNotificationBubble_OfferDeletedBetweenShows) {
+  ShowBubbleForOfferAndVerify();
+  ASSERT_TRUE(GetOfferNotificationBubbleViews());
+  ASSERT_TRUE(IsIconVisible());
+
+  // Simulate the user closing the bubble.
+  CloseBubbleWithReason(views::Widget::ClosedReason::kCloseButtonClicked);
+
+  // Simulate the user clearing server data.
+  personal_data()->payments_data_manager().ClearAllServerDataForTesting();
+
+  // Simulate the user re-showing the bubble by clicking on the icon.
+  InvokeActionAndReshowBubble();
+  ASSERT_TRUE(GetOfferNotificationBubbleViews());
+  ASSERT_TRUE(IsIconVisible());
+
+  if (test_offer_type_ == AutofillOfferData::OfferType::GPAY_PROMO_CODE_OFFER) {
+    auto* promo_code_styled_label =
+        GetOfferNotificationBubbleViews()->promo_code_label_.get();
+    auto* promo_code_usage_instructions_ =
+        GetOfferNotificationBubbleViews()->instructions_label_.get();
+
+    EXPECT_EQ(promo_code_styled_label->GetText(),
+              base::ASCIIToUTF16(GetDefaultTestValuePropText()) + u" " +
+                  base::ASCIIToUTF16(GetDefaultTestSeeDetailsText()));
+    EXPECT_EQ(promo_code_usage_instructions_->GetText(),
+              base::ASCIIToUTF16(GetDefaultTestUsageInstructionsText()));
+
+    // Simulate clicking on see details part of the text.
+    GetOfferNotificationBubbleViews()->OnOfferDetailsLinkClicked();
+    EXPECT_EQ(
+        browser()->GetTabStripModel()->GetActiveWebContents()->GetVisibleURL(),
+        GURL(GetDefaultTestDetailsUrlString()));
+  } else if (test_offer_type_ ==
+             AutofillOfferData::OfferType::WALLET_DIRECT_OFFER) {
+    std::vector<size_t> offsets;
+    EXPECT_EQ(GetOfferNotificationBubbleViews()
+                  ->wallet_direct_offer_label_->GetText(),
+              l10n_util::GetStringFUTF16(
+                  IDS_AUTOFILL_WALLET_DIRECT_OFFER_REMINDER_BODY_TEXT,
+                  std::u16string(), std::u16string(), &offsets));
+
+    // Simulate clicking on the terms and conditions link.
+    GetOfferNotificationBubbleViews()->OnOfferDetailsLinkClicked();
+    EXPECT_EQ(
+        browser()->GetTabStripModel()->GetActiveWebContents()->GetVisibleURL(),
+        GURL(GetDefaultTestDetailsUrlString()));
+  }
+}
+
+// Payments data changes, e.g. to cards or to offers for other sites, must not
+// collapse a showing bubble to its icon.
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       PaymentsDataChanged_KeepsBubbleShowing) {
+  ShowBubbleForOfferAndVerify();
+  test_clock_.Advance(kAutofillBubbleSurviveNavigationTime + base::Seconds(1));
+
+  test_api(personal_data()->payments_data_manager()).NotifyObservers();
+
+  EXPECT_TRUE(GetOfferNotificationBubbleViews());
+  EXPECT_TRUE(IsIconVisible());
+}
+
+IN_PROC_BROWSER_TEST_P(OfferNotificationBubbleViewsInteractiveUiTest,
+                       IconViewAccessibleName) {
+  ShowBubbleForOfferAndVerify();
+  EXPECT_EQ(GetOfferNotificationPageActionView()->GetAccessibleName(),
+            l10n_util::GetStringUTF16(
+                IDS_AUTOFILL_OFFERS_REMINDER_ICON_TOOLTIP_TEXT));
+  EXPECT_EQ(GetOfferNotificationPageActionView()->GetTooltipText(),
+            l10n_util::GetStringUTF16(
+                IDS_AUTOFILL_OFFERS_REMINDER_ICON_TOOLTIP_TEXT));
+}
+
+}  // namespace autofill

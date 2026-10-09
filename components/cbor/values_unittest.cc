@@ -1,0 +1,395 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/cbor/values.h"
+
+#include <string>
+#include <utility>
+
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace cbor {
+
+TEST(CBORValuesTest, TestNothrow) {
+  static_assert(std::is_nothrow_move_constructible<Value>::value,
+                "IsNothrowMoveConstructible");
+  static_assert(std::is_nothrow_constructible<Value, std::string&&>::value,
+                "IsNothrowMoveConstructibleFromString");
+  static_assert(
+      std::is_nothrow_constructible<Value, Value::BinaryValue&&>::value,
+      "IsNothrowMoveConstructibleFromBytestring");
+  static_assert(
+      std::is_nothrow_constructible<Value, Value::ArrayValue&&>::value,
+      "IsNothrowMoveConstructibleFromArray");
+  static_assert(std::is_nothrow_move_assignable<Value>::value,
+                "IsNothrowMoveAssignable");
+}
+
+TEST(CBORValuesTest, TestNotDefaultConstructible) {
+  static_assert(!std::is_default_constructible<Value>::value,
+                "IsNotDefaultConstructible");
+}
+
+// Test constructors
+TEST(CBORValuesTest, ConstructUnsigned) {
+  Value value(37);
+  ASSERT_EQ(Value::Type::UNSIGNED, value.type());
+  EXPECT_EQ(37u, value.GetInteger());
+}
+
+TEST(CBORValuesTest, ConstructNegative) {
+  Value value(-1);
+  ASSERT_EQ(Value::Type::NEGATIVE, value.type());
+  EXPECT_EQ(-1, value.GetInteger());
+}
+
+TEST(CBORValuesTest, ConstructStringFromConstCharPtr) {
+  const char* str = "foobar";
+  Value value(str);
+  ASSERT_EQ(Value::Type::STRING, value.type());
+  EXPECT_EQ("foobar", value.GetString());
+}
+
+TEST(CBORValuesTest, ConstructStringFromStdStringConstRef) {
+  std::string str = "foobar";
+  Value value(str);
+  ASSERT_EQ(Value::Type::STRING, value.type());
+  EXPECT_EQ("foobar", value.GetString());
+}
+
+TEST(CBORValuesTest, ConstructStringFromStdStringRefRef) {
+  std::string str = "foobar";
+  Value value(std::move(str));
+  ASSERT_EQ(Value::Type::STRING, value.type());
+  EXPECT_EQ("foobar", value.GetString());
+}
+
+TEST(CBORValuesTest, ConstructBytestring) {
+  Value value(Value::BinaryValue({0xF, 0x0, 0x0, 0xB, 0xA, 0x2}));
+  ASSERT_EQ(Value::Type::BYTE_STRING, value.type());
+  EXPECT_EQ(Value::BinaryValue({0xF, 0x0, 0x0, 0xB, 0xA, 0x2}),
+            value.GetBytestring());
+}
+
+TEST(CBORValuesTest, ConstructBytestringFromString) {
+  Value value(base::byte_span_from_cstring("hello"));
+  ASSERT_EQ(Value::Type::BYTE_STRING, value.type());
+  EXPECT_EQ(Value::BinaryValue({'h', 'e', 'l', 'l', 'o'}),
+            value.GetBytestring());
+  EXPECT_EQ("hello", value.GetBytestringAsString());
+}
+
+TEST(CBORValuesTest, ConstructArray) {
+  Value::ArrayValue array;
+  array.emplace_back(Value("foo"));
+  {
+    Value value(array);
+    ASSERT_EQ(Value::Type::ARRAY, value.type());
+    ASSERT_EQ(1u, value.GetArray().size());
+    ASSERT_EQ(Value::Type::STRING, value.GetArray()[0].type());
+    EXPECT_EQ("foo", value.GetArray()[0].GetString());
+  }
+
+  array.back() = Value("bar");
+  {
+    Value value(std::move(array));
+    ASSERT_EQ(Value::Type::ARRAY, value.type());
+    ASSERT_EQ(1u, value.GetArray().size());
+    ASSERT_EQ(Value::Type::STRING, value.GetArray()[0].type());
+    EXPECT_EQ("bar", value.GetArray()[0].GetString());
+  }
+}
+
+TEST(CBORValuesTest, ConstructMap) {
+  Value::MapValue map;
+  const Value key_foo("foo");
+  map.emplace("foo", "bar");
+  {
+    Value value(map);
+    ASSERT_EQ(Value::Type::MAP, value.type());
+    ASSERT_EQ(value.GetMap().count(key_foo), 1u);
+    ASSERT_EQ(Value::Type::STRING, value.GetMap().find(key_foo)->second.type());
+    EXPECT_EQ("bar", value.GetMap().find(key_foo)->second.GetString());
+  }
+
+  map.insert_or_assign(Value("foo"), Value("baz"));
+  {
+    Value value(std::move(map));
+    ASSERT_EQ(Value::Type::MAP, value.type());
+    ASSERT_EQ(value.GetMap().count(key_foo), 1u);
+    ASSERT_EQ(Value::Type::STRING, value.GetMap().find(key_foo)->second.type());
+    EXPECT_EQ("baz", value.GetMap().find(key_foo)->second.GetString());
+  }
+}
+
+TEST(CBORValuesTest, ConstructSimpleValue) {
+  Value null_value(Value::null);
+  ASSERT_EQ(Value::Type::SIMPLE_VALUE, null_value.type());
+  EXPECT_EQ(Value::SimpleValue::NULL_VALUE, null_value.GetSimpleValue());
+
+  Value undefined_value(Value::undefined);
+  ASSERT_EQ(Value::Type::SIMPLE_VALUE, undefined_value.type());
+  EXPECT_EQ(Value::SimpleValue::UNDEFINED, undefined_value.GetSimpleValue());
+}
+
+TEST(CBORValuesTest, ConstructSimpleBooleanValue) {
+  Value true_value(true);
+  ASSERT_EQ(Value::Type::SIMPLE_VALUE, true_value.type());
+  EXPECT_TRUE(true_value.GetBool());
+
+  Value false_value(false);
+  ASSERT_EQ(Value::Type::SIMPLE_VALUE, false_value.type());
+  EXPECT_FALSE(false_value.GetBool());
+}
+
+// Test copy constructors
+TEST(CBORValuesTest, CopyUnsigned) {
+  Value value(74);
+  Value copied_value(value.Clone());
+  ASSERT_EQ(value.type(), copied_value.type());
+  EXPECT_EQ(value.GetInteger(), copied_value.GetInteger());
+
+  Value blank(Value::undefined);
+
+  blank = value.Clone();
+  ASSERT_EQ(value.type(), blank.type());
+  EXPECT_EQ(value.GetInteger(), blank.GetInteger());
+}
+
+TEST(CBORValuesTest, CopyNegativeInt) {
+  Value value(-74);
+  Value copied_value(value.Clone());
+  ASSERT_EQ(value.type(), copied_value.type());
+  EXPECT_EQ(value.GetInteger(), copied_value.GetInteger());
+
+  Value blank(Value::undefined);
+
+  blank = value.Clone();
+  ASSERT_EQ(value.type(), blank.type());
+  EXPECT_EQ(value.GetInteger(), blank.GetInteger());
+}
+
+TEST(CBORValuesTest, CopyString) {
+  Value value("foobar");
+  Value copied_value(value.Clone());
+  ASSERT_EQ(value.type(), copied_value.type());
+  EXPECT_EQ(value.GetString(), copied_value.GetString());
+
+  Value blank(Value::undefined);
+
+  blank = value.Clone();
+  ASSERT_EQ(value.type(), blank.type());
+  EXPECT_EQ(value.GetString(), blank.GetString());
+}
+
+TEST(CBORValuesTest, CopyBytestring) {
+  Value value(Value::BinaryValue({0xF, 0x0, 0x0, 0xB, 0xA, 0x2}));
+  Value copied_value(value.Clone());
+  ASSERT_EQ(value.type(), copied_value.type());
+  EXPECT_EQ(value.GetBytestring(), copied_value.GetBytestring());
+
+  Value blank(Value::undefined);
+
+  blank = value.Clone();
+  ASSERT_EQ(value.type(), blank.type());
+  EXPECT_EQ(value.GetBytestring(), blank.GetBytestring());
+}
+
+TEST(CBORValuesTest, CopyArray) {
+  Value::ArrayValue array;
+  array.emplace_back(123);
+  Value value(std::move(array));
+
+  Value copied_value(value.Clone());
+  ASSERT_EQ(1u, copied_value.GetArray().size());
+  ASSERT_TRUE(copied_value.GetArray()[0].is_unsigned());
+  EXPECT_EQ(value.GetArray()[0].GetInteger(),
+            copied_value.GetArray()[0].GetInteger());
+
+  Value blank(Value::undefined);
+  blank = value.Clone();
+  EXPECT_EQ(1u, blank.GetArray().size());
+}
+
+TEST(CBORValuesTest, CopyMap) {
+  Value::MapValue map;
+  Value key_a("a");
+  map.emplace("a", 123);
+  Value value(std::move(map));
+
+  Value copied_value(value.Clone());
+  EXPECT_EQ(1u, copied_value.GetMap().size());
+  ASSERT_EQ(value.GetMap().count(key_a), 1u);
+  ASSERT_EQ(copied_value.GetMap().count(key_a), 1u);
+  ASSERT_TRUE(copied_value.GetMap().find(key_a)->second.is_unsigned());
+  EXPECT_EQ(value.GetMap().find(key_a)->second.GetInteger(),
+            copied_value.GetMap().find(key_a)->second.GetInteger());
+
+  Value blank(Value::undefined);
+  blank = value.Clone();
+  EXPECT_EQ(1u, blank.GetMap().size());
+  ASSERT_EQ(blank.GetMap().count(key_a), 1u);
+  ASSERT_TRUE(blank.GetMap().find(key_a)->second.is_unsigned());
+  EXPECT_EQ(value.GetMap().find(key_a)->second.GetInteger(),
+            blank.GetMap().find(key_a)->second.GetInteger());
+}
+
+TEST(CBORValuesTest, CopySimpleValue) {
+  Value value(true);
+  Value copied_value(value.Clone());
+  EXPECT_EQ(value.type(), copied_value.type());
+  EXPECT_EQ(value.GetSimpleValue(), copied_value.GetSimpleValue());
+
+  Value blank(Value::undefined);
+
+  blank = value.Clone();
+  EXPECT_EQ(value.type(), blank.type());
+  EXPECT_EQ(value.GetSimpleValue(), blank.GetSimpleValue());
+}
+
+// Test move constructors and move-assignment
+TEST(CBORValuesTest, MoveUnsigned) {
+  Value value(74);
+  Value moved_value(std::move(value));
+  EXPECT_EQ(Value::Type::UNSIGNED, moved_value.type());
+  EXPECT_EQ(74u, moved_value.GetInteger());
+
+  Value blank(Value::undefined);
+
+  blank = Value(654);
+  EXPECT_EQ(Value::Type::UNSIGNED, blank.type());
+  EXPECT_EQ(654u, blank.GetInteger());
+}
+
+TEST(CBORValuesTest, MoveNegativeInteger) {
+  Value value(-74);
+  Value moved_value(std::move(value));
+  EXPECT_EQ(Value::Type::NEGATIVE, moved_value.type());
+  EXPECT_EQ(-74, moved_value.GetInteger());
+
+  Value blank(Value::undefined);
+
+  blank = Value(-654);
+  EXPECT_EQ(Value::Type::NEGATIVE, blank.type());
+  EXPECT_EQ(-654, blank.GetInteger());
+}
+
+TEST(CBORValuesTest, MoveString) {
+  Value value("foobar");
+  Value moved_value(std::move(value));
+  EXPECT_EQ(Value::Type::STRING, moved_value.type());
+  EXPECT_EQ("foobar", moved_value.GetString());
+
+  Value blank(Value::undefined);
+
+  blank = Value("foobar");
+  EXPECT_EQ(Value::Type::STRING, blank.type());
+  EXPECT_EQ("foobar", blank.GetString());
+}
+
+TEST(CBORValuesTest, MoveBytestring) {
+  const Value::BinaryValue bytes({0xF, 0x0, 0x0, 0xB, 0xA, 0x2});
+  Value value(bytes);
+  Value moved_value(std::move(value));
+  EXPECT_EQ(Value::Type::BYTE_STRING, moved_value.type());
+  EXPECT_EQ(bytes, moved_value.GetBytestring());
+
+  Value blank(Value::undefined);
+
+  blank = Value(bytes);
+  EXPECT_EQ(Value::Type::BYTE_STRING, blank.type());
+  EXPECT_EQ(bytes, blank.GetBytestring());
+}
+
+TEST(CBORValuesTest, MoveConstructMap) {
+  Value::MapValue map;
+  const Value key_a("a");
+  map.emplace("a", 123);
+
+  Value value(std::move(map));
+  Value moved_value(std::move(value));
+  ASSERT_EQ(Value::Type::MAP, moved_value.type());
+  ASSERT_EQ(moved_value.GetMap().count(key_a), 1u);
+  ASSERT_TRUE(moved_value.GetMap().find(key_a)->second.is_unsigned());
+  EXPECT_EQ(123u, moved_value.GetMap().find(key_a)->second.GetInteger());
+}
+
+TEST(CBORValuesTest, MoveAssignMap) {
+  Value::MapValue map;
+  const Value key_a("a");
+  map.emplace("a", 123);
+
+  Value blank(Value::undefined);
+  blank = Value(std::move(map));
+  ASSERT_TRUE(blank.is_map());
+  ASSERT_EQ(blank.GetMap().count(key_a), 1u);
+  ASSERT_TRUE(blank.GetMap().find(key_a)->second.is_unsigned());
+  EXPECT_EQ(123u, blank.GetMap().find(key_a)->second.GetInteger());
+}
+
+TEST(CBORValuesTest, MoveArray) {
+  Value::ArrayValue array;
+  array.emplace_back(123);
+  Value value(array);
+  Value moved_value(std::move(value));
+  EXPECT_EQ(Value::Type::ARRAY, moved_value.type());
+  EXPECT_EQ(123u, moved_value.GetArray().back().GetInteger());
+
+  Value blank(Value::undefined);
+  blank = Value(std::move(array));
+  EXPECT_EQ(Value::Type::ARRAY, blank.type());
+  EXPECT_EQ(123u, blank.GetArray().back().GetInteger());
+}
+
+TEST(CBORValuesTest, MoveSimpleValue) {
+  Value value(Value::undefined);
+  Value moved_value(std::move(value));
+  EXPECT_EQ(Value::Type::SIMPLE_VALUE, moved_value.type());
+  EXPECT_EQ(Value::SimpleValue::UNDEFINED, moved_value.GetSimpleValue());
+
+  Value blank(0);
+
+  blank = Value(Value::undefined);
+  EXPECT_EQ(Value::Type::SIMPLE_VALUE, blank.type());
+  EXPECT_EQ(Value::SimpleValue::UNDEFINED, blank.GetSimpleValue());
+}
+
+TEST(CBORValuesTest, SelfSwap) {
+  Value test(1);
+  std::swap(test, test);
+  EXPECT_EQ(test.GetInteger(), 1u);
+}
+
+TEST(CBORValuesTest, SelfSwapOwningValue) {
+  Value test("foobar");
+  std::swap(test, test);
+  EXPECT_EQ("foobar", test.GetString());
+}
+
+TEST(CBORValuesTest, MapKeyOrderingWithInvalidUtf8) {
+  Value::MapValue map;
+  map.emplace("\xc3\xa9", 7);
+  map.emplace(Value::InvalidUTF8StringValueForTesting("\x80\x80"), 6);
+  map.emplace("bb", 5);
+  map.emplace(Value::InvalidUTF8StringValueForTesting("\xff"), 4);
+  map.emplace("a", 3);
+  map.emplace(base::as_byte_span(std::string_view("\xff\xff")), 2);
+  map.emplace(1, 1);
+
+  std::vector<int64_t> values_in_order;
+  for (const auto& [k, v] : map) {
+    values_in_order.push_back(v.GetInteger());
+  }
+  // Expected order:
+  // 1. Unsigned int 1 (major type 0) -> value 1
+  // 2. Byte string "\xff\xff" (major type 2) -> value 2
+  // 3. String "a" (major type 3, len 1, byte 0x61) -> value 3
+  // 4. Invalid UTF-8 "\xff" (major type 3, len 1, byte 0xff) -> value 4
+  // 5. String "bb" (major type 3, len 2, 0x62 0x62) -> value 5
+  // 6. Invalid UTF-8 "\x80\x80" (major type 3, len 2, 0x80 0x80) -> value 6
+  // 7. String "\xc3\xa9" ("é", major type 3, len 2, 0xc3 0xa9) -> value 7
+  EXPECT_EQ(values_in_order, (std::vector<int64_t>{1, 2, 3, 4, 5, 6, 7}));
+}
+
+}  // namespace cbor

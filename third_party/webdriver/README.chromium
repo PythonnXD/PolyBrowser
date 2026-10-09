@@ -1,0 +1,22 @@
+Name: WebDriver
+Short Name: selenium
+URL: https://github.com/SeleniumHQ/selenium/tree/trunk/py
+Version: N/A
+Revision: 6845a0329408f149fafdbe901f480e2bd47be3fb
+Update Mechanism: Autoroll
+Security Critical: no
+Shipped: no
+License: Apache-2.0
+License File: LICENSE
+
+
+Description:
+  WebDriver is a clean, fast framework for automated testing of webapps.
+
+Contents:
+  LICENSE
+    A copy of the LICENSE file at the version shipped.
+
+  pylib/
+    Python bindings and tests for WebDriver pulled in via DEPS.
+

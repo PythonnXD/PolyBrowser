@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2016 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/autofill_credit_card_editor_billing_address_outlined_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/pref_autofill_field_top_margin"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+
+        <AutoCompleteTextView
+            android:id="@+id/autofill_credit_card_editor_billing_address_spinner_outlined"
+            style="@style/Widget.Chromium.Settings.AutoCompleteTextView.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="none"
+            android:hint="@string/autofill_credit_card_editor_billing_address"
+            android:textDirection="locale" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+</merge>

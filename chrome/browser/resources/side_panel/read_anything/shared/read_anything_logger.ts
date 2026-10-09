@@ -1,0 +1,558 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import type {VisualBrowserProxy} from '../app/visual_browser_proxy.js';
+import {VisualBrowserProxyImpl} from '../app/visual_browser_proxy.js';
+import type {AudioBrowserProxy} from '../read_aloud/audio_browser_proxy.js';
+import {AudioBrowserProxyImpl} from '../read_aloud/audio_browser_proxy.js';
+import {hasEspeakIdentifier, hasNaturalIdentifier} from '../read_aloud/voice_language_conversions.js';
+
+import {isDistilledByReadability} from './common.js';
+import {MetricsBrowserProxyImpl, ReadAnythingMathMlDistillationStatus, ReadAnythingSpeechError, ReadAnythingVoiceType, UmaName} from './metrics_browser_proxy.js';
+import type {MetricsBrowserProxy, ReadAloudSettingsChange, ReadAnythingSettingsAction, ReadAnythingSettingsChange} from './metrics_browser_proxy.js';
+
+export enum TimeFrom {
+  APP = 'App',
+  TOOLBAR = 'Toolbar',
+}
+
+export enum SpeechControls {
+  PLAY = 'Play',
+  PAUSE = 'Pause',
+  NEXT = 'NextButton',
+  PREVIOUS = 'PreviousButton',
+  PLAY_FROM_SELECTION = 'PlayFromSelection',
+  PLAY_FROM_LINE_FOCUS = 'PlayFromLineFocus',
+}
+
+export enum LinkStatus {
+  SUCCESS = 'Success',
+  NO_HREF = 'NoHref',
+  NO_MATCH = 'NoMatch',
+  TOO_MANY_MATCHES = 'TooManyMatches',
+}
+
+export enum PageType {
+  PDF = 'PDF',
+  WEB_PAGE = 'WebPage',
+}
+
+export enum ViewMode {
+  FULL_PAGE = 'FullPage',
+  SIDE_PANEL = 'SidePanel',
+}
+
+// Handles the business logic for logging.
+export class ReadAnythingLogger {
+  private metrics: MetricsBrowserProxy = MetricsBrowserProxyImpl.getInstance();
+  private visualBrowserProxy_: VisualBrowserProxy =
+      VisualBrowserProxyImpl.getInstance();
+  private audioBrowserProxy_: AudioBrowserProxy =
+      AudioBrowserProxyImpl.getInstance();
+  // When this class is first instantiated, it will be because reading mode
+  // is visible, so isHidden_ should be false be default.
+  private isHidden_: boolean = false;
+  private hasUnloggedDistillation_: boolean = false;
+  private savedWordCountContainer_: Element|null = null;
+  private keyPointsRegex_: RegExp|null = null;
+
+  setHidden(hidden: boolean) {
+    const wasHidden = this.isHidden_;
+    this.isHidden_ = hidden;
+
+    if (wasHidden && !hidden && this.hasUnloggedDistillation_ &&
+        this.savedWordCountContainer_) {
+      this.logDistilledPageStructure(this.savedWordCountContainer_);
+    }
+  }
+
+  logEmptyState() {
+    // Don't log the empty state if the UI is hidden;
+    if (this.isHidden_) {
+      return;
+    }
+
+    this.metrics.recordEmptyState();
+  }
+
+  logSpeechStopSource(source: number) {
+    this.metrics.recordSpeechStopSource(source);
+  }
+
+  logSpeechError(errorCode: string) {
+    let error: ReadAnythingSpeechError;
+    switch (errorCode) {
+      case 'text-too-long':
+        error = ReadAnythingSpeechError.TEXT_TOO_LONG;
+        break;
+      case 'voice-unavailable':
+        error = ReadAnythingSpeechError.VOICE_UNAVAILABE;
+        break;
+      case 'language-unavailable':
+        error = ReadAnythingSpeechError.LANGUAGE_UNAVAILABLE;
+        break;
+      case 'invalid-argument':
+        error = ReadAnythingSpeechError.INVALID_ARGUMENT;
+        break;
+      case 'synthesis-failed':
+        error = ReadAnythingSpeechError.SYNTHESIS_FAILED;
+        break;
+      case 'synthesis-unavailable':
+        error = ReadAnythingSpeechError.SYNTHESIS_UNVAILABLE;
+        break;
+      case 'audio-busy':
+        error = ReadAnythingSpeechError.AUDIO_BUSY;
+        break;
+      case 'audio-hardware':
+        error = ReadAnythingSpeechError.AUDIO_HARDWARE;
+        break;
+      case 'network':
+        error = ReadAnythingSpeechError.NETWORK;
+        break;
+      case 'timeout-engine-stalled':
+        error = ReadAnythingSpeechError.TIMEOUT_ENGINE_STALLED;
+        break;
+      case 'timeout-stalled-after-recovery':
+        error = ReadAnythingSpeechError.TIMEOUT_STALLED_AFTER_ENGINE_RECOVERY;
+        break;
+      default:
+        return;
+    }
+
+    // There are more error code possibilities, but right now, we only care
+    // about tracking the above error codes.
+    this.metrics.recordSpeechError(error);
+  }
+
+  logTimeFrom(from: TimeFrom, startTime: number, endTime: number) {
+    const umaName =
+        `Accessibility.ReadAnything.TimeFrom${from}StartedToConstructor`;
+    this.metrics.recordTime(umaName, endTime - startTime);
+  }
+
+  logNewPage(speechPlayed: boolean) {
+    // Don't log the new page if the UI is hidden.
+    if (this.isHidden_) {
+      return;
+    }
+    speechPlayed ? this.metrics.recordNewPageWithSpeech() :
+                   this.metrics.recordNewPage();
+  }
+
+  logHighlightGranularity(highlight: number) {
+    this.metrics.recordHighlightGranularity(highlight);
+  }
+
+  logVoiceLanguageChange(
+      currentVoice: SpeechSynthesisVoice|null,
+      newVoice: SpeechSynthesisVoice|null) {
+    if (currentVoice && newVoice &&
+        (currentVoice.lang.toLowerCase() !== newVoice.lang.toLowerCase())) {
+      this.metrics.recordVoiceLanguageChange();
+    }
+  }
+
+  private logVoiceTypeUsedForReading_(voice: SpeechSynthesisVoice|null) {
+    if (!voice) {
+      return;
+    }
+
+    let voiceType: ReadAnythingVoiceType;
+    if (hasNaturalIdentifier(voice)) {
+      voiceType = ReadAnythingVoiceType.NATURAL;
+    } else if (hasEspeakIdentifier(voice)) {
+      voiceType = ReadAnythingVoiceType.ESPEAK;
+    } else {
+      // <if expr="is_chromeos">
+      voiceType = ReadAnythingVoiceType.CHROMEOS;
+      // </if>
+      // <if expr="not is_chromeos">
+      voiceType = ReadAnythingVoiceType.SYSTEM;
+
+      // When a system voice is used, log additional information to better
+      // understand the TTS engine state when the system voice is used.
+      // Extension state information cannot easily be passed to the renderer,
+      // so this logging needs to be handled within the page handler.
+      this.metrics.recordExtensionState();
+      // </if>
+    }
+
+    this.metrics.recordVoiceType(voiceType);
+  }
+
+  private logLanguageUsedForReading_(lang: string|undefined) {
+    if (!lang) {
+      return;
+    }
+
+    // See tools/metrics/histograms/enums.xml enum LocaleCodeBCP47. The enum
+    // there doesn't always have locales where the base lang and the locale
+    // are the same (e.g. they don't have id-id, but do have id). So if the
+    // base lang and the locale are the same, just use the base lang.
+    let langToLog = lang;
+    const langSplit = lang.toLowerCase().split('-');
+    if (langSplit.length === 2 && langSplit[0]! === langSplit[1]!) {
+      langToLog = langSplit[0];
+    }
+    this.metrics.recordLanguage(langToLog);
+  }
+
+  logSettingsAction(settingsAction: ReadAnythingSettingsAction) {
+    this.metrics.recordSettingsAction(settingsAction);
+  }
+
+  logTextSettingsChange(settingsChange: ReadAnythingSettingsChange) {
+    this.metrics.recordTextSettingsChange(settingsChange);
+  }
+
+  logSpeechSettingsChange(settingsChange: ReadAloudSettingsChange) {
+    this.metrics.recordSpeechSettingsChange(settingsChange);
+  }
+
+  logVoiceSpeed(index: number) {
+    this.metrics.recordVoiceSpeed(index);
+  }
+
+  logSpeechPlaySession(startTime: number, voice: SpeechSynthesisVoice|null) {
+    this.logVoiceTypeUsedForReading_(voice);
+    this.logLanguageUsedForReading_(voice?.lang);
+
+    const playbackTime = Date.now() - startTime;
+    this.metrics.recordSpeechPlaybackLengthLegacy(playbackTime);
+
+    const activePresentationState =
+        this.visualBrowserProxy_.getActivePresentationState();
+    const isImmersiveState = activePresentationState ===
+        this.visualBrowserProxy_.getInImmersiveOverlayPresentationState();
+    if (!isImmersiveState &&
+        activePresentationState !==
+            this.visualBrowserProxy_.getInSidePanelPresentationState()) {
+      return;
+    }
+
+    const pageType =
+        this.visualBrowserProxy_.isPdf() ? PageType.PDF : PageType.WEB_PAGE;
+    const viewMode =
+        isImmersiveState ? ViewMode.FULL_PAGE : ViewMode.SIDE_PANEL;
+    const umaName = `${UmaName.SPEECH_PLAYBACK}.${pageType}In${viewMode}`;
+    this.metrics.recordSpeechPlaybackLength(umaName, playbackTime);
+  }
+
+  logSpeechPlaybackSessionPerPage(playbackTime: number) {
+    if (playbackTime > 0) {
+      this.metrics.recordSpeechPlaybackLength(
+          UmaName.SPEECH_PLAYBACK_PER_PAGE, playbackTime);
+    }
+  }
+
+  logSpeechControlClick(control: SpeechControls) {
+    this.metrics.incrementMetricCount(
+        `Accessibility.ReadAnything.ReadAloud${control}SessionCount`);
+  }
+
+  logLineFocusSession() {
+    if (this.visualBrowserProxy_.isLineFocusEnabled()) {
+      this.metrics.recordLineFocusSession();
+    }
+  }
+
+  logLineFocusToggled(enabled: boolean) {
+    if (this.visualBrowserProxy_.isLineFocusEnabled()) {
+      this.metrics.recordLineFocusToggled(enabled);
+    }
+  }
+
+  logLinkStatusCount(status: LinkStatus, count: number) {
+    const umaName =
+        `Accessibility.ReadAnything.Readability.PageLinks${status}Count`;
+    this.metrics.recordCount(umaName, count);
+  }
+
+  logDistilledPageStructure(wordCountContainer: Element) {
+    if (this.isHidden_) {
+      this.hasUnloggedDistillation_ = true;
+      this.savedWordCountContainer_ = wordCountContainer;
+      return;
+    }
+
+    this.hasUnloggedDistillation_ = false;
+    this.savedWordCountContainer_ = null;
+
+    const paragraphs = wordCountContainer.querySelectorAll('p');
+    const headerCounts = ReadAnythingLogger.getHeaderCounts(wordCountContainer);
+
+    this.logOverallStructureMetrics_(headerCounts, paragraphs.length);
+    this.logTopTwoHeaderMetrics_(headerCounts);
+    if (this.visualBrowserProxy_.isPdf()) {
+      this.logPdfDistilledPageStructure_(headerCounts, paragraphs.length);
+    }
+
+    this.logOriginalPageMetrics_(wordCountContainer);
+  }
+
+  private logOriginalPageMetrics_(wordCountContainer: Element) {
+    const originalPageMetrics =
+        this.visualBrowserProxy_.getOriginalPageMetrics();
+    this.logEnglishKeyPointsMetrics_(
+        wordCountContainer, originalPageMetrics.maybeHasKeyPoints);
+    this.logMathMlMetrics_(wordCountContainer, originalPageMetrics.hasMathML);
+  }
+
+  // Logs MathML metrics for the distilled page:
+  // 1. Accessibility.ReadAnything.MathML.PresentOnPage is logged for every
+  // page.
+  // 2. If at least one MathML element is present on the original page,
+  //    Accessibility.ReadAnything.MathML.DistillationStatus is logged at page
+  //    level:
+  //    - ONLY_MATHML: only native <math> elements were captured.
+  //    - MIXED_MATHML_AND_FALLBACK: both native <math> and fallbacks were
+  //    captured.
+  //    - ONLY_FALLBACK: only math fallbacks were captured.
+  //    - NOT_DISTILLED_*: no math was captured in Reading Mode.
+  private logMathMlMetrics_(
+      wordCountContainer: Element, pageHasMathML: boolean) {
+    this.metrics.recordBoolean(UmaName.MATHML_PRESENT_ON_PAGE, pageHasMathML);
+
+    if (!pageHasMathML) {
+      return;
+    }
+
+    const hasMathML = this.hasVisibleMathMl_(wordCountContainer);
+    const hasMathFallback = this.hasVisibleMathFallback_(wordCountContainer);
+
+    if (hasMathML && hasMathFallback) {
+      this.metrics.recordMathMlDistillationStatus(
+          ReadAnythingMathMlDistillationStatus.MIXED_MATHML_AND_FALLBACK);
+    } else if (hasMathML) {
+      this.metrics.recordMathMlDistillationStatus(
+          ReadAnythingMathMlDistillationStatus.ONLY_MATHML);
+    } else if (hasMathFallback) {
+      this.metrics.recordMathMlDistillationStatus(
+          ReadAnythingMathMlDistillationStatus.ONLY_FALLBACK);
+    } else if (isDistilledByReadability()) {
+      this.metrics.recordMathMlDistillationStatus(
+          ReadAnythingMathMlDistillationStatus.NOT_DISTILLED_READABILITY);
+    } else {
+      this.metrics.recordMathMlDistillationStatus(
+          ReadAnythingMathMlDistillationStatus.NOT_DISTILLED_SCREEN2X);
+    }
+  }
+
+  private isElementVisible_(element: Element): boolean {
+    if ('style' in element &&
+        (element as HTMLElement).style.display === 'none') {
+      return false;
+    }
+    if (element.hasAttribute('hidden') ||
+        ('hidden' in element && (element as HTMLElement).hidden)) {
+      return false;
+    }
+    if (element.isConnected && element.checkVisibility) {
+      return element.checkVisibility({checkVisibilityCSS: true});
+    }
+    return true;
+  }
+
+  private hasVisibleMathMl_(wordCountContainer: Element): boolean {
+    const mathElements = wordCountContainer.querySelectorAll('math');
+    for (const math of mathElements) {
+      if (this.isElementVisible_(math)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Pages with MathML often include fallback elements (such as Wikipedia's
+  // <img> tags with LaTeX alt text, or KaTeX/MathJax HTML) for browsers that
+  // don't support MathML. Distillation may preserve these fallbacks instead of
+  // (or alongside) the native <math> tags. Only count them if they are
+  // actually visible to the user (e.g. not hidden when images are turned off).
+  private hasVisibleMathFallback_(wordCountContainer: Element): boolean {
+    const mathImages = wordCountContainer.querySelectorAll('img');
+    for (const img of mathImages) {
+      if (!this.isElementVisible_(img)) {
+        continue;
+      }
+      if (img.className &&
+          /(^|\s)(mwe-math(-|_|\s|$)|math(\s|$))/i.test(img.className)) {
+        return true;
+      }
+      const alt = img.getAttribute('alt') || '';
+      if (alt.toLowerCase().includes('displaystyle') ||
+          /\\[a-zA-Z]{2,}/.test(alt)) {
+        return true;
+      }
+    }
+
+    const mathContainers = wordCountContainer.querySelectorAll(
+        '.katex, .katex-html, .MathJax, mjx-container, [typeof="mw:Extension/math"]');
+    for (const el of mathContainers) {
+      if (!this.isElementVisible_(el)) {
+        continue;
+      }
+      if (el.textContent && el.textContent.trim().length > 0) {
+        return true;
+      }
+      const visualChildren = el.querySelectorAll('svg, canvas, img');
+      for (const child of visualChildren) {
+        if (this.isElementVisible_(child)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private logEnglishKeyPointsMetrics_(
+      wordCountContainer: Element, maybeHasKeyPointsOnPage: boolean) {
+    const lang = this.audioBrowserProxy_.getBaseLanguageForSpeech();
+    if (!lang || !lang.toLowerCase().startsWith('en')) {
+      return;
+    }
+
+    // Skip h1s as those are likely page titles.
+    const potentialKeyPointsContainers = wordCountContainer.querySelectorAll(
+        'h2, h3, h4, h5, h6, button, summary');
+    let maybeHasKeyPoints = false;
+    const regex = this.getKeyPointsRegex_();
+
+    for (const node of potentialKeyPointsContainers) {
+      const text = node.textContent || '';
+
+      if (regex.test(text)) {
+        maybeHasKeyPoints = true;
+        break;
+      }
+    }
+    this.metrics.recordBoolean(
+        'Accessibility.ReadAnything.PageStructure.EnglishKeyPointsInReadingMode',
+        maybeHasKeyPoints);
+
+    this.metrics.recordBoolean(
+        'Accessibility.ReadAnything.PageStructure.EnglishKeyPointsOnPage',
+        maybeHasKeyPointsOnPage);
+  }
+
+  private logOverallStructureMetrics_(
+      headerCounts: Array<{tag: string, count: number}>,
+      paragraphCount: number) {
+    // The total number of distilled headers.
+    const totalHeaderCount =
+        headerCounts.reduce((sum, item) => sum + item.count, 0);
+    this.metrics.recordCount(UmaName.TOTAL_HEADER_COUNT, totalHeaderCount);
+
+    // The number of unique header tags present.
+    const uniqueHeaderTags = headerCounts.filter(item => item.count > 0).length;
+    this.metrics.recordCount(UmaName.UNIQUE_HEADER_TAGS, uniqueHeaderTags);
+
+    // Log the number of paragraphs.
+    this.metrics.recordCount(UmaName.NUMBER_PARAGRAPHS, paragraphCount);
+
+    if (paragraphCount > 0) {
+      // The ratio of headings to paragraphs, scaled by 100.
+      const headingToParagraphRatio =
+          Math.round((totalHeaderCount / paragraphCount) * 100);
+      this.metrics.recordCount(
+          UmaName.HEADING_TO_PARAGRAPH_RATIO, headingToParagraphRatio);
+    }
+  }
+
+  // The "top two" headers in a hierarchy represent the first two non-zero
+  // header tags present in the hierarchy. e.g. if there are 5 h1 tags,
+  // 4 h2 tags, and 20 h3 tags, the top two header count would be h1 + h2 = 9.
+  // There's an exception for h1 tags. Since the h1 tag is often used for
+  // the title, it is excluded from being counted as one of the top two headers
+  // if there is exactly one h1 tag present, as that means it's likely being
+  // used as a title. headerCounts is assumed to be already sorted in order of hierarchy
+  // based on how it was originally created from getHeaderCounts.
+  private logTopTwoHeaderMetrics_(
+      headerCounts: Array<{tag: string, count: number}>) {
+    let hierarchy = [...headerCounts];
+    const h1Count = headerCounts.find(item => item.tag === 'h1')?.count ?? 0;
+    if (h1Count === 1) {
+      hierarchy = hierarchy.filter(item => item.tag !== 'h1');
+    }
+    const presentHeaders = hierarchy.filter(item => item.count > 0);
+
+    let topTwoHeadersCount = 0;
+    if (presentHeaders.length > 0) {
+      topTwoHeadersCount += presentHeaders[0]!.count;
+    }
+    if (presentHeaders.length > 1) {
+      topTwoHeadersCount += presentHeaders[1]!.count;
+    }
+    this.metrics.recordCount(UmaName.TOP_TWO_HEADERS_COUNT, topTwoHeadersCount);
+
+    let topTwoHeadersHaveMinimumTwoItems = false;
+    if (presentHeaders.length >= 2) {
+      topTwoHeadersHaveMinimumTwoItems =
+          presentHeaders[0]!.count >= 2 && presentHeaders[1]!.count >= 2;
+    }
+    this.metrics.recordBoolean(
+        UmaName.TOP_TWO_HEADERS_HAVE_MINIMUM_TWO_ITEMS,
+        topTwoHeadersHaveMinimumTwoItems);
+
+    if (presentHeaders.length >= 2 && presentHeaders[1]!.count > 0) {
+      // The ratio of the top level to the second top level header, scaled by
+      // 100.
+      const topTwoHeadingRatio = Math.round(
+          (presentHeaders[0]!.count / presentHeaders[1]!.count) * 100);
+      this.metrics.recordCount(
+          UmaName.TOP_TWO_HEADING_RATIO, topTwoHeadingRatio);
+    }
+  }
+
+  private logPdfDistilledPageStructure_(
+      headerCounts: Array<{tag: string, count: number}>,
+      paragraphCount: number) {
+    for (const header of headerCounts) {
+      const headingLevel = header.tag.toUpperCase();
+      this.metrics.recordCount(
+          `Accessibility.ReadAnything.Pdf.Headings.${headingLevel}`,
+          header.count);
+    }
+    this.metrics.recordCount(UmaName.PDF_NUMBER_PARAGRAPHS, paragraphCount);
+
+    if (paragraphCount > 0) {
+      const totalHeaderCount =
+          headerCounts.reduce((sum, item) => sum + item.count, 0);
+      const headingToParagraphRatio =
+          Math.round((totalHeaderCount / paragraphCount) * 100);
+      this.metrics.recordCount(
+          UmaName.PDF_HEADING_TO_PARAGRAPH_RATIO, headingToParagraphRatio);
+    }
+  }
+
+  static getHeaderCounts(wordCountContainer: Element):
+      Array<{tag: string, count: number}> {
+    return [
+      {tag: 'h1', count: wordCountContainer.querySelectorAll('h1').length},
+      {tag: 'h2', count: wordCountContainer.querySelectorAll('h2').length},
+      {tag: 'h3', count: wordCountContainer.querySelectorAll('h3').length},
+      {tag: 'h4', count: wordCountContainer.querySelectorAll('h4').length},
+      {tag: 'h5', count: wordCountContainer.querySelectorAll('h5').length},
+      {tag: 'h6', count: wordCountContainer.querySelectorAll('h6').length},
+    ];
+  }
+
+  private getKeyPointsRegex_(): RegExp {
+    if (!this.keyPointsRegex_) {
+      const regexStr = this.visualBrowserProxy_.getKeyPointsRegex();
+      this.keyPointsRegex_ = new RegExp(regexStr, 'i');
+    }
+    return this.keyPointsRegex_;
+  }
+
+  static getInstance(): ReadAnythingLogger {
+    return instance || (instance = new ReadAnythingLogger());
+  }
+
+  static setInstance(obj: ReadAnythingLogger) {
+    instance = obj;
+  }
+}
+
+let instance: ReadAnythingLogger|null = null;

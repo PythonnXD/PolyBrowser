@@ -1,0 +1,54 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_win || is_mac || is_linux || is_chromeos)
+
+source_set("one_time_tokens") {
+  public = [ "gmail_otp_opt_in_bubble_view.h" ]
+  sources = [ "gmail_otp_opt_in_bubble_view.cc" ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/views/autofill:autofill_location_bar_bubble",
+    "//ui/base",
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+
+  deps = [
+    "//chrome/browser:resources",
+    "//chrome/browser/ui:chrome_pages",
+    "//chrome/common",
+    "//components/strings",
+    "//content/public/browser",
+    "//ui/color",
+    "//ui/gfx",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  sources = [ "gmail_otp_opt_in_bubble_view_browsertest.cc" ]
+
+  deps = [
+    ":one_time_tokens",
+    "//chrome/browser/ui/views/frame:browser_view_header",
+    "//chrome/test:test_support_ui",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [ "gmail_otp_opt_in_bubble_view_unittest.cc" ]
+
+  deps = [
+    ":one_time_tokens",
+    "//chrome/test:test_support",
+    "//ui/events:test_support",
+  ]
+}

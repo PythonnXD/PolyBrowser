@@ -1,0 +1,315 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef GPU_COMMAND_BUFFER_SERVICE_GRAPHITE_SHARED_CONTEXT_H_
+#define GPU_COMMAND_BUFFER_SERVICE_GRAPHITE_SHARED_CONTEXT_H_
+
+#include <atomic>
+
+#include "base/functional/callback.h"
+#include "base/synchronization/lock.h"
+#include "base/time/time.h"
+#include "gpu/command_buffer/common/constants.h"
+#include "gpu/gpu_gles2_export.h"
+#include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/gpu/graphite/GraphiteTypes.h"
+#include "third_party/skia/include/gpu/graphite/Recorder.h"
+
+class SkTraceMemoryDump;
+
+namespace skgpu ::graphite {
+class BackendTexture;
+struct InsertRecordingInfo;
+class PrecompileContext;
+class Recorder;
+struct RecorderOptions;
+}  // namespace skgpu::graphite
+
+namespace gpu {
+
+class GpuProcessShmCount;
+
+// This is a thread safe wrapper class to skgpu::graphite::Context. In order to
+// support multi-threading, locks are used to ensure thread safety in
+// skgpu::graphite::Context. All clients need to call the wrapper functions in
+// GraphiteSharedContext. Only GraphiteSharedContext can communicate with
+// skgpu::graphite::Context directly. If |is_thread_safe| is false, the locks
+// are equivalent to no-op.
+class GPU_GLES2_EXPORT GraphiteSharedContext {
+ public:
+  class GPU_GLES2_EXPORT Delegate {
+   public:
+    virtual ~Delegate() = default;
+    virtual void FlushBackend() = 0;
+    virtual void MarkContextLost(error::ContextLostReason reason) = 0;
+    virtual bool IsContextLost() const = 0;
+    // Tells the GPU watchdog that the GPU thread is making progress.
+    virtual void ReportProgress() = 0;
+
+    // Returns a closure to run once all GPU work submitted has finished. Called
+    // every submit when in single threaded mode. Returning a null closure means
+    // there is nothing to clean up.
+    //
+    // If a submit fails the associated callback will never be run. This must
+    // not result in leaked resources.
+    virtual base::OnceClosure CreateSubmitCleanupCallback();
+  };
+
+  using SkImageReadPixelsCallback = base::OnceCallback<
+      void(void* ctx, std::unique_ptr<const SkSurface::AsyncReadResult>)>;
+
+  // insertRecording() forces a submit once |max_pending_recordings| recordings
+  // are pending, or once |max_time_between_submits| has passed since the last
+  // submit.
+  GraphiteSharedContext(
+      std::unique_ptr<skgpu::graphite::Context> graphite_context,
+      GpuProcessShmCount* use_shader_cache_shm_count,
+      bool is_thread_safe,
+      size_t max_pending_recordings,
+      base::TimeDelta max_time_between_submits,
+      Delegate* delegate = nullptr);
+
+  GraphiteSharedContext(const GraphiteSharedContext&) = delete;
+  GraphiteSharedContext(GraphiteSharedContext&&) = delete;
+  GraphiteSharedContext& operator=(const GraphiteSharedContext&) = delete;
+  GraphiteSharedContext& operator=(GraphiteSharedContext&&) = delete;
+
+  ~GraphiteSharedContext();
+
+  bool IsThreadSafe() const { return !!lock_; }
+
+  bool IsContextLost() const;
+
+  // Wrapper function implementations for skgpu::graphite:Context
+  skgpu::BackendApi backend() const;
+
+  std::unique_ptr<skgpu::graphite::Recorder> makeRecorder(
+      const skgpu::graphite::RecorderOptions& = {});
+
+  std::unique_ptr<skgpu::graphite::PrecompileContext> makePrecompileContext();
+
+  // Enqueues `semaphore` to be waited on / signaled by the next submission.
+  // Returns the submit generation current at enqueue time. The caller can
+  // compare it against submit_generation() to know if the semaphore has been
+  // submitted.
+  uint64_t AddPendingWaitSemaphore(
+      const skgpu::graphite::BackendSemaphore& semaphore);
+  uint64_t AddPendingSignalSemaphore(
+      const skgpu::graphite::BackendSemaphore& semaphore);
+  uint64_t submit_generation() const;
+
+  bool insertRecording(const skgpu::graphite::InsertRecordingInfo& info);
+  void submit(skgpu::graphite::SubmitInfo = {});
+
+  // The difference between this and submit() is that it will trigger the
+  // provided backend_flush_callback in addition to calling submit(). This is
+  // needed because on some backend such as D3D11 we could enable a delayed
+  // flush toggle. In that case, submit() won't send the commands to the GPU
+  // immediately and require an explicit flush.
+  void submitAndFlushBackend(skgpu::graphite::SubmitInfo = {});
+
+  bool hasUnfinishedGpuWork() const;
+
+  void asyncRescaleAndReadPixels(const SkImage* src,
+                                 const SkImageInfo& dstImageInfo,
+                                 const SkIRect& srcRect,
+                                 SkImage::RescaleGamma rescaleGamma,
+                                 SkImage::RescaleMode rescaleMode,
+                                 SkImageReadPixelsCallback callback,
+                                 SkImage::ReadPixelsContext context);
+  void asyncRescaleAndReadPixels(const SkSurface* src,
+                                 const SkImageInfo& dstImageInfo,
+                                 const SkIRect& srcRect,
+                                 SkImage::RescaleGamma rescaleGamma,
+                                 SkImage::RescaleMode rescaleMode,
+                                 SkImageReadPixelsCallback callback,
+                                 SkImage::ReadPixelsContext context);
+
+  bool asyncRescaleAndReadPixelsAndSubmit(const SkImage* src,
+                                          const SkImageInfo& dstImageInfo,
+                                          const SkIRect& srcRect,
+                                          SkImage::RescaleGamma rescaleGamma,
+                                          SkImage::RescaleMode rescaleMode,
+                                          SkImageReadPixelsCallback callback,
+                                          SkImage::ReadPixelsContext context);
+  bool asyncRescaleAndReadPixelsAndSubmit(const SkSurface* src,
+                                          const SkImageInfo& dstImageInfo,
+                                          const SkIRect& srcRect,
+                                          SkImage::RescaleGamma rescaleGamma,
+                                          SkImage::RescaleMode rescaleMode,
+                                          SkImageReadPixelsCallback callback,
+                                          SkImage::ReadPixelsContext context);
+
+  void asyncRescaleAndReadPixelsYUV420(const SkImage* src,
+                                       SkYUVColorSpace yuvColorSpace,
+                                       sk_sp<SkColorSpace> dstColorSpace,
+                                       const SkIRect& srcRect,
+                                       const SkISize& dstSize,
+                                       SkImage::RescaleGamma rescaleGamma,
+                                       SkImage::RescaleMode rescaleMode,
+                                       SkImageReadPixelsCallback callback,
+                                       SkImage::ReadPixelsContext context);
+  void asyncRescaleAndReadPixelsYUV420(const SkSurface* src,
+                                       SkYUVColorSpace yuvColorSpace,
+                                       sk_sp<SkColorSpace> dstColorSpace,
+                                       const SkIRect& srcRect,
+                                       const SkISize& dstSize,
+                                       SkImage::RescaleGamma rescaleGamma,
+                                       SkImage::RescaleMode rescaleMode,
+                                       SkImageReadPixelsCallback callback,
+                                       SkImage::ReadPixelsContext context);
+
+  bool asyncRescaleAndReadPixelsYUV420AndSubmit(
+      const SkImage* src,
+      SkYUVColorSpace yuvColorSpace,
+      sk_sp<SkColorSpace> dstColorSpace,
+      const SkIRect& srcRect,
+      const SkISize& dstSize,
+      SkImage::RescaleGamma rescaleGamma,
+      SkImage::RescaleMode rescaleMode,
+      SkImageReadPixelsCallback callback,
+      SkImage::ReadPixelsContext context);
+  bool asyncRescaleAndReadPixelsYUV420AndSubmit(
+      const SkSurface* src,
+      SkYUVColorSpace yuvColorSpace,
+      sk_sp<SkColorSpace> dstColorSpace,
+      const SkIRect& srcRect,
+      const SkISize& dstSize,
+      SkImage::RescaleGamma rescaleGamma,
+      SkImage::RescaleMode rescaleMode,
+      SkImageReadPixelsCallback callback,
+      SkImage::ReadPixelsContext context);
+
+  void asyncRescaleAndReadPixelsYUVA420(const SkImage* src,
+                                        SkYUVColorSpace yuvColorSpace,
+                                        sk_sp<SkColorSpace> dstColorSpace,
+                                        const SkIRect& srcRect,
+                                        const SkISize& dstSize,
+                                        SkImage::RescaleGamma rescaleGamma,
+                                        SkImage::RescaleMode rescaleMode,
+                                        SkImageReadPixelsCallback callback,
+                                        SkImage::ReadPixelsContext context);
+  void asyncRescaleAndReadPixelsYUVA420(const SkSurface* src,
+                                        SkYUVColorSpace yuvColorSpace,
+                                        sk_sp<SkColorSpace> dstColorSpace,
+                                        const SkIRect& srcRect,
+                                        const SkISize& dstSize,
+                                        SkImage::RescaleGamma rescaleGamma,
+                                        SkImage::RescaleMode rescaleMode,
+                                        SkImageReadPixelsCallback callback,
+                                        SkImage::ReadPixelsContext context);
+
+  bool asyncRescaleAndReadPixelsYUVA420AndSubmit(
+      const SkImage* src,
+      SkYUVColorSpace yuvColorSpace,
+      sk_sp<SkColorSpace> dstColorSpace,
+      const SkIRect& srcRect,
+      const SkISize& dstSize,
+      SkImage::RescaleGamma rescaleGamma,
+      SkImage::RescaleMode rescaleMode,
+      SkImageReadPixelsCallback callback,
+      SkImage::ReadPixelsContext context);
+  bool asyncRescaleAndReadPixelsYUVA420AndSubmit(
+      const SkSurface* src,
+      SkYUVColorSpace yuvColorSpace,
+      sk_sp<SkColorSpace> dstColorSpace,
+      const SkIRect& srcRect,
+      const SkISize& dstSize,
+      SkImage::RescaleGamma rescaleGamma,
+      SkImage::RescaleMode rescaleMode,
+      SkImageReadPixelsCallback callback,
+      SkImage::ReadPixelsContext context);
+
+  void checkAsyncWorkCompletion();
+
+  void deleteBackendTexture(const skgpu::graphite::BackendTexture&);
+
+  void freeGpuResources();
+
+  void performDeferredCleanup(std::chrono::milliseconds msNotUsed);
+
+  // TODO(crbug.com/407874799): Some of the methods below (maybe above as well)
+  // may be safe to use without locks. Review and delete unneeded locks in
+  // those methods once we start to run with |is_thread_safe| set to true.
+  size_t currentBudgetedBytes() const;
+
+  size_t currentPurgeableBytes() const;
+
+  size_t maxBudgetedBytes() const;
+
+  void setMaxBudgetedBytes(size_t bytes);
+
+  void dumpMemoryStatistics(SkTraceMemoryDump* traceMemoryDump) const;
+
+  bool isDeviceLost() const;
+
+  int maxTextureSize() const;
+
+  bool supportsProtectedContent() const;
+
+  skgpu::GpuStatsFlags supportedGpuStats() const;
+
+  // Overrides `fSimulatedStatus` for any `insertRecording` call when passed a
+  // `status` other than `kSuccess`.
+  void set_simulated_insert_status(skgpu::graphite::InsertStatus status);
+
+ private:
+  class AutoLock;
+
+  bool InsertRecordingImpl(const skgpu::graphite::InsertRecordingInfo&);
+  bool SubmitImpl(skgpu::graphite::SubmitInfo);
+  void SubmitAndFlushBackendImpl(const skgpu::graphite::SubmitInfo&);
+  void InsertSemaphoreOnlyRecording();
+
+  // The lock for protecting skgpu::graphite::Context.
+  // Valid only when |is_thread_safe| is set to true in Ctor.
+  mutable std::optional<base::Lock> lock_;
+
+  // This is the id of the thread where |lock_| is acquired, used for detecting
+  // recursive lock. |locked_thread_id_| is set to kInvalidThreadId when
+  // is_thread_safe is not enabled or when |lock_| is released.
+  mutable std::atomic<base::PlatformThreadId> locked_thread_id_{
+      base::kInvalidThreadId};
+
+  mutable std::atomic<bool> locked_thread_in_submit_{false};
+  mutable std::atomic<bool> locked_thread_in_insert_recording_{false};
+
+  const std::unique_ptr<skgpu::graphite::Context> graphite_context_;
+
+  raw_ptr<GpuProcessShmCount> use_shader_cache_shm_count_ = nullptr;
+
+  const size_t max_pending_recordings_;
+  size_t num_pending_recordings_ = 0;
+
+  // The number of pending commands in the graphite::Context's command buffer,
+  // as reported by the last successful insertRecording() since last submit.
+  int num_pending_commands_ = 0;
+
+  // The max of pending commands across all non-skipped submits since creation.
+  int max_pending_commands_ = 0;
+
+  const base::TimeDelta max_time_between_submits_;
+  base::TimeTicks last_submit_time_;
+
+  raw_ptr<Delegate> delegate_ = nullptr;
+
+  skgpu::graphite::InsertStatus simulated_insert_status_ =
+      skgpu::graphite::InsertStatus::kSuccess;
+
+  // Used to produce empty recordings to submit semaphores.
+  // TODO(crbug.com/552951905): Add a way to insert semaphores without a
+  // recording.
+  std::unique_ptr<skgpu::graphite::Recorder> semaphore_recorder_;
+
+  std::vector<skgpu::graphite::BackendSemaphore> pending_wait_semaphores_;
+  std::vector<skgpu::graphite::BackendSemaphore> pending_signal_semaphores_;
+
+  // Incremented after each context submit.
+  std::atomic<uint64_t> submit_generation_{0};
+};
+
+}  // namespace gpu
+
+#endif  // GPU_COMMAND_BUFFER_SERVICE_GRAPHITE_SHARED_CONTEXT_H_

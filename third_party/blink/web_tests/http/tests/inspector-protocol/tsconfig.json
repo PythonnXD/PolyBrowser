@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "esnext"
+    ],
+    "allowJs": true,
+    "outDir": "ignored-for-vscode",
+    "paths": {
+      "test_runner": ["./resources/inspector-protocol-test.js"],
+      "devtools-protocol/types/*": ["../../../../../../out/Default/gen/third_party/blink/public/devtools_protocol/types/*"]
+    },
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true
+  },
+  "include": [
+    "./"
+  ]
+}

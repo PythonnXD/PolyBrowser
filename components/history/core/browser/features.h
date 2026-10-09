@@ -1,0 +1,111 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_HISTORY_CORE_BROWSER_FEATURES_H_
+#define COMPONENTS_HISTORY_CORE_BROWSER_FEATURES_H_
+
+#include <limits.h>
+
+#include <string>
+
+#include "base/component_export.h"
+#include "base/feature_list.h"
+#include "base/metrics/field_trial_params.h"
+#include "build/build_config.h"
+
+namespace history {
+
+// Organic Repeatable Queries
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kOrganicRepeatableQueries);
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<int> kMaxNumRepeatableQueries;
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<bool> kScaleRepeatableQueriesScores;
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<bool> kPrivilegeRepeatableQueries;
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<bool> kRepeatableQueriesIgnoreDuplicateVisits;
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<int> kRepeatableQueriesMaxAgeDays;
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<int> kRepeatableQueriesMinVisitCount;
+
+// When enabled, this feature flag begins populating the VisitedLinkDatabase
+// with data.
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kPopulateVisitedLinkDatabase);
+
+// Most Visited Tiles scoring function changes.
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kMostVisitedTilesNewScoring);
+
+// List of values for |kMvtScoringParamRecencyFactor|
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const char kMvtScoringParamRecencyFactor_Classic[];
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const char kMvtScoringParamRecencyFactor_Decay[];
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const char kMvtScoringParamRecencyFactor_DecayStaircase[];
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<std::string> kMvtScoringParamRecencyFactor;
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<double> kMvtScoringParamDecayPerDay;
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+extern const base::FeatureParam<int> kMvtScoringParamDailyVisitCountCap;
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kRazeOldHistoryDatabase);
+
+#if !BUILDFLAG(IS_IOS)
+COMPONENT_EXPORT(HISTORY_FEATURES)
+bool IsBrowsingHistoryActorIntegrationM3Enabled();
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistoryActorIntegrationM3);
+#endif  // !BUILDFLAG(IS_IOS)
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistorySimilarVisitsGrouping);
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistoryImprovedHostnameSuffixMatching);
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistoryFilterByDevice);
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistoryFilterByDomain);
+
+#if !BUILDFLAG(IS_IOS)
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kBrowsingHistoryFilterByActor);
+#endif  // !BUILDFLAG(IS_IOS)
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kWebHistoryUseNewApi);
+
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kHistoryDatabaseWriteAheadLogging);
+
+// Defers HistoryBackend initialization to after startup or until it is needed.
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kDeferHistoryBackendInit);
+
+// If enabled, reports database metrics related to history clusters. Disabled
+// by default so that not all clients pay the cost of computing the metrics.
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kHistoryReportClusterDatabaseMetrics);
+
+// When enabled, replaces the 1 + 2N SQLite query loop in
+// HistoryBackend::QueryHistoryBasic with a two-phase batched fetch strategy.
+COMPONENT_EXPORT(HISTORY_FEATURES)
+BASE_DECLARE_FEATURE(kHistoryQueryBatchedLookups);
+
+}  // namespace history
+
+#endif  // COMPONENTS_HISTORY_CORE_BROWSER_FEATURES_H_

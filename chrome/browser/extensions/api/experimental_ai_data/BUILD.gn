@@ -1,0 +1,38 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+assert(enable_extensions,
+       "Cannot depend on extensions because enable_extensions=false.")
+
+source_set("experimental_ai_data") {
+  sources = [
+    "experimental_ai_data_api.cc",
+    "experimental_ai_data_api.h",
+  ]
+
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/ai",
+    "//chrome/common/extensions/api",
+    "//components/page_content_annotations/content",
+    "//content/public/common",
+    "//extensions/browser",
+  ]
+
+  deps = [
+    "//chrome/browser/extensions",
+    "//chrome/browser/page_content_annotations:fetcher",
+    "//chrome/browser/tab_list",
+    "//components/optimization_guide/content/browser",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//extensions/common",
+    "//url",
+  ]
+}

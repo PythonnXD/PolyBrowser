@@ -1,0 +1,135 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/frame/shadow_frame_view.h"
+
+#include <memory>
+
+#include "base/numerics/safe_conversions.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/color/color_provider.h"
+#include "ui/compositor/layer.h"
+#include "ui/decoration/decoration.h"
+#include "ui/decoration/shadow.h"
+#include "ui/gfx/color_utils.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
+#include "ui/views/view_shadow.h"
+
+BEGIN_METADATA(ShadowFrameView)
+END_METADATA
+
+ShadowFrameView::ShadowFrameView(int elevation, ShadowAlpha alpha)
+    : shadow_elevation_(elevation), shadow_alpha_(alpha) {
+  SetCanProcessEventsWithinSubtree(false);
+}
+
+ShadowFrameView::~ShadowFrameView() = default;
+
+void ShadowFrameView::SetShadowVisible(bool visible) {
+  // No-op if visible set is the same as current state.
+  if (visible == !!layer()) {
+    return;
+  }
+
+  if (visible) {
+    view_shadow_ = std::make_unique<views::ViewShadow>(this, shadow_elevation_);
+    view_shadow_->SetRoundedCorners(corners_);
+    view_shadow_->decoration()->layer()->SetOpacity(shadow_opacity_);
+    UpdateShadowColors();
+  } else {
+    view_shadow_.reset();
+    DestroyLayer();
+    was_dark_.reset();
+    SchedulePaint();
+  }
+}
+
+void ShadowFrameView::SetShadowOpacity(double opacity) {
+  if (shadow_opacity_ == opacity) {
+    return;
+  }
+  shadow_opacity_ = opacity;
+
+  if (view_shadow_) {
+    view_shadow_->decoration()->layer()->SetOpacity(opacity);
+    SchedulePaint();
+  }
+}
+
+void ShadowFrameView::SetShadowCornerRadius(int corner_radius) {
+  gfx::RoundedCornersF corners(corner_radius);
+  if (corners_ == corners) {
+    return;
+  }
+  corners_ = corners;
+
+  if (view_shadow_) {
+    view_shadow_->SetRoundedCornerRadius(corner_radius);
+    SchedulePaint();
+  }
+}
+
+void ShadowFrameView::SetShadowCornerRadii(
+    const gfx::RoundedCornersF& corners) {
+  if (corners_ == corners) {
+    return;
+  }
+
+  corners_ = corners;
+
+  if (view_shadow_) {
+    view_shadow_->SetRoundedCorners(corners);
+    SchedulePaint();
+  }
+}
+
+void ShadowFrameView::OnThemeChanged() {
+  View::OnThemeChanged();
+  if (view_shadow_) {
+    UpdateShadowColors();
+  }
+}
+
+void ShadowFrameView::AddedToWidget() {
+  if (view_shadow_) {
+    UpdateShadowColors();
+  }
+}
+
+void ShadowFrameView::UpdateShadowColors() {
+  CHECK(view_shadow_);
+  if (!view_shadow_->decoration()) {
+    return;
+  }
+
+  auto* const color_provider = GetColorProvider();
+  if (!color_provider) {
+    return;
+  }
+
+  const bool is_dark =
+      color_utils::IsDark(color_provider->GetColor(kColorToolbar));
+  if (was_dark_ == is_dark) {
+    return;
+  }
+  was_dark_ = is_dark;
+
+  auto make_shadow_color = [](double alpha) {
+    return SkColorSetARGB(base::ClampRound(255.0 * alpha), 0, 0, 0);
+  };
+
+  const ui::decoration::Shadow::ElevationColors shadow_colors{
+      .key_color = make_shadow_color(is_dark ? shadow_alpha_.dark_key
+                                             : shadow_alpha_.light_key),
+      .ambient_color = make_shadow_color(
+          is_dark ? shadow_alpha_.dark_ambient : shadow_alpha_.light_ambient)};
+
+  const ui::decoration::Shadow::ElevationToColorsMap map{
+      {shadow_elevation_, shadow_colors}};
+  view_shadow_->decoration()
+      ->GetSourceAs<ui::decoration::Shadow>()
+      ->SetColorMap(map);
+  SchedulePaint();
+}

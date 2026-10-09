@@ -1,0 +1,89 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_TABS_ORGANIZER_ORGANIZER_TRAY_VIEW_H_
+#define CHROME_BROWSER_UI_VIEWS_TABS_ORGANIZER_ORGANIZER_TRAY_VIEW_H_
+
+#include <memory>
+
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
+#include "base/time/time.h"
+#include "chrome/browser/ui/views/tabs/organizer/layout_constants.h"
+#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_host.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/views/focus/focus_manager.h"
+#include "ui/views/focus/focus_search.h"
+#include "ui/views/layout/flex_layout_view.h"
+
+class BrowserView;
+class BrowserWindowInterface;
+class OrganizerPanelControlsView;
+class ShadowFrameView;
+
+// Provides the visuals for the UI that slides out from the side of the browser
+// hosting the organizer panel when the panel is not hosted in some other UI
+// (such as the vertical tab strip).
+class OrganizerTrayView : public views::FlexLayoutView,
+                          public views::FocusTraversable,
+                          public OrganizerPanelHost {
+  METADATA_HEADER(OrganizerTrayView, views::View)
+ public:
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kTrayElementId);
+
+  // Construct the tray view. Note that `browser_view` may be null in unit
+  // tests.
+  explicit OrganizerTrayView(BrowserWindowInterface& browser,
+                             BrowserView* browser_view);
+  ~OrganizerTrayView() override;
+
+  // Sets the area (if any) occupied by the caption buttons at the top leading
+  // corner of the tray.
+  void SetTopLeadingExclusion(const gfx::Size& top_leading_exclusion);
+
+  // Sets the target width for the panel.
+  void SetTargetWidth(int target_width);
+  int target_width() const { return target_width_; }
+
+  // Updates the organizer panel clip if present.
+  void UpdatePanelClipAndShadow();
+
+  // Used to enable dragging.
+  bool IsPositionInWindowCaption(const gfx::Point& point);
+
+ protected:
+  // OrganizerPanelHost:
+  void SetOrganizerPanelView(std::unique_ptr<views::View> panel_view) override;
+  std::unique_ptr<views::View> TakeOrganizerPanelView() override;
+  bool HasOrganizerPanelView() const override;
+
+  // views::View:
+  bool AcceleratorPressed(const ui::Accelerator& accelerator) override;
+  void AddedToWidget() override;
+  void VisibilityChanged(views::View* from, bool visible) override;
+  views::FocusTraversable* GetPaneFocusTraversable() override;
+  void Layout(PassKey) override;
+
+  // views::FocusTraversable:
+  views::FocusSearch* GetFocusSearch() override;
+  views::FocusTraversable* GetFocusTraversableParent() override;
+  views::View* GetFocusTraversableParentView() override;
+
+ private:
+  class EventObserver;
+
+  void ClosePanel();
+
+  const raw_ref<BrowserWindowInterface> browser_;
+  views::FocusSearch focus_search_;
+  raw_ptr<OrganizerPanelControlsView> controls_view_ = nullptr;
+  raw_ptr<ShadowFrameView> shadow_frame_ = nullptr;
+  std::unique_ptr<EventObserver> event_observer_;
+  gfx::Size top_leading_exclusion_;
+  int target_width_ = organizer_panel::kOrganizerPanelMinWidth;
+  raw_ptr<views::View> panel_view_ = nullptr;
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_TABS_ORGANIZER_ORGANIZER_TRAY_VIEW_H_

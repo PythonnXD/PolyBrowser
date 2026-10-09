@@ -1,0 +1,162 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.content.browser;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.view.InputDevice;
+import android.view.MotionEvent;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.mockito.stubbing.Answer;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.content.browser.webcontents.WebContentsImpl;
+import org.chromium.content.browser.webcontents.WebContentsImplJni;
+import org.chromium.content_public.browser.NavigationController;
+import org.chromium.ui.base.EventForwarder;
+import org.chromium.ui.base.MotionEventTestUtils;
+import org.chromium.ui.util.MotionEventUtils;
+
+/** Unit tests for {@link ContentUiEventHandler} */
+@RunWith(BaseRobolectricTestRunner.class)
+public class ContentUiEventHandlerTest {
+    private static final long NATIVE_WEB_CONTENTS_ANDROID = 1;
+    private static final long NATIVE_CONTENT_UI_EVENT_HANDLER = 2;
+
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private NavigationController mNavigationController;
+    @Mock private WebContentsImpl.Natives mWebContentsJniMock;
+    @Mock private ContentUiEventHandler.Natives mContentUiEventHandlerJniMock;
+    @Mock private Gamepad mGamepad;
+    @Mock private JoystickHandler mJoystickHandler;
+    @Mock private EventForwarder mEventForwarder;
+    @Captor private ArgumentCaptor<MotionEvent> mMotionEventCaptor;
+
+    private WebContentsImpl mWebContentsImpl;
+    private ContentUiEventHandler mContentUiEventHandler;
+
+    @Before
+    public void setUp() {
+        WebContentsImplJni.setInstanceForTesting(mWebContentsJniMock);
+        ContentUiEventHandlerJni.setInstanceForTesting(mContentUiEventHandlerJniMock);
+
+        mWebContentsImpl =
+                spy(WebContentsImpl.create(NATIVE_WEB_CONTENTS_ANDROID, mNavigationController));
+        mWebContentsImpl.initializeForTesting();
+
+        when(mGamepad.onGenericMotionEvent(any())).thenReturn(false);
+        mWebContentsImpl.setUserDataForTesting(Gamepad.class, mGamepad);
+
+        when(mJoystickHandler.onGenericMotionEvent(any())).thenReturn(false);
+        mWebContentsImpl.setUserDataForTesting(JoystickHandler.class, mJoystickHandler);
+
+        when(mEventForwarder.isTrackpadToMouseEventConversionEnabled()).thenReturn(true);
+        when(mEventForwarder.createOffsetMotionEventIfNeeded(any()))
+                .thenAnswer(
+                        (Answer<MotionEvent>)
+                                invocation -> {
+                                    Object[] args = invocation.getArguments();
+                                    return (MotionEvent) args[0];
+                                });
+        doReturn(mEventForwarder).when(mWebContentsImpl).getEventForwarder();
+
+        mContentUiEventHandler =
+                ContentUiEventHandler.createForTesting(
+                        mWebContentsImpl, NATIVE_CONTENT_UI_EVENT_HANDLER);
+    }
+
+    @After
+    public void tearDown() {
+        mWebContentsImpl.destroy();
+    }
+
+    @Test
+    public void testOnGenericMotionEventSendsTrackpadClicksToNative() {
+        MotionEvent trackpadLeftClickEvent = getTrackpadLeftClickEvent();
+        mContentUiEventHandler.onGenericMotionEvent(getTrackpadLeftClickEvent());
+
+        MotionEvent trackpadRightClickEvent = getTrackRightClickEvent();
+        mContentUiEventHandler.onGenericMotionEvent(getTrackRightClickEvent());
+
+        verify(mContentUiEventHandlerJniMock, times(2))
+                .sendMouseEvent(
+                        eq(NATIVE_CONTENT_UI_EVENT_HANDLER),
+                        mMotionEventCaptor.capture(),
+                        eq(MotionEventUtils.getEventTimeNanos(trackpadLeftClickEvent)),
+                        eq(EventForwarder.getMouseEventActionButton(trackpadLeftClickEvent)),
+                        eq(MotionEvent.TOOL_TYPE_MOUSE));
+
+        MotionEventTestUtils.assertEquals(
+                mMotionEventCaptor.getAllValues().get(0), trackpadLeftClickEvent);
+        MotionEventTestUtils.assertEquals(
+                mMotionEventCaptor.getAllValues().get(1), trackpadRightClickEvent);
+    }
+
+    private static MotionEvent getTrackpadLeftClickEvent() {
+        return getTrackpadEvent(MotionEvent.ACTION_BUTTON_PRESS, MotionEvent.BUTTON_PRIMARY);
+    }
+
+    private static MotionEvent getTrackRightClickEvent() {
+        return getTrackpadEvent(MotionEvent.ACTION_BUTTON_PRESS, MotionEvent.BUTTON_SECONDARY);
+    }
+
+    private static MotionEvent getTrackpadEvent(int action, int buttonState) {
+        return MotionEvent.obtain(
+                0,
+                1,
+                action,
+                1,
+                getToolTypeFingerProperties(),
+                getPointerCoords(),
+                0,
+                buttonState,
+                0,
+                0,
+                0,
+                0,
+                getTrackpadSource(),
+                0);
+    }
+
+    private static MotionEvent.PointerProperties[] getToolTypeFingerProperties() {
+        MotionEvent.PointerProperties[] pointerPropertiesArray =
+                new MotionEvent.PointerProperties[1];
+        MotionEvent.PointerProperties trackpadProperties = new MotionEvent.PointerProperties();
+        trackpadProperties.id = 7;
+        trackpadProperties.toolType = MotionEvent.TOOL_TYPE_FINGER;
+        pointerPropertiesArray[0] = trackpadProperties;
+        return pointerPropertiesArray;
+    }
+
+    private static MotionEvent.PointerCoords[] getPointerCoords() {
+        MotionEvent.PointerCoords[] pointerCoordsArray = new MotionEvent.PointerCoords[1];
+        MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
+        coords.x = 14;
+        coords.y = 21;
+        pointerCoordsArray[0] = coords;
+        return pointerCoordsArray;
+    }
+
+    private static int getTrackpadSource() {
+        return InputDevice.SOURCE_MOUSE;
+    }
+}

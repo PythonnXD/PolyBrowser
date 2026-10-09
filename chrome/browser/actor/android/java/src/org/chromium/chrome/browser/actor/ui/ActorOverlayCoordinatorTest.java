@@ -1,0 +1,1380 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.actor.ui;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.app.Activity;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.transition.Transition;
+import android.view.Gravity;
+import android.view.InputDevice;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.PointerIcon;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
+import android.view.ViewStub;
+import android.widget.FrameLayout;
+
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.Robolectric;
+import org.robolectric.annotation.GraphicsMode;
+
+import org.chromium.base.UserDataHost;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
+import org.chromium.base.supplier.SettableNullableObservableSupplier;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.browser.actor.ActorKeyedService;
+import org.chromium.chrome.browser.actor.ActorKeyedServiceFactory;
+import org.chromium.chrome.browser.actor.ActorTask;
+import org.chromium.chrome.browser.actor.ActorTaskState;
+import org.chromium.chrome.browser.actor.ui.ActorUiTabController.ActorOverlayState;
+import org.chromium.chrome.browser.actor.ui.ActorUiTabController.HandoffButtonState;
+import org.chromium.chrome.browser.actor.ui.ActorUiTabController.UiTabState;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsVisibilityManager;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.glic.GlicEnabling;
+import org.chromium.chrome.browser.layouts.LayoutManager;
+import org.chromium.chrome.browser.layouts.LayoutType;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabObscuringHandler;
+import org.chromium.chrome.browser.tab.TabObserver;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.chrome.browser.ui.side_ui.SideUiCoordinator;
+import org.chromium.chrome.browser.ui.side_ui.SideUiObserver;
+import org.chromium.chrome.browser.ui.side_ui.SideUiStateProvider;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandlerRegistry;
+import org.chromium.components.omnibox.OmniboxCapabilities;
+import org.chromium.ui.modelutil.PropertyModel;
+
+/** Tests for {@link ActorOverlayCoordinator}. */
+@RunWith(BaseRobolectricTestRunner.class)
+@EnableFeatures(ChromeFeatureList.GLIC)
+public class ActorOverlayCoordinatorTest {
+    @Mock private TabModelSelector mTabModelSelector;
+    @Mock private BrowserControlsVisibilityManager mBrowserControlsVisibilityManager;
+    @Mock private Tab mTab;
+    @Mock private SnackbarManager mSnackbarManager;
+    @Mock private BackPressHandlerRegistry mBackPressHandlerRegistry;
+    @Mock private ActorUiTabController.Natives mTabControllerNatives;
+    @Mock private LayoutManager mLayoutManager;
+    @Mock private Profile mProfile;
+    @Mock private ActorKeyedService mActorKeyedService;
+    @Mock private SideUiStateProvider mSideUiStateProvider;
+    @Captor private ArgumentCaptor<TabObserver> mTabObserverCaptor;
+    @Captor private ArgumentCaptor<ActorKeyedService.Observer> mActorObserverCaptor;
+
+    private ViewStub mViewStub;
+    private Activity mActivity;
+    private static final int TAB_ID = 123;
+
+    private ActorUiTabController mTabController;
+    private TabObscuringHandler mTabObscuringHandler;
+    private ActorOverlayCoordinator mCoordinator;
+    private SettableNullableObservableSupplier<Tab> mCurrentTabSupplier;
+    private UserDataHost mUserDataHost;
+    private SettableMonotonicObservableSupplier<LayoutManager> mLayoutManagerSupplier;
+    private final SettableNonNullObservableSupplier<Boolean> mOmniboxFocusStateSupplier =
+            ObservableSuppliers.createNonNull(false);
+    private SettableMonotonicObservableSupplier<Profile> mProfileSupplier;
+
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Before
+    public void setUp() {
+        GlicEnabling.setEnabledForTesting(true);
+        mActivity = Robolectric.buildActivity(Activity.class).get();
+        mActivity.setTheme(R.style.Theme_BrowserUI_DayNight);
+        FrameLayout parent = new FrameLayout(mActivity);
+        mViewStub = new ViewStub(mActivity, R.layout.actor_overlay);
+        parent.addView(
+                mViewStub,
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        mTabObscuringHandler = new TabObscuringHandler();
+        mUserDataHost = new UserDataHost();
+        Mockito.when(mTab.getUserDataHost()).thenReturn(mUserDataHost);
+        Mockito.when(mTab.getId()).thenReturn(TAB_ID);
+        Mockito.when(mTab.getProfile()).thenReturn(mProfile);
+
+        // Make ActorUiTabController.from() return a real instance.
+        Mockito.when(mTab.getProfile()).thenReturn(mProfile);
+        GlicEnabling.setEnabledForTesting(true);
+        mTabController = ActorUiTabController.from(mTab);
+        ActorUiTabControllerJni.setInstanceForTesting(mTabControllerNatives);
+
+        mCurrentTabSupplier = ObservableSuppliers.createNullable();
+        Mockito.when(mTabModelSelector.getCurrentTabSupplier()).thenReturn(mCurrentTabSupplier);
+        mCurrentTabSupplier.set(mTab);
+
+        mLayoutManagerSupplier = ObservableSuppliers.createMonotonic();
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        mProfileSupplier = ObservableSuppliers.createMonotonic();
+        mProfileSupplier.set(mProfile);
+        ActorKeyedServiceFactory.setForTesting(mActorKeyedService);
+
+        mCoordinator =
+                new ActorOverlayCoordinator(
+                        mViewStub,
+                        mTabModelSelector,
+                        mBrowserControlsVisibilityManager,
+                        mTabObscuringHandler,
+                        mSnackbarManager,
+                        mBackPressHandlerRegistry,
+                        mLayoutManagerSupplier,
+                        mProfileSupplier,
+                        mOmniboxFocusStateSupplier,
+                        mSideUiStateProvider);
+        mLayoutManagerSupplier.set(mLayoutManager);
+    }
+
+    private FrameLayout getContainer() {
+        FrameLayout container = mCoordinator.getContainerForTesting();
+        Assert.assertNotNull(container);
+        return container;
+    }
+
+    private ActorOverlayView getOverlayView() {
+        ActorOverlayView view = mCoordinator.getOverlayViewForTesting();
+        Assert.assertNotNull(view);
+        return view;
+    }
+
+    private ActorHandoffButtonView getHandoffButtonView() {
+        ActorHandoffButtonView view = mCoordinator.getHandoffButtonViewForTesting();
+        Assert.assertNotNull(view);
+        return view;
+    }
+
+    private void assertOverlayMargins(int left, int top, int right, int bottom) {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) getOverlayView().getLayoutParams();
+        Assert.assertEquals(left, lp.leftMargin);
+        Assert.assertEquals(top, lp.topMargin);
+        Assert.assertEquals(right, lp.rightMargin);
+        Assert.assertEquals(bottom, lp.bottomMargin);
+    }
+
+    /** Asserts the overlay's visibility. An overlay that is not yet inflated counts as GONE. */
+    private void assertOverlayVisibility(int expected) {
+        ActorOverlayView view = mCoordinator.getOverlayViewForTesting();
+        Assert.assertEquals(expected, view == null ? View.GONE : view.getVisibility());
+    }
+
+    /**
+     * Returns whether the overlay ViewStub has been inflated (and thus removed from its parent).
+     */
+    private boolean isOverlayStubInflated() {
+        return mViewStub.getParent() == null;
+    }
+
+    /** Creates a standalone overlay view that is not managed by the coordinator. */
+    private ActorOverlayView createStandaloneOverlayView() {
+        FrameLayout container =
+                (FrameLayout) LayoutInflater.from(mActivity).inflate(R.layout.actor_overlay, null);
+        return container.findViewById(R.id.actor_overlay_scrim);
+    }
+
+    /** Creates a standalone handoff button view that is not managed by the coordinator. */
+    private ActorHandoffButtonView createStandaloneHandoffButtonView() {
+        ActorHandoffButtonView buttonView =
+                (ActorHandoffButtonView)
+                        LayoutInflater.from(mActivity).inflate(R.layout.actor_handoff_button, null);
+        buttonView.setLayoutParams(
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        return buttonView;
+    }
+
+    private void dispatchHover(ActorOverlayView view, int action, float x, float y) {
+        MotionEvent event = MotionEvent.obtain(0, 0, action, x, y, 0);
+        view.dispatchHoverEvent(event);
+        event.recycle();
+    }
+
+    private void dispatchTouch(ActorOverlayView view, int action, float x, float y) {
+        MotionEvent event = MotionEvent.obtain(0, 0, action, x, y, 0);
+        view.dispatchTouchEvent(event);
+        event.recycle();
+    }
+
+    private boolean hasStateHovered(int[] state) {
+        for (int attr : state) {
+            if (attr == android.R.attr.state_hovered) return true;
+        }
+        return false;
+    }
+
+    private boolean hasStatePressed(int[] state) {
+        for (int attr : state) {
+            if (attr == android.R.attr.state_pressed) return true;
+        }
+        return false;
+    }
+
+    @Test
+    public void testConstruction() {
+        Assert.assertNotNull(mCoordinator.getMediator());
+        Assert.assertFalse(mCoordinator.isViewInflatedForTesting());
+        Assert.assertFalse(isOverlayStubInflated());
+        Assert.assertTrue(mCurrentTabSupplier.hasObservers());
+        verify(mBrowserControlsVisibilityManager).addObserver(any());
+        verify(mLayoutManager).addObserver(any());
+        verify(mBackPressHandlerRegistry)
+                .addHandler(any(), eq(BackPressHandler.Type.ACTOR_OVERLAY));
+    }
+
+    @Test
+    public void testHideOnLayoutTypeChanged() {
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        verify(mLayoutManager).addObserver(mediator);
+
+        ActorUiTabController tabController = ActorUiTabController.from(mTab);
+        tabController.onUiTabStateChange(
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ true,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false));
+
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        // Change layout type to TAB_SWITCHER.
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.HUB);
+        mediator.onStartedShowing(LayoutType.BROWSING);
+
+        assertOverlayVisibility(View.GONE);
+
+        // Change layout type back to BROWSING.
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mediator.onStartedShowing(LayoutType.HUB);
+
+        assertOverlayVisibility(View.VISIBLE);
+    }
+
+    @Test
+    public void testTaskStateChangedTriggersVisibility() {
+        // Verify that ActorKeyedService observer is registered.
+        verify(mActorKeyedService).addObserver(mActorObserverCaptor.capture());
+        ActorKeyedService.Observer observer = mActorObserverCaptor.getValue();
+
+        // Set up tab state to be active.
+        UiTabState tabState =
+                new UiTabState(
+                        TAB_ID,
+                        new ActorOverlayState(true, false, false),
+                        new HandoffButtonState(false, 0),
+                        0,
+                        false);
+        mTabController.onUiTabStateChange(tabState);
+        mCoordinator.getModelForTesting().set(ActorOverlayProperties.VISIBLE, false);
+
+        // CAN_SHOW is true by default from Coordinator init if layout is BROWSING.
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        assertOverlayVisibility(View.GONE);
+
+        // Trigger task state change.
+        observer.onTaskStateChanged(1, ActorTaskState.ACTING);
+
+        // Verify that view visibility is updated to VISIBLE.
+        assertOverlayVisibility(View.VISIBLE);
+    }
+
+    @Test
+    public void testSnackbarOnClicked() {
+        OnClickListener clickListener =
+                mCoordinator.getModelForTesting().get(ActorOverlayProperties.ON_CLICK_LISTENER);
+        Assert.assertNotNull(clickListener);
+
+        // Snackbar should be shown if not already showing.
+        when(mSnackbarManager.isShowing()).thenReturn(false);
+        clickListener.onClick(new View(mActivity));
+        verify(mSnackbarManager).showSnackbar(any());
+
+        // Snackbar should NOT be shown if already showing.
+        clearInvocations(mSnackbarManager);
+        when(mSnackbarManager.isShowing()).thenReturn(true);
+        clickListener.onClick(new View(mActivity));
+        verify(mSnackbarManager, Mockito.never()).showSnackbar(any());
+    }
+
+    @Test
+    public void testSnackbarDismissedOnTabSwitch() {
+        OnClickListener clickListener =
+                mCoordinator.getModelForTesting().get(ActorOverlayProperties.ON_CLICK_LISTENER);
+        Assert.assertNotNull(clickListener);
+
+        // Show snackbar.
+        when(mSnackbarManager.isShowing()).thenReturn(false);
+        clickListener.onClick(new View(mActivity));
+        verify(mSnackbarManager).showSnackbar(any());
+
+        // Switch tab.
+        clearInvocations(mSnackbarManager);
+        mCurrentTabSupplier.set(null);
+
+        // Verify snackbar dismissed.
+        verify(mSnackbarManager).dismissSnackbars(any());
+    }
+
+    @Test
+    public void testVisibility() {
+
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        // CAN_SHOW is true by default from Coordinator init, so VISIBLE=true makes view visible.
+        assertOverlayVisibility(View.VISIBLE);
+
+        mediator.setOverlayVisible(false);
+        assertOverlayVisibility(View.GONE);
+    }
+
+    @Test
+    public void testHideOnTabHidden() {
+        verify(mTab).addObserver(mTabObserverCaptor.capture());
+
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        mTabObserverCaptor.getValue().onHidden(mTab, 0);
+        assertOverlayVisibility(View.GONE);
+    }
+
+    @Test
+    public void testShowOnTabShown() {
+        verify(mTab).addObserver(mTabObserverCaptor.capture());
+
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+
+        ActorUiTabController tabController = ActorUiTabController.from(mTab);
+        tabController.onUiTabStateChange(
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ true,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false));
+
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        // Mock the tab to be hidden to properly test onHidden
+        Mockito.when(mTab.isHidden()).thenReturn(true);
+        mTabObserverCaptor.getValue().onHidden(mTab, 0);
+        assertOverlayVisibility(View.GONE);
+
+        // Change layout to TAB_SWITCHER to prevent line 317 from showing it eagerly
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.HUB);
+
+        // Set state back to active to ensure onShown shows it
+        tabController.onUiTabStateChange(
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ true,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false));
+
+        // Restore layout to BROWSING before onShown
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        // Mock the tab to be shown again
+        Mockito.when(mTab.isHidden()).thenReturn(false);
+        mTabObserverCaptor.getValue().onShown(mTab, 0);
+        assertOverlayVisibility(View.VISIBLE);
+    }
+
+    @Test
+    public void testNoShowOnTabShownIfStateDeactivatedWhileHidden() {
+        verify(mTab).addObserver(mTabObserverCaptor.capture());
+
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        // Hide it first.
+        mTabObserverCaptor.getValue().onHidden(mTab, 0);
+        assertOverlayVisibility(View.GONE);
+
+        // While hidden, task state changes to inactive!
+        ActorUiTabController tabController = ActorUiTabController.from(mTab);
+        UiTabState state =
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ false,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false);
+
+        tabController.onUiTabStateChange(state);
+
+        // Now bring back the tab to SHOWN!
+        mTabObserverCaptor.getValue().onShown(mTab, 0);
+
+        // It should NOT become visible because trigger state turned false.
+        assertOverlayVisibility(View.GONE);
+    }
+
+    @Test
+    public void testUpdateCanShowOverlayOnTabShown() {
+
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        // Simulate a new tab showing. This should trigger updateCanShowOverlay, which currently
+        // sets CAN_SHOW to false for native pages.
+        Mockito.when(mTab.isNativePage()).thenReturn(true);
+
+        // Trigger LayoutType change before setting tab to null
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.SIMPLE_ANIMATION);
+        mediator.onStartedShowing(LayoutType.SIMPLE_ANIMATION);
+
+        mCurrentTabSupplier.set(null);
+
+        // Switch back to BROWSING and set the tab
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mediator.onStartedShowing(LayoutType.BROWSING);
+
+        mCurrentTabSupplier.set(mTab);
+
+        assertOverlayVisibility(View.GONE);
+    }
+
+    @Test
+    public void testUpdateCanShowOverlayOnContentChanged() {
+        verify(mTab).addObserver(mTabObserverCaptor.capture());
+
+        ActorUiTabController tabController = ActorUiTabController.from(mTab);
+        tabController.onUiTabStateChange(
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ true,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ true, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false));
+
+        // Tab starts on a native page (e.g. NTP). Overlay and handoff button should be hidden.
+        Mockito.when(mTab.isNativePage()).thenReturn(true);
+        mTabObserverCaptor.getValue().onContentChanged(mTab);
+        assertOverlayVisibility(View.GONE);
+        Assert.assertFalse(mCoordinator.getModelForTesting().get(ActorOverlayProperties.VISIBLE));
+        Assert.assertFalse(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+
+        // Tab navigates away from the native page to a web page. Overlay and handoff button should
+        // become visible immediately on content change.
+        Mockito.when(mTab.isNativePage()).thenReturn(false);
+        mTabObserverCaptor.getValue().onContentChanged(mTab);
+        assertOverlayVisibility(View.VISIBLE);
+        Assert.assertTrue(mCoordinator.getModelForTesting().get(ActorOverlayProperties.VISIBLE));
+        Assert.assertTrue(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+    }
+
+    @Test
+    public void testTabSwitchToNullHidesOverlay() {
+        mCurrentTabSupplier.set(mTab);
+
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        mCurrentTabSupplier.set(null);
+        assertOverlayVisibility(View.GONE);
+        Assert.assertFalse(mCoordinator.getModelForTesting().get(ActorOverlayProperties.VISIBLE));
+    }
+
+    @Test
+    public void testTabSwitchToClosingTab() {
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        Mockito.when(mTab.isClosing()).thenReturn(true);
+
+        // Trigger LayoutType change before setting tab to null
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.SIMPLE_ANIMATION);
+        mediator.onStartedShowing(LayoutType.SIMPLE_ANIMATION);
+
+        mCurrentTabSupplier.set(null);
+
+        // Switch back to BROWSING and set the tab
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mediator.onStartedShowing(LayoutType.BROWSING);
+
+        mCurrentTabSupplier.set(mTab);
+
+        assertOverlayVisibility(View.GONE);
+        Assert.assertFalse(mCoordinator.getModelForTesting().get(ActorOverlayProperties.VISIBLE));
+    }
+
+    @Test
+    public void testTabSwitchToDestroyedTab() {
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        Mockito.when(mTab.isDestroyed()).thenReturn(true);
+
+        // Trigger LayoutType change before setting tab to null
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.SIMPLE_ANIMATION);
+        mediator.onStartedShowing(LayoutType.SIMPLE_ANIMATION);
+
+        mCurrentTabSupplier.set(null);
+
+        // Switch back to BROWSING and set the tab
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mediator.onStartedShowing(LayoutType.BROWSING);
+
+        mCurrentTabSupplier.set(mTab);
+
+        assertOverlayVisibility(View.GONE);
+        Assert.assertFalse(mCoordinator.getModelForTesting().get(ActorOverlayProperties.VISIBLE));
+    }
+
+    @Test
+    public void testTabSwitchToHiddenTab() {
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        Mockito.when(mTab.isHidden()).thenReturn(true);
+
+        // Trigger LayoutType change before setting tab to null
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.SIMPLE_ANIMATION);
+        mediator.onStartedShowing(LayoutType.SIMPLE_ANIMATION);
+
+        mCurrentTabSupplier.set(null);
+
+        // Switch back to BROWSING and set the tab
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mediator.onStartedShowing(LayoutType.BROWSING);
+
+        mCurrentTabSupplier.set(mTab);
+
+        assertOverlayVisibility(View.GONE);
+        Assert.assertFalse(mCoordinator.getModelForTesting().get(ActorOverlayProperties.VISIBLE));
+    }
+
+    @Test
+    public void testInitialStateAppliedOnTabSwitch() {
+        ActorUiTabController tabController = ActorUiTabController.from(mTab);
+        UiTabState state =
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ true,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false);
+
+        // Set initial state on the tab controller before it's observed.
+        tabController.onUiTabStateChange(state);
+
+        // Switching to the tab should immediately apply its active state.
+        mCurrentTabSupplier.set(mTab);
+        assertOverlayVisibility(View.VISIBLE);
+    }
+
+    @Test
+    public void testResetVisibilityIfNoInitialState() {
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+        mediator.setOverlayVisible(true);
+        assertOverlayVisibility(View.VISIBLE);
+
+        // Switch to a new tab that has no state.
+        Tab tab2 = Mockito.mock(Tab.class);
+        UserDataHost userDataHost2 = new UserDataHost();
+        Mockito.when(tab2.getUserDataHost()).thenReturn(userDataHost2);
+        Mockito.when(tab2.getProfile()).thenReturn(mProfile);
+
+        mCurrentTabSupplier.set(tab2);
+        // It should hide because no state is available for tab2.
+        assertOverlayVisibility(View.GONE);
+    }
+
+    @Test
+    public void testVisibilityDrivenByTabController() {
+
+        // Initial state: CAN_SHOW is true (default in Mediator for non-native tab),
+        // VISIBLE is false (default in Mediator).
+        mCurrentTabSupplier.set(mTab);
+
+        // Set state via TabController.
+        ActorUiTabController tabController = ActorUiTabController.from(mTab);
+        UiTabState state =
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ true,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false);
+
+        // Use the package-private testing method.
+        tabController.onUiTabStateChange(state);
+
+        assertOverlayVisibility(View.VISIBLE);
+
+        // Now set isActive to false.
+        UiTabState state2 =
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ false,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false);
+
+        tabController.onUiTabStateChange(state2);
+
+        assertOverlayVisibility(View.GONE);
+    }
+
+    @Test
+    public void testTabSwitchUnregistersObserver() {
+        mCurrentTabSupplier.set(mTab);
+        ActorUiTabController tabController1 = ActorUiTabController.from(mTab);
+
+        Tab tab2 = Mockito.mock(Tab.class);
+        UserDataHost userDataHost2 = new UserDataHost();
+        Mockito.when(tab2.getUserDataHost()).thenReturn(userDataHost2);
+        Mockito.when(tab2.getProfile()).thenReturn(mProfile);
+        mCurrentTabSupplier.set(tab2);
+        ActorUiTabController tabController2 = ActorUiTabController.from(tab2);
+
+        // tabController1 should no longer have the mediator as observer.
+        // We can check this by triggering an update on tabController1 and seeing if it affects
+        // the overlay view.
+        UiTabState state =
+                new UiTabState(
+                        /* tabId= */ TAB_ID,
+                        /* actorOverlay= */ new ActorOverlayState(
+                                /* isActive= */ true,
+                                /* borderGlowVisible= */ false,
+                                /* mouseDown= */ false),
+                        /* handoffButton= */ new HandoffButtonState(
+                                /* isActive= */ false, /* controller= */ 0),
+                        /* tabIndicator= */ 0,
+                        /* borderGlowVisible= */ false);
+
+        tabController1.onUiTabStateChange(state);
+
+        assertOverlayVisibility(View.GONE);
+
+        // Trigger on tabController2 should work.
+        tabController2.onUiTabStateChange(state);
+        assertOverlayVisibility(View.VISIBLE);
+    }
+
+    @Test
+    public void testMargins() {
+        ArgumentCaptor<BrowserControlsStateProvider.Observer> observerCaptor =
+                ArgumentCaptor.forClass(BrowserControlsStateProvider.Observer.class);
+        verify(mBrowserControlsVisibilityManager).addObserver(observerCaptor.capture());
+
+        observerCaptor.getValue().onTopControlsHeightChanged(100, 0);
+        observerCaptor.getValue().onBottomControlsHeightChanged(50, 0);
+        observerCaptor.getValue().onControlsPositionChanged(ControlsPosition.BOTTOM);
+
+        Assert.assertEquals(
+                100, mCoordinator.getModelForTesting().get(ActorOverlayProperties.TOP_MARGIN));
+        Assert.assertEquals(
+                50, mCoordinator.getModelForTesting().get(ActorOverlayProperties.BOTTOM_MARGIN));
+        Assert.assertEquals(
+                ControlsPosition.BOTTOM,
+                mCoordinator.getModelForTesting().get(ActorOverlayProperties.CONTROLS_POSITION));
+
+        mCoordinator.showOverlayForTesting(true);
+        assertOverlayMargins(0, 100, 0, 0);
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) getContainer().getLayoutParams();
+        Assert.assertEquals(50, lp.bottomMargin);
+        Assert.assertEquals(0, lp.topMargin);
+    }
+
+    @Test
+    public void testObscuringHandler() {
+        ActorOverlayMediator mediator = mCoordinator.getMediator();
+
+        Assert.assertFalse(mTabObscuringHandler.isTabContentObscured());
+
+        // CAN_SHOW is true by default. Setting VISIBLE to true makes it visible.
+        mediator.setOverlayVisible(true);
+        Assert.assertTrue(mTabObscuringHandler.isTabContentObscured());
+
+        // Setting VISIBLE to false hides it.
+        mediator.setOverlayVisible(false);
+        Assert.assertFalse(mTabObscuringHandler.isTabContentObscured());
+    }
+
+    @Test
+    public void testTakeOverTaskButtonVisibility() {
+        Assert.assertNull(mCoordinator.getHandoffButtonViewForTesting());
+
+        mCurrentTabSupplier.set(mTab);
+
+        // State 1: handoff button is active
+        UiTabState stateWithActiveHandoff =
+                new UiTabState(
+                        TAB_ID,
+                        new ActorOverlayState(true, false, false),
+                        new HandoffButtonState(true, 0),
+                        0,
+                        false);
+        mTabController.onUiTabStateChange(stateWithActiveHandoff);
+
+        // The button should be visible
+        Assert.assertTrue(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+        Assert.assertEquals(View.VISIBLE, getHandoffButtonView().getVisibility());
+        Assert.assertNotNull(getHandoffButtonView().findViewById(R.id.take_over_task_button));
+
+        // State 2: handoff button becomes inactive
+        UiTabState stateWithInactiveHandoff =
+                new UiTabState(
+                        TAB_ID,
+                        new ActorOverlayState(true, false, false),
+                        new HandoffButtonState(false, 0),
+                        0,
+                        false);
+        mTabController.onUiTabStateChange(stateWithInactiveHandoff);
+
+        // The button should be hidden
+        Assert.assertFalse(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+        Assert.assertEquals(View.GONE, getHandoffButtonView().getVisibility());
+    }
+
+    private PropertyModel showActiveOverlayAndTakeOverButton() {
+        mCurrentTabSupplier.set(mTab);
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        UiTabState activeState =
+                new UiTabState(
+                        TAB_ID,
+                        new ActorOverlayState(true, false, false),
+                        new HandoffButtonState(true, 0),
+                        0,
+                        false);
+        mTabController.onUiTabStateChange(activeState);
+
+        PropertyModel model = mCoordinator.getModelForTesting();
+        Assert.assertTrue(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertTrue(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+        return model;
+    }
+
+    @Test
+    public void testOmniboxFocusHidesOverlayAndTakeOverButton() {
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(false);
+        PropertyModel model = showActiveOverlayAndTakeOverButton();
+
+        // The full-width suggestions list would be drawn under the overlay, so the overlay glow
+        // and the handoff button must be suppressed.
+        mOmniboxFocusStateSupplier.set(true);
+
+        Assert.assertFalse(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertFalse(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+
+        // Unfocusing restores both.
+        mOmniboxFocusStateSupplier.set(false);
+
+        Assert.assertTrue(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertTrue(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+    }
+
+    @Test
+    public void testOmniboxFocusOnDesktopKeepsOverlayAndHidesTakeOverButton() {
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(true);
+        PropertyModel model = showActiveOverlayAndTakeOverButton();
+
+        // On desktop platforms the suggestions popover is drawn above the overlay, so the overlay
+        // stays visible, but the handoff button is hidden while the omnibox is focused.
+        mOmniboxFocusStateSupplier.set(true);
+
+        Assert.assertTrue(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertFalse(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+
+        mOmniboxFocusStateSupplier.set(false);
+
+        Assert.assertTrue(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertTrue(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+    }
+
+    @Test
+    public void testOmniboxFocusOnDesktopKeepsInactiveTakeOverButtonHidden() {
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(true);
+        mCurrentTabSupplier.set(mTab);
+        Mockito.when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        UiTabState overlayOnlyState =
+                new UiTabState(
+                        TAB_ID,
+                        new ActorOverlayState(/* isActive= */ true, false, false),
+                        new HandoffButtonState(/* isActive= */ false, 0),
+                        0,
+                        false);
+        mTabController.onUiTabStateChange(overlayOnlyState);
+
+        PropertyModel model = mCoordinator.getModelForTesting();
+        Assert.assertTrue(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertFalse(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+
+        // The inactive handoff button must stay hidden across omnibox focus transitions.
+        mOmniboxFocusStateSupplier.set(true);
+
+        Assert.assertTrue(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertFalse(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+
+        mOmniboxFocusStateSupplier.set(false);
+
+        Assert.assertTrue(model.get(ActorOverlayProperties.VISIBLE));
+        Assert.assertFalse(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+    }
+
+    @Test
+    public void testButtonDrawnFirstThenOverlayDrawn() {
+        mCurrentTabSupplier.set(mTab);
+
+        // State 1: handoff button is active while overlay is inactive.
+        UiTabState stateWithButtonOnly =
+                new UiTabState(
+                        TAB_ID,
+                        new ActorOverlayState(/* isActive= */ false, false, false),
+                        new HandoffButtonState(/* isActive= */ true, 0),
+                        0,
+                        false);
+        mTabController.onUiTabStateChange(stateWithButtonOnly);
+
+        // Overlay and button should not be inflated yet.
+        Assert.assertFalse(mCoordinator.isViewInflatedForTesting());
+        Assert.assertFalse(isOverlayStubInflated());
+        Assert.assertNull(mCoordinator.getHandoffButtonViewForTesting());
+        Assert.assertTrue(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+
+        // State 2: overlay also becomes active.
+        UiTabState stateWithBothActive =
+                new UiTabState(
+                        TAB_ID,
+                        new ActorOverlayState(/* isActive= */ true, false, false),
+                        new HandoffButtonState(/* isActive= */ true, 0),
+                        0,
+                        false);
+        mTabController.onUiTabStateChange(stateWithBothActive);
+
+        // Both overlay view and handoff button view should now be inflated and visible.
+        Assert.assertTrue(mCoordinator.isViewInflatedForTesting());
+        Assert.assertTrue(isOverlayStubInflated());
+        Assert.assertNull(mCoordinator.getHandoffButtonStubForTesting());
+        Assert.assertEquals(View.VISIBLE, getHandoffButtonView().getVisibility());
+    }
+
+    @Test
+    public void testTakeOverTaskButtonClicked() {
+        OnClickListener clickListener =
+                mCoordinator
+                        .getModelForTesting()
+                        .get(ActorOverlayProperties.ON_TAKE_OVER_CLICK_LISTENER);
+        Assert.assertNotNull(clickListener);
+
+        ActorTask activeTask = Mockito.mock(ActorTask.class);
+        int taskId = 456;
+        when(mTabModelSelector.getCurrentTabId()).thenReturn(TAB_ID);
+        when(mActorKeyedService.getActiveTaskIdOnTab(TAB_ID)).thenReturn(taskId);
+        when(mActorKeyedService.getTask(taskId)).thenReturn(activeTask);
+
+        clickListener.onClick(new View(mActivity));
+        verify(activeTask).takeOverTask();
+    }
+
+    @Test
+    public void testHoverStateWithHandoffButton() {
+        ActorOverlayView view = createStandaloneOverlayView();
+        ActorHandoffButtonView handoffButtonView = createStandaloneHandoffButtonView();
+        view.addView(handoffButtonView);
+        View button = handoffButtonView.getButton();
+        Assert.assertNotNull(button);
+        handoffButtonView.setVisibility(View.VISIBLE);
+
+        // Measure and layout so children have bounds.
+        view.measure(
+                View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY));
+        view.layout(0, 0, 800, 600);
+
+        // Initially not hovered.
+        view.setHovered(false);
+        button.setHovered(false);
+        view.refreshDrawableState();
+        Assert.assertFalse(hasStateHovered(view.getDrawableState()));
+
+        // Directly hovering over ActorOverlayView.
+        view.setHovered(true);
+        view.refreshDrawableState();
+        Assert.assertTrue(hasStateHovered(view.getDrawableState()));
+
+        // Hovering over the take over button inside the overlay view.
+        view.setHovered(false);
+        float buttonX = handoffButtonView.getX() + button.getX() + button.getWidth() / 2f;
+        float buttonY = handoffButtonView.getY() + button.getY() + button.getHeight() / 2f;
+        dispatchHover(view, MotionEvent.ACTION_HOVER_ENTER, buttonX, buttonY);
+        Assert.assertTrue(hasStateHovered(view.getDrawableState()));
+
+        // Exiting hover completely.
+        dispatchHover(view, MotionEvent.ACTION_HOVER_EXIT, -1f, -1f);
+        Assert.assertFalse(hasStateHovered(view.getDrawableState()));
+
+        // Touch event outside the button should not be consumed.
+        MotionEvent touchEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 2f, 2f, 0);
+        Assert.assertFalse(handoffButtonView.onTouchEvent(touchEvent));
+    }
+
+    @Test
+    public void testHoverExitDuringMousePress() {
+        ActorOverlayView view = createStandaloneOverlayView();
+        view.measure(
+                View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY));
+        view.layout(0, 0, 800, 600);
+
+        dispatchHover(view, MotionEvent.ACTION_HOVER_ENTER, 100f, 100f);
+        Assert.assertTrue(hasStateHovered(view.getDrawableState()));
+
+        // ACTION_HOVER_EXIT inside view bounds (e.g. trackpad tap/click) should retain hover state.
+        dispatchHover(view, MotionEvent.ACTION_HOVER_EXIT, 100f, 100f);
+        Assert.assertTrue(view.isHovered());
+        Assert.assertTrue(hasStateHovered(view.getDrawableState()));
+
+        // ACTION_HOVER_EXIT outside view bounds (e.g. mouse cursor moved away) should exit hover.
+        dispatchHover(view, MotionEvent.ACTION_HOVER_EXIT, -10f, -10f);
+        Assert.assertFalse(view.isHovered());
+        Assert.assertFalse(hasStateHovered(view.getDrawableState()));
+    }
+
+    @Test
+    public void testClickAndDragOutClearsHover() {
+        ActorOverlayView view = createStandaloneOverlayView();
+        view.measure(
+                View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY));
+        view.layout(0, 0, 800, 600);
+
+        // Hover enter
+        dispatchHover(view, MotionEvent.ACTION_HOVER_ENTER, 100f, 100f);
+        Assert.assertTrue(hasStateHovered(view.getDrawableState()));
+
+        // Start click inside bounds (ACTION_HOVER_EXIT inside, then ACTION_DOWN)
+        dispatchHover(view, MotionEvent.ACTION_HOVER_EXIT, 100f, 100f);
+        dispatchTouch(view, MotionEvent.ACTION_DOWN, 100f, 100f);
+        Assert.assertTrue(hasStateHovered(view.getDrawableState()));
+
+        // Drag out (ACTION_MOVE outside view bounds)
+        dispatchTouch(view, MotionEvent.ACTION_MOVE, -10f, -10f);
+        Assert.assertTrue(hasStateHovered(view.getDrawableState()));
+
+        // Release outside (ACTION_UP outside) -> should clear hover state.
+        dispatchTouch(view, MotionEvent.ACTION_UP, -10f, -10f);
+        Assert.assertFalse(hasStateHovered(view.getDrawableState()));
+    }
+
+    @Test
+    public void testPressedState() {
+        ActorOverlayView view = createStandaloneOverlayView();
+        view.setPressed(false);
+        view.refreshDrawableState();
+        Assert.assertFalse(hasStatePressed(view.getDrawableState()));
+
+        view.setPressed(true);
+        view.refreshDrawableState();
+        Assert.assertTrue(hasStatePressed(view.getDrawableState()));
+
+        view.setPressed(false);
+        view.refreshDrawableState();
+        Assert.assertFalse(hasStatePressed(view.getDrawableState()));
+    }
+
+    @Test
+    public void testInputInterception() {
+        ActorOverlayView view = createStandaloneOverlayView();
+        ActorHandoffButtonView handoffButtonView = createStandaloneHandoffButtonView();
+        MotionEvent.PointerProperties pp = new MotionEvent.PointerProperties();
+        pp.id = 0;
+        pp.toolType = MotionEvent.TOOL_TYPE_MOUSE;
+
+        MotionEvent.PointerCoords pc = new MotionEvent.PointerCoords();
+        pc.x = 100f;
+        pc.y = 100f;
+
+        MotionEvent mouseEvent =
+                MotionEvent.obtain(
+                        0,
+                        0,
+                        MotionEvent.ACTION_SCROLL,
+                        1,
+                        new MotionEvent.PointerProperties[] {pp},
+                        new MotionEvent.PointerCoords[] {pc},
+                        0,
+                        0,
+                        1.0f,
+                        1.0f,
+                        0,
+                        0,
+                        InputDevice.SOURCE_MOUSE,
+                        0);
+
+        Assert.assertTrue(view.onGenericMotionEvent(mouseEvent));
+        mouseEvent.recycle();
+
+        PointerIcon expectedIcon =
+                PointerIcon.getSystemIcon(view.getContext(), PointerIcon.TYPE_NO_DROP);
+        Assert.assertEquals(expectedIcon, view.getPointerIcon());
+
+        PointerIcon expectedButtonIcon =
+                PointerIcon.getSystemIcon(view.getContext(), PointerIcon.TYPE_HAND);
+        Assert.assertEquals(expectedButtonIcon, handoffButtonView.getButton().getPointerIcon());
+    }
+
+    @Test
+    public void testSideUiIntegration() {
+        ArgumentCaptor<SideUiObserver> observerCaptor =
+                ArgumentCaptor.forClass(SideUiObserver.class);
+        verify(mSideUiStateProvider).addObserver(observerCaptor.capture());
+        SideUiObserver observer = observerCaptor.getValue();
+        Assert.assertNotNull(observer);
+
+        SideUiCoordinator.SideUiSpecs specs = new SideUiCoordinator.SideUiSpecs(120, 80);
+        SideUiCoordinator.UiUpdateRequest request =
+                SideUiCoordinator.UiUpdateRequest.getRequestForTesting(
+                        /* suppressAnimations= */ true);
+
+        // Test onSideUiSpecsChanged updates margins in model
+        observer.onSideUiSpecsChanged(specs, request);
+
+        PropertyModel model = mCoordinator.getModelForTesting();
+        Assert.assertEquals(120, model.get(ActorOverlayProperties.LEFT_MARGIN));
+        Assert.assertEquals(80, model.get(ActorOverlayProperties.RIGHT_MARGIN));
+
+        // Test onPreSideUiSpecsChange returns null when view is not visible / not inflated
+        Assert.assertNull(observer.onPreSideUiSpecsChange(specs, request));
+
+        // Test onPreSideUiSpecsChange returns transition when visible
+        mCoordinator.showOverlayForTesting(true);
+        Transition transition = observer.onPreSideUiSpecsChange(specs, request);
+        Assert.assertNotNull(transition);
+    }
+
+    @Test
+    public void testSideUiNullProvider() {
+        ActorOverlayCoordinator coordinator =
+                new ActorOverlayCoordinator(
+                        mViewStub,
+                        mTabModelSelector,
+                        mBrowserControlsVisibilityManager,
+                        mTabObscuringHandler,
+                        mSnackbarManager,
+                        mBackPressHandlerRegistry,
+                        mLayoutManagerSupplier,
+                        mProfileSupplier,
+                        mOmniboxFocusStateSupplier,
+                        /* sideUiStateProvider= */ null);
+
+        PropertyModel model = coordinator.getModelForTesting();
+        Assert.assertEquals(0, model.get(ActorOverlayProperties.LEFT_MARGIN));
+        Assert.assertEquals(0, model.get(ActorOverlayProperties.RIGHT_MARGIN));
+    }
+
+    @Test
+    public void testModelChangesPriorToInflationDoNotNpeAndBindOnInflation() {
+        // Verify view is not inflated initially.
+        Assert.assertFalse(mCoordinator.isViewInflatedForTesting());
+        Assert.assertFalse(isOverlayStubInflated());
+
+        // Mutate various model properties while the view is uninflated.
+        PropertyModel model = mCoordinator.getModelForTesting();
+        model.set(ActorOverlayProperties.LEFT_MARGIN, 20);
+        model.set(ActorOverlayProperties.TOP_MARGIN, 30);
+        model.set(ActorOverlayProperties.RIGHT_MARGIN, 40);
+        model.set(ActorOverlayProperties.BOTTOM_MARGIN, 50);
+        model.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, true);
+
+        // Verify properties are updated safely in the model without any NPE or ViewStub inflation.
+        Assert.assertEquals(20, model.get(ActorOverlayProperties.LEFT_MARGIN));
+        Assert.assertEquals(30, model.get(ActorOverlayProperties.TOP_MARGIN));
+        Assert.assertEquals(40, model.get(ActorOverlayProperties.RIGHT_MARGIN));
+        Assert.assertEquals(50, model.get(ActorOverlayProperties.BOTTOM_MARGIN));
+        Assert.assertTrue(model.get(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE));
+        Assert.assertFalse(mCoordinator.isViewInflatedForTesting());
+        Assert.assertFalse(isOverlayStubInflated());
+
+        // Transition VISIBLE to true, which should trigger lazy inflation and initial bind.
+        mCoordinator.showOverlayForTesting(true);
+
+        // Verify view is now inflated and all buffered properties are bound.
+        Assert.assertTrue(mCoordinator.isViewInflatedForTesting());
+        Assert.assertTrue(isOverlayStubInflated());
+        assertOverlayMargins(0, 30, 0, 0);
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) getContainer().getLayoutParams();
+        Assert.assertEquals(20, lp.leftMargin);
+        Assert.assertEquals(0, lp.topMargin);
+        Assert.assertEquals(40, lp.rightMargin);
+        Assert.assertEquals(50, lp.bottomMargin);
+        Assert.assertNull(mCoordinator.getHandoffButtonStubForTesting());
+        Assert.assertEquals(View.VISIBLE, getHandoffButtonView().getVisibility());
+
+        // Verify subsequent updates while inflated propagate directly to the view.
+        model.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, false);
+        Assert.assertEquals(View.GONE, getHandoffButtonView().getVisibility());
+    }
+
+    @Test
+    public void testHandoffButtonLayout_ControlsPositionTop() {
+        mCoordinator.showOverlayForTesting(true);
+        PropertyModel model = mCoordinator.getModelForTesting();
+        model.set(ActorOverlayProperties.TOP_MARGIN, 100);
+        model.set(ActorOverlayProperties.CONTROLS_POSITION, ControlsPosition.TOP);
+        model.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, true);
+
+        int buttonContainerHeight =
+                mActivity.getResources().getDimensionPixelSize(R.dimen.actor_overlay_button_height)
+                        + 2
+                                * mActivity
+                                        .getResources()
+                                        .getDimensionPixelSize(
+                                                R.dimen.actor_overlay_button_glow_padding);
+        int expectedTopMargin = 100 - buttonContainerHeight / 2;
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(expectedTopMargin, lp.topMargin);
+    }
+
+    @Test
+    public void testHandoffButtonLayout_ControlsPositionBottom() {
+        mCoordinator.showOverlayForTesting(true);
+        PropertyModel model = mCoordinator.getModelForTesting();
+        model.set(ActorOverlayProperties.CONTROLS_POSITION, ControlsPosition.BOTTOM);
+        model.set(ActorOverlayProperties.TOP_MARGIN, 0);
+        model.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, true);
+
+        int glowPadding =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.actor_overlay_button_glow_padding);
+        int marginTop =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.actor_overlay_button_margin_top);
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(marginTop - glowPadding, lp.topMargin);
+    }
+
+    @Test
+    public void testHandoffButtonLayout_ControlsPositionChanged() {
+        mCoordinator.showOverlayForTesting(true);
+        PropertyModel model = mCoordinator.getModelForTesting();
+        model.set(ActorOverlayProperties.TOP_MARGIN, 100);
+        model.set(ActorOverlayProperties.CONTROLS_POSITION, ControlsPosition.TOP);
+        model.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, true);
+
+        int buttonContainerHeight =
+                mActivity.getResources().getDimensionPixelSize(R.dimen.actor_overlay_button_height)
+                        + 2
+                                * mActivity
+                                        .getResources()
+                                        .getDimensionPixelSize(
+                                                R.dimen.actor_overlay_button_glow_padding);
+        int expectedTopMargin = 100 - buttonContainerHeight / 2;
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(expectedTopMargin, lp.topMargin);
+
+        // Switch to bottom controls.
+        model.set(ActorOverlayProperties.CONTROLS_POSITION, ControlsPosition.BOTTOM);
+        model.set(ActorOverlayProperties.TOP_MARGIN, 0);
+
+        int glowPadding =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.actor_overlay_button_glow_padding);
+        int marginTop =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.actor_overlay_button_margin_top);
+        lp = (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(marginTop - glowPadding, lp.topMargin);
+
+        // Update top controls height while in bottom controls.
+        model.set(ActorOverlayProperties.TOP_MARGIN, 50);
+        lp = (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(50 + marginTop - glowPadding, lp.topMargin);
+
+        // Switch back to top controls.
+        model.set(ActorOverlayProperties.CONTROLS_POSITION, ControlsPosition.TOP);
+        expectedTopMargin = 50 - buttonContainerHeight / 2;
+        lp = (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(expectedTopMargin, lp.topMargin);
+    }
+
+    @Test
+    public void testHandoffButtonLayout_MarginUpdated() {
+        mCoordinator.showOverlayForTesting(true);
+        PropertyModel model = mCoordinator.getModelForTesting();
+        model.set(ActorOverlayProperties.TOP_MARGIN, 100);
+        model.set(ActorOverlayProperties.CONTROLS_POSITION, ControlsPosition.TOP);
+        model.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, true);
+
+        int buttonContainerHeight =
+                mActivity.getResources().getDimensionPixelSize(R.dimen.actor_overlay_button_height)
+                        + 2
+                                * mActivity
+                                        .getResources()
+                                        .getDimensionPixelSize(
+                                                R.dimen.actor_overlay_button_glow_padding);
+        int expectedTopMargin = 100 - buttonContainerHeight / 2;
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(expectedTopMargin, lp.topMargin);
+
+        // Mutate margins while button is visible.
+        model.set(ActorOverlayProperties.TOP_MARGIN, 200);
+        expectedTopMargin = 200 - buttonContainerHeight / 2;
+        lp = (FrameLayout.LayoutParams) getHandoffButtonView().getLayoutParams();
+        Assert.assertEquals(expectedTopMargin, lp.topMargin);
+    }
+
+    @Test
+    public void testOverlayViewClipsToOutline() {
+        mCoordinator.showOverlayForTesting(true);
+        ActorOverlayView overlayView = mCoordinator.getOverlayViewForTesting();
+        Assert.assertNotNull(overlayView);
+        Assert.assertEquals(ViewOutlineProvider.BOUNDS, overlayView.getOutlineProvider());
+        Assert.assertTrue(overlayView.getClipToOutline());
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void testOverlayContainerDoesNotBleedIntoTopControls() {
+        int width = 800;
+        int height = 500;
+        int topControlsHeight = 112;
+
+        mCoordinator.showOverlayForTesting(true);
+        PropertyModel model = mCoordinator.getModelForTesting();
+        model.set(ActorOverlayProperties.TOP_MARGIN, topControlsHeight);
+        model.set(ActorOverlayProperties.CONTROLS_POSITION, ControlsPosition.TOP);
+        model.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, true);
+
+        FrameLayout container = getContainer();
+        container.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+        container.layout(0, 0, width, height);
+
+        Bitmap rendered = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        container.draw(new Canvas(rendered));
+
+        // Outside the centered handoff button (e.g. x = 40), the top controls region (y < 112)
+        // must remain completely transparent.
+        for (int y = 0; y < topControlsHeight; y++) {
+            Assert.assertEquals(
+                    "Unexpected glow bleed in top controls at y=" + y,
+                    Color.TRANSPARENT,
+                    rendered.getPixel(40, y));
+        }
+    }
+
+    @Test
+    public void testDestroy() {
+        mCoordinator.destroy();
+        verify(mBackPressHandlerRegistry).removeHandler(any());
+        verify(mTab).removeObserver(any(TabObserver.class));
+        verify(mBrowserControlsVisibilityManager).removeObserver(any());
+        verify(mSideUiStateProvider).removeObserver(any());
+        Assert.assertFalse(mCurrentTabSupplier.hasObservers());
+
+        // Verify model observer was removed.
+        mCoordinator
+                .getModelForTesting()
+                .set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, true);
+        Assert.assertFalse(mCoordinator.isViewInflatedForTesting());
+        Assert.assertNull(mCoordinator.getHandoffButtonViewForTesting());
+        Assert.assertNull(mCoordinator.getHandoffButtonStubForTesting());
+    }
+}

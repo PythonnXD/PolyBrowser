@@ -1,0 +1,236 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_WORKERS_WORKER_THREAD_TEST_HELPER_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_WORKERS_WORKER_THREAD_TEST_HELPER_H_
+
+#include <memory>
+
+#include "base/synchronization/waitable_event.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "third_party/blink/public/common/loader/javascript_framework_detection.h"
+#include "third_party/blink/public/common/loader/worker_main_script_load_parameters.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_gc_controller.h"
+#include "third_party/blink/renderer/bindings/core/v8/worker_or_worklet_script_controller.h"
+#include "third_party/blink/renderer/core/event_target_names.h"
+#include "third_party/blink/renderer/core/execution_context/security_context_init.h"
+#include "third_party/blink/renderer/core/frame/csp/content_security_policy.h"
+#include "third_party/blink/renderer/core/inspector/console_message.h"
+#include "third_party/blink/renderer/core/inspector/worker_devtools_params.h"
+#include "third_party/blink/renderer/core/origin_trials/origin_trial_context.h"
+#include "third_party/blink/renderer/core/script/script.h"
+#include "third_party/blink/renderer/core/workers/global_scope_creation_params.h"
+#include "third_party/blink/renderer/core/workers/parent_execution_context_task_runners.h"
+#include "third_party/blink/renderer/core/workers/worker_backing_thread.h"
+#include "third_party/blink/renderer/core/workers/worker_backing_thread_startup_data.h"
+#include "third_party/blink/renderer/core/workers/worker_clients.h"
+#include "third_party/blink/renderer/core/workers/worker_global_scope.h"
+#include "third_party/blink/renderer/core/workers/worker_reporting_proxy.h"
+#include "third_party/blink/renderer/core/workers/worker_thread.h"
+#include "third_party/blink/renderer/platform/bindings/source_location.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/network/content_security_policy_parsers.h"
+#include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
+#include "third_party/blink/renderer/platform/testing/scoped_fake_ukm_recorder.h"
+#include "third_party/blink/renderer/platform/weborigin/kurl.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
+#include "third_party/blink/renderer/platform/wtf/forward.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "v8/include/v8.h"
+
+namespace blink {
+
+class FakeWorkerGlobalScope : public WorkerGlobalScope {
+ public:
+  FakeWorkerGlobalScope(
+      std::unique_ptr<GlobalScopeCreationParams> creation_params,
+      WorkerThread* thread)
+      : WorkerGlobalScope(std::move(creation_params),
+                          thread,
+                          base::TimeTicks::Now(),
+                          false) {
+    ReadyToRunWorkerScript();
+    GetBrowserInterfaceBroker().SetBinderForTesting(
+        ukm::mojom::UkmRecorderFactory::Name_,
+        BindRepeating(
+            [](ScopedFakeUkmRecorder* interface,
+               mojo::ScopedMessagePipeHandle handle) {
+              interface->SetHandle(std::move(handle));
+            },
+            Unretained(&scoped_fake_ukm_recorder_)));
+  }
+
+  ~FakeWorkerGlobalScope() override {
+    GetBrowserInterfaceBroker().SetBinderForTesting(
+        ukm::mojom::UkmRecorderInterface::Name_, {});
+  }
+
+  // EventTarget
+  const AtomicString& InterfaceName() const override {
+    return event_target_names::kDedicatedWorkerGlobalScope;
+  }
+
+  // WorkerGlobalScope
+  void Initialize(
+      const KURL& response_url,
+      network::mojom::ReferrerPolicy response_referrer_policy,
+      Vector<network::mojom::blink::ContentSecurityPolicyPtr> response_csp,
+      DocumentPolicy::DocumentPolicyBundle response_document_policy,
+      const Vector<String>* response_origin_trial_tokens) override {
+    InitializeURL(response_url);
+    SetReferrerPolicy(response_referrer_policy);
+
+    InitContentSecurityPolicyFromVector(std::move(response_csp));
+    BindContentSecurityPolicyToExecutionContext();
+
+    SecurityContextInit security_init(this);
+    security_init.ApplyDocumentPolicy(
+        response_document_policy.policy,
+        String(response_document_policy.report_only_header.c_str()));
+
+    OriginTrialContext::AddTokens(this, response_origin_trial_tokens);
+
+    // This should be called after OriginTrialContext::AddTokens() to install
+    // origin trial features in JavaScript's global object.
+    ScriptController()->PrepareForEvaluation();
+  }
+
+  void FetchAndRunClassicScript(
+      const KURL& script_url,
+      std::unique_ptr<WorkerMainScriptLoadParameters>
+          worker_main_script_load_params,
+      std::unique_ptr<PolicyContainer> policy_container,
+      const FetchClientSettingsObjectSnapshot& outside_settings_object,
+      WorkerResourceTimingNotifier& outside_resource_timing_notifier,
+      const v8_inspector::V8StackTraceId& stack_id) override {
+    DCHECK(!IsContextPaused());
+    mojom::blink::RequestContextType context_type =
+        mojom::blink::RequestContextType::WORKER;
+    network::mojom::RequestDestination destination =
+        network::mojom::RequestDestination::kWorker;
+    FetchClassicScript(script_url, std::move(worker_main_script_load_params),
+                       outside_settings_object,
+                       outside_resource_timing_notifier, context_type,
+                       destination, stack_id);
+  }
+  void FetchAndRunModuleScript(
+      const KURL& module_url_record,
+      std::unique_ptr<WorkerMainScriptLoadParameters>
+          worker_main_script_load_params,
+      std::unique_ptr<PolicyContainer> policy_container,
+      const FetchClientSettingsObjectSnapshot& outside_settings_object,
+      WorkerResourceTimingNotifier& outside_resource_timing_notifier,
+      network::mojom::CredentialsMode) override {
+    NOTREACHED();
+  }
+
+  void ExceptionThrown(ErrorEvent*) override {}
+
+  // Returns a token uniquely identifying this fake worker.
+  WorkerToken GetWorkerToken() const final { return token_; }
+  bool CrossOriginIsolatedCapability() const final { return false; }
+  bool IsIsolatedContext() const final { return false; }
+  ExecutionContextToken GetExecutionContextToken() const final {
+    return token_;
+  }
+
+  ScopedFakeUkmRecorder scoped_fake_ukm_recorder_;
+
+ private:
+  SharedWorkerToken token_;
+};
+
+// Run a worker top-level script (`source`) on initialized `worker_thread`.
+void RunWorkerToplevelScriptForTesting(
+    WorkerThread& worker_thread,
+    const SecurityOrigin* security_origin,
+    const String& source,
+    const KURL& script_url = KURL("http://fake.url/"));
+
+class WorkerThreadForTest : public WorkerThread {
+ public:
+  explicit WorkerThreadForTest(
+      WorkerReportingProxy& mock_worker_reporting_proxy)
+      : WorkerThread(mock_worker_reporting_proxy),
+        worker_backing_thread_(std::make_unique<WorkerBackingThread>(
+            ThreadCreationParams(ThreadType::kTestThread))) {}
+
+  ~WorkerThreadForTest() override = default;
+
+  WorkerBackingThread& GetWorkerBackingThread() override {
+    return *worker_backing_thread_;
+  }
+
+  void StartWithSourceCode(const SecurityOrigin* security_origin,
+                           const String& source,
+                           const KURL& script_url = KURL("http://fake.url/")) {
+    Start(GlobalScopeCreationParams::CreateForWorkerForTesting(security_origin,
+                                                               script_url),
+          WorkerBackingThreadStartupData::CreateDefault(),
+          std::make_unique<WorkerDevToolsParams>());
+    RunWorkerToplevelScriptForTesting(*this, security_origin, source,
+                                      script_url);
+  }
+
+ protected:
+  WorkerOrWorkletGlobalScope* CreateWorkerGlobalScope(
+      std::unique_ptr<GlobalScopeCreationParams> creation_params) override {
+    return MakeGarbageCollected<FakeWorkerGlobalScope>(
+        std::move(creation_params), this);
+  }
+
+ private:
+  ThreadType GetThreadType() const override {
+    return ThreadType::kUnspecifiedWorkerThread;
+  }
+
+  std::unique_ptr<WorkerBackingThread> worker_backing_thread_;
+};
+
+class MockWorkerReportingProxy final : public WorkerReportingProxy {
+ public:
+  MockWorkerReportingProxy() = default;
+  ~MockWorkerReportingProxy() override = default;
+
+  MOCK_METHOD1(DidCreateWorkerGlobalScope, void(WorkerOrWorkletGlobalScope*));
+  MOCK_METHOD0(WillEvaluateScriptMock, void());
+  MOCK_METHOD2(DidEvaluateTopLevelScriptMock,
+               void(bool success,
+                    const JavaScriptFrameworkDetectionResult& result));
+  MOCK_METHOD0(DidCloseWorkerGlobalScope, void());
+  MOCK_METHOD0(WillDestroyWorkerGlobalScope, void());
+  MOCK_METHOD0(DidTerminateWorkerThread, void());
+
+  void WillEvaluateScript() override {
+    will_evaluate_script_event_.Signal();
+    WillEvaluateScriptMock();
+  }
+
+  void DidEvaluateTopLevelScript(
+      bool success,
+      const JavaScriptFrameworkDetectionResult& result) override {
+    DidEvaluateTopLevelScriptMock(success, result);
+    did_evaluate_top_level_script_event_.Signal();
+  }
+
+  void WaitUntilDidEvaluateTopLevelScript() {
+    did_evaluate_top_level_script_event_.Wait();
+  }
+
+  // Usually prefer `WaitUntilDidEvaluateTopLevelScript()`, to avoid race
+  // conditions between notification and script evaluation. One case to use
+  // `WaitUntilWillEvaluateScript()` is when the top-level script never
+  // completes (e.g. infinite loop).
+  void WaitUntilWillEvaluateScript() { will_evaluate_script_event_.Wait(); }
+
+ private:
+  base::WaitableEvent will_evaluate_script_event_;
+  base::WaitableEvent did_evaluate_top_level_script_event_;
+};
+
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_WORKERS_WORKER_THREAD_TEST_HELPER_H_

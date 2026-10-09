@@ -1,0 +1,73 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/compose/features.gni")
+
+assert(enable_compose)
+
+source_set("compose") {
+  public = [
+    "chrome_compose_dialog_controller.h",
+    "compose_dialog_view.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/views/bubble",
+    "//chrome/browser/ui/webui/compose",
+    "//chrome/browser/ui/webui/top_chrome",
+    "//components/compose/core/browser",
+    "//ui/views",
+  ]
+}
+
+source_set("impl") {
+  sources = [
+    "chrome_compose_dialog_controller.cc",
+    "compose_dialog_view.cc",
+  ]
+
+  public_deps = [ ":compose" ]
+
+  deps = [
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/renderer_context_menu",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/dialogs:browser_dialogs",
+    "//chrome/browser/ui/views/frame:browser_view_header",
+    "//components/compose/core/browser",
+    "//components/strings:components_strings",
+    "//content/public/browser",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "compose_dialog_view_unittest.cc" ]
+  deps = [
+    ":compose",
+    "//chrome/test:test_support",
+    "//testing/gtest",
+  ]
+}
+
+source_set("interactive_ui_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [ "compose_interactive_uitest.cc" ]
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+
+  deps = [
+    ":compose",
+    "//chrome/browser/optimization_guide:test_support",
+    "//chrome/browser/ui/views/frame:browser_view_header",
+    "//chrome/test:test_support",
+    "//chrome/test:test_support_ui",
+    "//components/compose/core/browser",
+    "//components/compose/core/browser:features",
+  ]
+}

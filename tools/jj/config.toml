@@ -1,0 +1,123 @@
+# See https://jj-vcs.github.io/jj/latest/config/ for the schema.
+
+[aliases]
+# This allows the script to be run from directories other than the workspace
+# root.
+"relative-script" = ["util", "exec", "python3", "--", "-c", """
+import os, sys
+script = os.path.join(os.environ['JJ_WORKSPACE_ROOT'], sys.argv[1])
+os.execv(script, [script, *sys.argv[2:]])
+"""]
+
+# Note that this will still output a URL even if it has never been uploaded.
+"gerrit-url" = [
+  "log",
+  "--no-graph",
+  "-T",
+  '"https://chromium-review.googlesource.com/q/" ++ if(trailers.contains_key("Change-Id"), trailers.filter(|t| t.key() == "Change-Id").map(|t| t.value()), "I" ++ change_id.normal_hex() ++ "6a6a6964") ++ "\n"'
+]
+
+# cr-* aliases are the equivalent of "porcelain" commands and should not
+# be overridden.
+# All cr-foo commands will have a corresponding foo command that you can
+# override with your preference (eg. sync -> ["cr-sync", "-a"])
+"cr-sync" = ["relative-script", "tools/jj/sync.py"]
+"sync" = ["cr-sync"]
+
+"cr-upload" = ["relative-script", "tools/jj/upload.py"]
+"upload" = ["cr-upload"]
+
+"cr-bug" = ["relative-script", "tools/jj/bug.py"]
+"bug" = ["cr-bug"]
+
+# jj workspace add doesn't work because of .gclient.
+"cr-new-chromium-workspace" = ["relative-script", "tools/jj/new_workspace.py"]
+"new-chromium-workspace" = ["cr-new-chromium-workspace"]
+
+# This makes the UX much nicer.
+[workspace]
+auto-update-stale = true
+
+[revset-aliases]
+"trunk()" = "main@origin"
+"immutable_heads()" = "remote_bookmarks() | tags()"
+
+[git]
+auto-local-bookmark = false
+# This is unrelated to gerrit change IDs.
+# It will eventually be supported by gerrit instead of the Change-ID footer.
+write-change-id-header = true
+
+# For users of jj-on-piper, this is enabled by default for *all* repos.
+# We want chrome's formatters, not google3's.
+[fix.tools.google3format]
+enabled = false
+# If you're not using the google-internal jj, this will complain that
+# google3format is an invalid fix tool because it has no command/patterns
+command = ["/dev/null"]
+patterns = ["null"]
+
+# The source of truth for formatters is depot_tools' git_cl.py
+# If you update this command, you also need to update the git-cl-format
+# command for windows below.
+# LINT.IfChange(git-cl-format)
+[fix.tools.git-cl-format]
+command = [
+    "git",
+    "cl",
+    "format",
+    "--stdin-filename=$path",
+    "--mojom",
+    "--lucicfg",
+    "--python",
+]
+# LINT.ThenChange(//tools/jj/config.toml:git-cl-format-windows)
+patterns = [
+    "glob:'**/*.cc'",
+    "glob:'**/*.cpp'",
+    "glob:'**/*.h'",
+    "glob:'**/*.m'",
+    "glob:'**/*.mm'",
+    "glob:'**/*.proto'",
+    "glob:'**/*.js'",
+    "glob:'**/*.ts'",
+    "glob:'**/*.java'",
+    "glob:'**/*.kt'",
+    "glob:'**/*.rs'",
+    "glob:'**/*.py'",
+    "glob:'**/*.gn'",
+    "glob:'**/*.gni'",
+    "glob:'**/*.typemap'",
+    "glob:'**/*.mojom'",
+    "glob:'**/*.test-mojom'",
+    "glob:'**/*.star'",
+    "glob:'**/*.swift'",
+    "glob:'agents/**/*.md'",
+    "glob:'.gemini/**/*.md'",
+    "glob:'**/*.xml'",
+]
+
+[[--scope]]
+--when.platforms = ["windows"]
+[--scope.aliases]
+# os.execv does not truly replace the process on Windows, which breaks jj's
+# process tracking. Use subprocess.call to propagate exit codes correctly.
+"relative-script" = ["util", "exec", "python3", "--", "-c", """
+import os, subprocess, sys
+script = os.path.join(os.environ['JJ_WORKSPACE_ROOT'], sys.argv[1])
+sys.exit(subprocess.call([sys.executable, script, *sys.argv[2:]]))
+"""]
+# If you update this command, you also need to update the default git-cl-format
+# command above.
+# LINT.IfChange(git-cl-format-windows)
+[--scope.fix.tools.git-cl-format]
+command = [
+    "git.bat",
+    "cl",
+    "format",
+    "--stdin-filename=$path",
+    "--mojom",
+    "--lucicfg",
+    "--python",
+]
+# LINT.ThenChange(//tools/jj/config.toml:git-cl-format)

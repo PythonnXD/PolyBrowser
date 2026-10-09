@@ -1,0 +1,42 @@
+<html>
+<body>
+<p>Test worker invalid url exceptions. Should print two "PASS" statements.</p>
+<div id=result></div>
+<script>
+if (window.testRunner) {
+    testRunner.dumpAsText();
+    testRunner.waitUntilDone();
+}
+
+function log(message)
+{
+    document.getElementById("result").innerHTML += message + "<br>";
+}
+
+function finish(message)
+{
+    log(message);
+    if (window.testRunner)
+        testRunner.notifyDone();
+}
+
+try {
+    new SharedWorker("http://invalid:123$");
+    log("FAIL: No exception throw when accessing an invalid url.");
+} catch (error) {
+    if (error.code == 12)
+        log("PASS: Got syntax error.");
+    else
+        log("FAIL: Got error code " + error.code + ". Expected error code 12.");
+}
+
+try {
+    var worker = new SharedWorker("http://example.com/worker.js");
+    worker.onerror = function() { finish("PASS: Got error event."); };
+    worker.port.onmessage = function() { finish("FAIL: Loaded a worker from another domain."); };
+} catch (error) {
+    finish("FAIL: Got unexpected exception " + error.name + ".");
+}
+</script>
+</body>
+</html>

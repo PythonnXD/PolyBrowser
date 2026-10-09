@@ -1,0 +1,67 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_CLIENT_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_CLIENT_H_
+
+#include "third_party/blink/renderer/core/paint/timing/paint_timing_callbacks.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+
+namespace blink {
+struct DOMPaintTimingInfo;
+class ImageRecord;
+class LayoutObject;
+class MediaTiming;
+class TextRecord;
+
+// `PaintTimingClient` is the interface PaintTiming uses to communicate
+// contentful element and document-level paint events to clients.
+class PaintTimingClient : public GarbageCollectedMixin {
+ public:
+  // Types are listed in the order that clients should be notified, which
+  // corresponds to the spec order. Note that Soft Navigation Heuristics needs
+  // to be processed first in order to update the navigation ID on soft
+  // navigation commit, before subsequent clients are notified.
+  enum class Type {
+    kSoftNavigationHeuristics = 0,
+    kLargestContentfulPaint,
+    kElementTiming,
+    kTest,
+  };
+
+  virtual ~PaintTimingClient() = default;
+
+  virtual Type GetType() const = 0;
+
+  // Called when the first contentful paint for an image type element (<img> SVG
+  // image, poster image, or first video frame) has been observed. The size is
+  // guaranteed to be non-zero. This is called regardless of whether the image
+  // is sufficiently loaded or the first animated frame has been painted.
+  virtual void OnElementFirstContentfulPaint(ImageRecord*) {}
+
+  // Called when an image has been removed. Clients typically don't need to
+  // override this unless caching the `ImageRecord`.
+  virtual void OnImageRemoved(const LayoutObject&, const MediaTiming*) {}
+
+  // Called when the paint phase has finished. Returns an optional callback to
+  // be invoked when presentation time is available for this frame.
+  virtual OptionalPaintTimingCallback OnPaintFinished(
+      const HeapVector<Member<ImageRecord>>&,
+      const HeapVector<Member<TextRecord>>&) = 0;
+
+  // Called when paint and presentation time is available for the given image
+  // and text records.
+  virtual void OnFramePresented(const HeapVector<Member<ImageRecord>>&,
+                                const HeapVector<Member<TextRecord>>&,
+                                const DOMPaintTimingInfo&) {}
+
+  // Called when a discrete input or non-programmatic scroll has been detected.
+  virtual void OnInputOrScroll() {}
+};
+
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_CLIENT_H_

@@ -1,0 +1,1752 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tasks.tab_management;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.os.Build;
+import android.os.SystemClock;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.PopupWindow;
+import android.widget.TextView;
+
+import androidx.appcompat.content.res.AppCompatResources;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.Robolectric;
+import org.robolectric.Shadows;
+import org.robolectric.android.controller.ActivityController;
+import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowLooper;
+
+import org.chromium.base.Callback;
+import org.chromium.base.DeviceInfo;
+import org.chromium.base.Token;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.OneshotSupplierImpl;
+import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.base.test.util.HistogramWatcher;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.IntentHandler;
+import org.chromium.chrome.browser.app.tabmodel.ArchivedTabModelOrchestrator;
+import org.chromium.chrome.browser.app.tabwindow.TabWindowManagerSingleton;
+import org.chromium.chrome.browser.back_press.BackPressManager;
+import org.chromium.chrome.browser.browserservices.intents.WebappConstants;
+import org.chromium.chrome.browser.compositor.CompositorViewHolder;
+import org.chromium.chrome.browser.document.ChromeLauncherActivity;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
+import org.chromium.chrome.browser.omnibox.LocationBarCoordinator;
+import org.chromium.chrome.browser.omnibox.OmniboxStub;
+import org.chromium.chrome.browser.omnibox.OverrideUrlLoadingDelegate;
+import org.chromium.chrome.browser.omnibox.UrlBar;
+import org.chromium.chrome.browser.omnibox.UrlBarCoordinator;
+import org.chromium.chrome.browser.omnibox.fusebox.FuseboxControls;
+import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteCoordinator;
+import org.chromium.chrome.browser.omnibox.suggestions.OmniboxLoadUrlParams;
+import org.chromium.chrome.browser.omnibox.suggestions.action.OmniboxActionDelegateImpl;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.searchwidget.SearchActivitySession;
+import org.chromium.chrome.browser.profiles.TestProfile;
+import org.chromium.chrome.browser.searchwidget.SearchUiCoordinator;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabLaunchType;
+import org.chromium.chrome.browser.tab.TabObscuringHandler;
+import org.chromium.chrome.browser.tab.TabSelectionType;
+import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncServiceFactory;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.tabmodel.TabModelType;
+import org.chromium.chrome.browser.tabwindow.TabWindowInfo;
+import org.chromium.chrome.browser.tabwindow.TabWindowManager;
+import org.chromium.chrome.browser.tasks.tab_management.TabSearchOverlayCoordinator.TabSearchDismissalReason;
+import org.chromium.chrome.browser.tasks.tab_management.TabSearchOverlayCoordinator.TabSearchEntryPoint;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.chrome.browser.ui.searchactivityutils.SearchActivityExtras.IntentOrigin;
+import org.chromium.components.browser_ui.desktop_windowing.AppHeaderState;
+import org.chromium.components.browser_ui.desktop_windowing.DesktopWindowStateManager;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler.BackPressResult;
+import org.chromium.components.tab_group_sync.LocalTabGroupId;
+import org.chromium.components.tab_group_sync.SavedTabGroup;
+import org.chromium.components.tab_group_sync.TabGroupSyncService;
+import org.chromium.components.tab_group_sync.TabGroupUiActionHandler;
+import org.chromium.ui.base.PageTransition;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.insets.InsetObserver;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.url.GURL;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+/** Unit tests for {@link TabSearchOverlayCoordinator}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class TabSearchOverlayCoordinatorUnitTest {
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    private Activity mActivity;
+    private TabSearchOverlayCoordinator mCoordinator;
+    private View mPanelContainer;
+    private View mScrim;
+    private UrlBar mUrlBar;
+    private CompositorViewHolder mCompositorViewHolder;
+
+    @Mock private WindowAndroid mWindowAndroid;
+    @Mock private TabModelSelector mTabModelSelector;
+    @Mock private SearchUiCoordinator mSearchUiCoordinator;
+    @Mock private LocationBarCoordinator mLocationBarCoordinator;
+    @Mock private UrlBarCoordinator mUrlBarCoordinator;
+    @Mock private View.OnTouchListener mTouchListener;
+    @Mock private View.OnGenericMotionListener mGenericMotionListener;
+
+    @Mock(extraInterfaces = {View.OnKeyListener.class})
+    private OmniboxStub mOmniboxStub;
+
+    private final TestProfile mProfile = TestProfile.createRegular();
+    private final TestProfile mIncognitoProfile = TestProfile.createIncognito(mProfile);
+    @Mock private SnackbarManager mSnackbarManager;
+    @Mock private ActivityLifecycleDispatcher mActivityLifecycleDispatcher;
+    @Mock private ModalDialogManager mModalDialogManager;
+    @Mock private BackPressManager mBackPressManager;
+    @Mock private TabGroupSyncService mTabGroupSyncService;
+    @Mock private TabGroupUiActionHandler mTabGroupUiActionHandler;
+    @Mock private TabModel mTabModel;
+    @Mock private Tab mTab;
+    @Mock private DesktopWindowStateManager mDesktopWindowStateManager;
+    @Mock private AppHeaderState mAppHeaderState;
+    @Mock private FuseboxControls mFuseboxControls;
+    @Mock private AutocompleteCoordinator mAutocompleteCoordinator;
+    @Mock private TabWindowManager mTabWindowManager;
+    @Mock private InsetObserver mInsetObserver;
+
+    private final OneshotSupplierImpl<TabGroupUiActionHandler> mTabGroupUiActionHandlerSupplier =
+            new OneshotSupplierImpl<>();
+
+    private final SettableMonotonicObservableSupplier<Profile> mProfileSupplier =
+            ObservableSuppliers.createMonotonic();
+    private final SettableMonotonicObservableSupplier<TabModelSelector> mTabModelSelectorSupplier =
+            ObservableSuppliers.createMonotonic();
+    private final TabObscuringHandler mTabObscuringHandler = new TabObscuringHandler();
+    private Callback<Boolean> mSuggestionsChangeObserver;
+
+    @Captor private ArgumentCaptor<OverrideUrlLoadingDelegate> mOverrideUrlLoadingDelegateCaptor;
+    @Captor private ArgumentCaptor<Callback<String>> mBringTabGroupToFrontCallbackCaptor;
+    @Captor private ArgumentCaptor<OmniboxActionDelegateImpl> mOmniboxActionDelegateCaptor;
+    @Captor private ArgumentCaptor<SearchActivitySession> mSessionCaptor;
+
+    @Before
+    @SuppressWarnings("unchecked")
+    public void setUp() {
+        ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class);
+        mActivity = controller.setup().get();
+        mActivity.setTheme(R.style.Theme_BrowserUI_DayNight);
+
+        mCompositorViewHolder = new CompositorViewHolder(mActivity, /* attrs= */ null);
+        when(mTouchListener.onTouch(any(), any())).thenReturn(true);
+        mCompositorViewHolder.setOnTouchListener(mTouchListener);
+        mCompositorViewHolder.setOnGenericMotionListener(mGenericMotionListener);
+
+        mTabModelSelectorSupplier.set(mTabModelSelector);
+        mProfileSupplier.set(mProfile);
+        TabGroupSyncServiceFactory.setForTesting(mTabGroupSyncService);
+        TabWindowManagerSingleton.setTabWindowManagerForTesting(mTabWindowManager);
+        mTabGroupUiActionHandlerSupplier.set(mTabGroupUiActionHandler);
+        when(mTabModelSelector.getModel(false)).thenReturn(mTabModel);
+        when(mTabModelSelector.getModel(true)).thenReturn(mTabModel);
+
+        when(mSearchUiCoordinator.getLocationBarCoordinator()).thenReturn(mLocationBarCoordinator);
+        when(mLocationBarCoordinator.getUrlBarCoordinator()).thenReturn(mUrlBarCoordinator);
+        when(mLocationBarCoordinator.getOmniboxStub()).thenReturn(mOmniboxStub);
+        when(mLocationBarCoordinator.getOmniboxSuggestionsVisualState())
+                .thenReturn(mAutocompleteCoordinator);
+        doAnswer(
+                        invocation ->
+                                mCoordinator
+                                        .getPanelContainerForTesting()
+                                        .findViewById(R.id.search_location_bar))
+                .when(mLocationBarCoordinator)
+                .getContainerView();
+        when(mOmniboxStub.isUrlBarFocused()).thenReturn(true);
+        doAnswer(
+                        invocation -> {
+                            mSuggestionsChangeObserver = invocation.getArgument(0);
+                            return null;
+                        })
+                .when(mLocationBarCoordinator)
+                .addSuggestionsChangeObserver(any());
+        doAnswer(
+                        invocation -> {
+                            if (mSuggestionsChangeObserver == invocation.getArgument(0)) {
+                                mSuggestionsChangeObserver = null;
+                            }
+                            return null;
+                        })
+                .when(mLocationBarCoordinator)
+                .removeSuggestionsChangeObserver(any());
+        when(mDesktopWindowStateManager.getAppHeaderState()).thenReturn(mAppHeaderState);
+
+        mCoordinator =
+                new TabSearchOverlayCoordinator(
+                        mActivity,
+                        mWindowAndroid,
+                        mProfileSupplier,
+                        mSnackbarManager,
+                        ObservableSuppliers.createNonNull(mModalDialogManager),
+                        mActivityLifecycleDispatcher,
+                        mTabModelSelectorSupplier,
+                        /* edgeToEdgeSystemBarColorHelper= */ null,
+                        mBackPressManager,
+                        ObservableSuppliers.createNonNull(mCompositorViewHolder),
+                        mTabGroupUiActionHandlerSupplier,
+                        mDesktopWindowStateManager,
+                        mTabObscuringHandler,
+                        mFuseboxControls);
+        mCoordinator.setSearchUiCoordinatorForTesting(mSearchUiCoordinator);
+
+        // Inflate the overlay and initialize member views.
+        mCoordinator.ensureInitialized();
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+        mPanelContainer = mCoordinator.getPanelContainerForTesting();
+        assertNotNull(mPanelContainer);
+        mScrim = mPanelContainer.findViewById(R.id.tab_search_overlay_scrim);
+        mUrlBar = mPanelContainer.findViewById(R.id.url_bar);
+
+        assertNotNull(mSuggestionsChangeObserver);
+
+        verify(mBackPressManager)
+                .addHandler(mCoordinator, BackPressHandler.Type.TAB_SEARCH_OVERLAY);
+        verify(mActivityLifecycleDispatcher).register(mCoordinator);
+
+        // Clear mock invocations from setup phase to ensure test assertions are isolated.
+        clearInvocations(mLocationBarCoordinator);
+        clearInvocations(mBackPressManager);
+        clearInvocations(mActivityLifecycleDispatcher);
+    }
+
+    @After
+    public void tearDown() {
+        TabWindowManagerSingleton.setTabWindowManagerForTesting(null);
+        if (mCoordinator.getPanelContainerForTesting() != null) {
+            mCoordinator.destroy();
+            assertNull(mCoordinator.getPanelContainerForTesting());
+            assertNull(mCoordinator.getPopupWindowForTesting());
+            verify(mSearchUiCoordinator).destroy();
+            verify(mBackPressManager).removeHandler(mCoordinator);
+            verify(mActivityLifecycleDispatcher).unregister(mCoordinator);
+            assertNull(mSuggestionsChangeObserver);
+        }
+        ArchivedTabModelOrchestrator.destroyProfileKeyedMap();
+    }
+
+    @Test
+    public void testInitialState() {
+        assertFalse(mCoordinator.isVisible());
+        assertEquals(View.GONE, mPanelContainer.getVisibility());
+    }
+
+    @Test
+    public void testShow_inflatesAndShowsOverlay() {
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+        verify(mSearchUiCoordinator).beginQuery(mSessionCaptor.capture(), eq(mWindowAndroid));
+        assertEquals(IntentOrigin.HUB, mSessionCaptor.getValue().intentOrigin);
+        assertNull(mSessionCaptor.getValue().query);
+    }
+
+    @Test
+    public void testShow_endsFuseboxInput() {
+        showOverlay();
+        verify(mFuseboxControls).endFuseboxInput();
+    }
+
+    @Test
+    public void testShow_nullFuseboxControls_doesNotThrow() {
+        mCoordinator.destroy();
+        clearInvocations(mSearchUiCoordinator);
+        mCoordinator =
+                new TabSearchOverlayCoordinator(
+                        mActivity,
+                        mWindowAndroid,
+                        mProfileSupplier,
+                        mSnackbarManager,
+                        ObservableSuppliers.createNonNull(mModalDialogManager),
+                        mActivityLifecycleDispatcher,
+                        mTabModelSelectorSupplier,
+                        /* edgeToEdgeSystemBarColorHelper= */ null,
+                        mBackPressManager,
+                        ObservableSuppliers.createNonNull(mCompositorViewHolder),
+                        mTabGroupUiActionHandlerSupplier,
+                        mDesktopWindowStateManager,
+                        mTabObscuringHandler,
+                        /* fuseboxControls= */ null);
+        mCoordinator.setSearchUiCoordinatorForTesting(mSearchUiCoordinator);
+        mCoordinator.ensureInitialized();
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+        mPanelContainer = mCoordinator.getPanelContainerForTesting();
+
+        showOverlay();
+        assertTrue(mCoordinator.isVisible());
+    }
+
+    @Test
+    public void testShow_alreadyVisible_doesNotInvokeEndFuseboxInput() {
+        showOverlay();
+        verify(mFuseboxControls, times(1)).endFuseboxInput();
+
+        // Calling show again while visible should not re-invoke endFuseboxInput.
+        mCoordinator.show(TabSearchEntryPoint.HORIZONTAL_TAB_STRIP);
+        verify(mFuseboxControls, times(1)).endFuseboxInput();
+    }
+
+    @Test
+    public void testShow_recordsEntryPointHistogram() {
+        var watcherHorizontal =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.EntryPoint", TabSearchEntryPoint.HORIZONTAL_TAB_STRIP);
+        mCoordinator.show(TabSearchEntryPoint.HORIZONTAL_TAB_STRIP);
+        watcherHorizontal.assertExpected();
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+
+        var watcherVertical =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.EntryPoint", TabSearchEntryPoint.VERTICAL_TABS);
+        mCoordinator.show(TabSearchEntryPoint.VERTICAL_TABS);
+        watcherVertical.assertExpected();
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+
+        var watcherShortcut =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.EntryPoint", TabSearchEntryPoint.KEYBOARD_SHORTCUT);
+        mCoordinator.show(TabSearchEntryPoint.KEYBOARD_SHORTCUT);
+        watcherShortcut.assertExpected();
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+    }
+
+    @Test
+    public void testSearchUiElementsInitialized() {
+        verify(mSearchUiCoordinator)
+                .setDefaultStatusIconOverrideResId(R.drawable.ic_suggestion_magnifier);
+        verify(mUrlBarCoordinator)
+                .setUrlBarHintText(
+                        mActivity.getResources().getString(R.string.hub_search_empty_hint));
+        float expectedSize = mActivity.getResources().getDimension(R.dimen.text_size_medium);
+        assertEquals(expectedSize, mUrlBar.getTextSize(), 0.01f);
+    }
+
+    @Test
+    public void testEmptyStateViewSetup() {
+        ImageView emptyStateIcon = mPanelContainer.findViewById(R.id.empty_state_icon);
+        TextView emptyStateTitle = mPanelContainer.findViewById(R.id.empty_state_text_title);
+        TextView emptyStateDescription =
+                mPanelContainer.findViewById(R.id.empty_state_text_description);
+
+        assertNotNull(emptyStateIcon);
+        assertNotNull(emptyStateTitle);
+        assertNotNull(emptyStateDescription);
+
+        Drawable drawable = emptyStateIcon.getDrawable();
+        assertNotNull(drawable);
+        assertEquals(
+                R.drawable.tab_search_empty_state,
+                Shadows.shadowOf(drawable).getCreatedFromResId());
+        assertEquals(
+                mActivity.getResources().getString(R.string.search_in_settings_no_match),
+                emptyStateTitle.getText().toString());
+        assertEquals(View.GONE, emptyStateDescription.getVisibility());
+
+        float expectedSize = mActivity.getResources().getDimension(R.dimen.text_size_large);
+        assertEquals(expectedSize, emptyStateTitle.getTextSize(), 0.01f);
+    }
+
+    @Test
+    public void testClickScrim_hidesOverlay() {
+        showOverlay();
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.SCRIM);
+        mScrim.performClick();
+        watcher.assertExpected();
+        verify(mLocationBarCoordinator, never()).clearOmniboxFocus();
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testClickCloseButton_hidesOverlay() {
+        showOverlay();
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.CLOSE_BUTTON);
+        View closeButton = mPanelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(closeButton);
+        closeButton.performClick();
+        watcher.assertExpected();
+        verify(mLocationBarCoordinator, never()).clearOmniboxFocus();
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testTouchCloseButton_dismissesOnFirstTap() {
+        showOverlay();
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.CLOSE_BUTTON);
+        ImageButton closeButton = mPanelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(closeButton);
+
+        long now = SystemClock.uptimeMillis();
+        MotionEvent downEvent = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 0f, 0f, 0);
+        closeButton.dispatchTouchEvent(downEvent);
+        downEvent.recycle();
+
+        MotionEvent upEvent = MotionEvent.obtain(now, now, MotionEvent.ACTION_UP, 0f, 0f, 0);
+        closeButton.dispatchTouchEvent(upEvent);
+        upEvent.recycle();
+        ShadowLooper.idleMainLooper();
+
+        watcher.assertExpected();
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testHide_hidesOverlayAndClearsFocus() {
+        showOverlay();
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.CLOSE_BUTTON);
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        watcher.assertExpected();
+        verify(mLocationBarCoordinator, never()).clearOmniboxFocus();
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testLoadUrl_regular() {
+        when(mTabModel.getCount()).thenReturn(3);
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+
+        OverrideUrlLoadingDelegate delegate = mOverrideUrlLoadingDelegateCaptor.getValue();
+        OmniboxLoadUrlParams params =
+                new OmniboxLoadUrlParams.Builder(
+                                "https://www.google.com/search?q=test", PageTransition.TYPED)
+                        .build();
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.URL_LOADED);
+        boolean handled = delegate.willHandleLoadUrlWithPostData(params, /* incognito= */ false);
+        watcher.assertExpected();
+        assertTrue(handled);
+        assertFalse(mCoordinator.isVisible());
+
+        Intent intent = Shadows.shadowOf(mActivity).getNextStartedActivity();
+        assertNotNull(intent);
+        assertEquals(Intent.ACTION_VIEW, intent.getAction());
+        assertEquals("https://www.google.com/search?q=test", intent.getDataString());
+        assertEquals(ChromeLauncherActivity.class.getName(), intent.getComponent().getClassName());
+        assertTrue(
+                intent.getBooleanExtra(WebappConstants.REUSE_URL_MATCHING_TAB_ELSE_NEW_TAB, false));
+        assertFalse(intent.getBooleanExtra(IntentHandler.EXTRA_OPEN_NEW_INCOGNITO_TAB, false));
+        assertEquals(
+                3, intent.getIntExtra(IntentHandler.EXTRA_TAB_INDEX, TabModel.INVALID_TAB_INDEX));
+        assertEquals(
+                Integer.valueOf(TabLaunchType.FROM_OMNIBOX),
+                IntentHandler.getTabLaunchType(intent));
+    }
+
+    @Test
+    public void testLoadUrl_incognito() {
+        when(mTabModel.getCount()).thenReturn(5);
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+
+        OverrideUrlLoadingDelegate delegate = mOverrideUrlLoadingDelegateCaptor.getValue();
+        OmniboxLoadUrlParams params =
+                new OmniboxLoadUrlParams.Builder(
+                                "https://www.google.com/search?q=test", PageTransition.TYPED)
+                        .build();
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.URL_LOADED);
+        boolean handled = delegate.willHandleLoadUrlWithPostData(params, /* incognito= */ true);
+        watcher.assertExpected();
+        assertTrue(handled);
+        assertFalse(mCoordinator.isVisible());
+
+        Intent intent = Shadows.shadowOf(mActivity).getNextStartedActivity();
+        assertNotNull(intent);
+        assertEquals(Intent.ACTION_VIEW, intent.getAction());
+        assertEquals("https://www.google.com/search?q=test", intent.getDataString());
+        assertEquals(ChromeLauncherActivity.class.getName(), intent.getComponent().getClassName());
+        assertTrue(
+                intent.getBooleanExtra(WebappConstants.REUSE_URL_MATCHING_TAB_ELSE_NEW_TAB, false));
+        assertTrue(intent.getBooleanExtra(IntentHandler.EXTRA_OPEN_NEW_INCOGNITO_TAB, false));
+        assertEquals(
+                5, intent.getIntExtra(IntentHandler.EXTRA_TAB_INDEX, TabModel.INVALID_TAB_INDEX));
+        assertEquals(
+                Integer.valueOf(TabLaunchType.FROM_OMNIBOX),
+                IntentHandler.getTabLaunchType(intent));
+    }
+
+    @Test
+    public void testLoadUrl_nullModel() {
+        when(mTabModelSelector.getModel(false)).thenReturn(null);
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+
+        OverrideUrlLoadingDelegate delegate = mOverrideUrlLoadingDelegateCaptor.getValue();
+        OmniboxLoadUrlParams params =
+                new OmniboxLoadUrlParams.Builder(
+                                "https://www.google.com/search?q=test", PageTransition.TYPED)
+                        .build();
+        boolean handled = delegate.willHandleLoadUrlWithPostData(params, /* incognito= */ false);
+        assertTrue(handled);
+        assertFalse(mCoordinator.isVisible());
+
+        Intent intent = Shadows.shadowOf(mActivity).getNextStartedActivity();
+        assertNotNull(intent);
+        assertEquals(
+                TabModel.INVALID_TAB_INDEX,
+                intent.getIntExtra(IntentHandler.EXTRA_TAB_INDEX, TabModel.INVALID_TAB_INDEX));
+        assertEquals(
+                Integer.valueOf(TabLaunchType.FROM_OMNIBOX),
+                IntentHandler.getTabLaunchType(intent));
+    }
+
+    @Test
+    public void testBringTabGroupToFront_AlreadyLocal() {
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+
+        Token groupId = new Token(1, 2);
+        SavedTabGroup syncGroup = new SavedTabGroup();
+        syncGroup.syncId = "sync_id_1";
+        syncGroup.localId = new LocalTabGroupId(groupId);
+
+        when(mTabGroupSyncService.getGroup("group_id_1")).thenReturn(syncGroup);
+        when(mTabModel.getTabsInGroup(groupId)).thenReturn(List.of(mTab));
+        when(mTabModel.indexOf(mTab)).thenReturn(2);
+
+        Callback<String> callback = mBringTabGroupToFrontCallbackCaptor.getValue();
+        assertNotNull(callback);
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason",
+                        TabSearchDismissalReason.TAB_GROUP_SELECTED);
+        callback.onResult("group_id_1");
+        watcher.assertExpected();
+        assertFalse(mCoordinator.isVisible());
+
+        verify(mTabGroupUiActionHandler, never()).openTabGroup(any());
+        verify(mTabModel).setIndex(2, TabSelectionType.FROM_USER);
+    }
+
+    @Test
+    public void testBringTabGroupToFront_NotLocalOpenFirst() {
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+
+        Token groupId = new Token(1, 2);
+        SavedTabGroup syncGroupBefore = new SavedTabGroup();
+        syncGroupBefore.syncId = "sync_id_1";
+        syncGroupBefore.localId = null;
+
+        SavedTabGroup syncGroupAfter = new SavedTabGroup();
+        syncGroupAfter.syncId = "sync_id_1";
+        syncGroupAfter.localId = new LocalTabGroupId(groupId);
+
+        when(mTabGroupSyncService.getGroup("group_id_1"))
+                .thenReturn(syncGroupBefore)
+                .thenReturn(syncGroupAfter);
+        when(mTabModel.getTabsInGroup(groupId)).thenReturn(List.of(mTab));
+        when(mTabModel.indexOf(mTab)).thenReturn(2);
+
+        Callback<String> callback = mBringTabGroupToFrontCallbackCaptor.getValue();
+        assertNotNull(callback);
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason",
+                        TabSearchDismissalReason.TAB_GROUP_SELECTED);
+        callback.onResult("group_id_1");
+        watcher.assertExpected();
+        assertFalse(mCoordinator.isVisible());
+
+        verify(mTabGroupUiActionHandler).openTabGroup("sync_id_1");
+        verify(mTabModel).setIndex(2, TabSelectionType.FROM_USER);
+    }
+
+    @Test
+    public void testBringTabToFront_switchesTabWithFromUser() {
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+
+        int tabId = 123;
+        when(mTab.getId()).thenReturn(tabId);
+        when(mTabModel.getTabModelType()).thenReturn(TabModelType.STANDARD);
+        when(mTabModelSelector.getCurrentModel()).thenReturn(mTabModel);
+        when(mTabModel.getCount()).thenReturn(1);
+        when(mTabModel.getTabAt(0)).thenReturn(mTab);
+        when(mTabModel.indexOf(mTab)).thenReturn(0);
+        when(mTabModel.iterator()).thenReturn(List.of(mTab).iterator());
+
+        TabWindowInfo tabWindowInfo = new TabWindowInfo(0, mTabModelSelector, mTabModel, mTab);
+        when(mTabWindowManager.getTabWindowInfoById(tabId)).thenReturn(tabWindowInfo);
+
+        OmniboxActionDelegateImpl actionDelegate = mOmniboxActionDelegateCaptor.getValue();
+        assertNotNull(actionDelegate);
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.TAB_SELECTED);
+        assertTrue(actionDelegate.switchToTab(tabId, new GURL("https://example.com")));
+        watcher.assertExpected();
+        assertFalse(mCoordinator.isVisible());
+
+        verify(mTabModel).setIndex(0, TabSelectionType.FROM_USER);
+    }
+
+    private void showOverlay() {
+        mCoordinator.show(TabSearchEntryPoint.HORIZONTAL_TAB_STRIP);
+        assertOverlayShown();
+    }
+
+    private void assertOverlayShown() {
+        assertTrue(mCoordinator.isVisible());
+        assertEquals(View.VISIBLE, mPanelContainer.getVisibility());
+        assertNotNull(mCoordinator.getPopupWindowForTesting());
+        assertTrue(mCoordinator.getPopupWindowForTesting().isShowing());
+    }
+
+    private void assertOverlayHidden() {
+        // Idle the main looper to ensure all hide transition frame updates and animator listener
+        // callbacks (which toggle visibility to GONE) execute completely before verification.
+        ShadowLooper.idleMainLooper(1, TimeUnit.SECONDS);
+        assertFalse(mCoordinator.isVisible());
+        assertEquals(View.GONE, mPanelContainer.getVisibility());
+        assertNotNull(mCoordinator.getPopupWindowForTesting());
+        assertFalse(mCoordinator.getPopupWindowForTesting().isShowing());
+        verify(mLocationBarCoordinator).clearOmniboxFocus();
+    }
+
+    private void verifySearchUiCoordinatorInitialized() {
+        verify(mSearchUiCoordinator)
+                .initialize(
+                        any(),
+                        any(),
+                        eq(mWindowAndroid),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(mTabModelSelectorSupplier),
+                        mOverrideUrlLoadingDelegateCaptor.capture(),
+                        any(),
+                        mBringTabGroupToFrontCallbackCaptor.capture(),
+                        mOmniboxActionDelegateCaptor.capture(),
+                        any(),
+                        any(),
+                        any());
+    }
+
+    @Test
+    public void testProfileChanged_updatesColorScheme() {
+        showOverlay();
+        verifySearchUiCoordinatorInitialized();
+
+        ImageButton closeButton = mPanelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(closeButton);
+
+        // Switch to an incognito profile.
+        mProfileSupplier.set(mIncognitoProfile);
+
+        // Verify that setColorScheme was called with true.
+        verify(mSearchUiCoordinator).setColorScheme(true);
+
+        // Verify close button colors in incognito.
+        assertEquals(
+                AppCompatResources.getColorStateList(mActivity, R.color.default_icon_color_light),
+                closeButton.getImageTintList());
+        assertEquals(
+                AppCompatResources.getColorStateList(
+                        mActivity, R.color.tab_strip_close_bg_incognito_tint_list),
+                closeButton.getBackgroundTintList());
+
+        // Switch back to non-incognito profile.
+        mProfileSupplier.set(mProfile);
+
+        // Verify that setColorScheme was called with false.
+        verify(mSearchUiCoordinator).setColorScheme(false);
+
+        // Verify close button colors in standard.
+        assertEquals(
+                AppCompatResources.getColorStateList(
+                        mActivity, R.color.default_icon_color_tint_list),
+                closeButton.getImageTintList());
+        assertEquals(
+                AppCompatResources.getColorStateList(
+                        mActivity, R.color.tab_strip_close_bg_tint_list),
+                closeButton.getBackgroundTintList());
+    }
+
+    @Test
+    public void testBackPressSupplierState() {
+        assertFalse(mCoordinator.getHandleBackPressChangedSupplier().get());
+
+        showOverlay();
+        assertTrue(mCoordinator.getHandleBackPressChangedSupplier().get());
+
+        mCoordinator.hide(TabSearchDismissalReason.BACK_PRESS);
+        assertFalse(mCoordinator.getHandleBackPressChangedSupplier().get());
+    }
+
+    @Test
+    public void testHandleBackPress_hidesOverlay() {
+        showOverlay();
+        assertTrue(mCoordinator.isVisible());
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.BACK_PRESS);
+        int result = mCoordinator.handleBackPress();
+        watcher.assertExpected();
+        assertEquals(BackPressResult.SUCCESS, result);
+        assertOverlayHidden();
+    }
+
+    private void notifySuggestionsChanged(boolean hasSuggestions) {
+        if (mSuggestionsChangeObserver != null) {
+            mSuggestionsChangeObserver.onResult(hasSuggestions);
+        }
+    }
+
+    @Test
+    public void testSuggestionsChanged_togglesEmptyState() {
+        showOverlay();
+
+        // Case 1: Search query is empty, suggestions is false.
+        // Empty state should NOT be visible.
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("");
+        notifySuggestionsChanged(false);
+        assertFalse(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(TabSearchOverlayProperties.EMPTY_STATE_VISIBLE));
+
+        // Case 2: Search query is not empty, suggestions is true.
+        // Empty state should NOT be visible.
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("abc");
+        notifySuggestionsChanged(true);
+        assertFalse(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(TabSearchOverlayProperties.EMPTY_STATE_VISIBLE));
+
+        // Case 3: Search query is not empty, suggestions is false.
+        // Empty state SHOULD be visible.
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("abc");
+        notifySuggestionsChanged(false);
+        assertTrue(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(TabSearchOverlayProperties.EMPTY_STATE_VISIBLE));
+    }
+
+    @Test
+    public void testSessionHadEmptyState_recordsHistogram() {
+        // Case 1: Session without empty state records false on hide.
+        showOverlay();
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("abc");
+        notifySuggestionsChanged(true);
+        var watcherNoEmpty =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.SessionHadEmptyState", false);
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        watcherNoEmpty.assertExpected();
+
+        // Case 2: Session with empty state records true on hide.
+        showOverlay();
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("xyz");
+        notifySuggestionsChanged(false);
+        assertTrue(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(TabSearchOverlayProperties.EMPTY_STATE_VISIBLE));
+        var watcherWithEmpty =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.SessionHadEmptyState", true);
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        watcherWithEmpty.assertExpected();
+
+        // Case 3: Subsequent session resets flag and records false if no empty state occurs.
+        showOverlay();
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("abc");
+        notifySuggestionsChanged(true);
+        var watcherReset =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.SessionHadEmptyState", false);
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        watcherReset.assertExpected();
+    }
+
+    @Test
+    public void testScrimClick_dismissalSequence() {
+        showOverlay();
+        // Setup state: search query is not empty, suggestions list is not empty (empty state not
+        // visible).
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("abc");
+        notifySuggestionsChanged(true);
+        assertFalse(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(TabSearchOverlayProperties.EMPTY_STATE_VISIBLE));
+
+        // 1. Click scrim to dismiss.
+        mScrim.performClick();
+
+        // 2. During the hide animation (before idling looper):
+        // - Overlay visibility property is set to false.
+        assertFalse(mCoordinator.isVisible());
+        // - Empty state is NOT visible.
+        assertFalse(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(TabSearchOverlayProperties.EMPTY_STATE_VISIBLE));
+
+        // 3. Complete the animation by idling the looper.
+        ShadowLooper.idleMainLooper(1, TimeUnit.SECONDS);
+
+        // 4. After the animation completes:
+        // - Focus is cleared.
+        verify(mLocationBarCoordinator).clearOmniboxFocus();
+        // - Simulate the location bar updating its focus status.
+        when(mOmniboxStub.isUrlBarFocused()).thenReturn(false);
+        // - Simulate suggestions list becoming empty due to focus loss.
+        notifySuggestionsChanged(false);
+
+        // - Empty state remains NOT visible.
+        assertFalse(
+                mCoordinator
+                        .getModelForTesting()
+                        .get(TabSearchOverlayProperties.EMPTY_STATE_VISIBLE));
+    }
+
+    @Test
+    public void testScrimScrollForwardedToCompositorViewHolder() {
+        showOverlay();
+        MotionEvent scrollEvent =
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_SCROLL, 100f, 150f, 0);
+        mScrim.dispatchGenericMotionEvent(scrollEvent);
+
+        ArgumentCaptor<MotionEvent> eventCaptor = ArgumentCaptor.forClass(MotionEvent.class);
+        verify(mGenericMotionListener)
+                .onGenericMotion(eq(mCompositorViewHolder), eventCaptor.capture());
+
+        MotionEvent forwardedEvent = eventCaptor.getValue();
+        assertEquals(100f, forwardedEvent.getX(), 0.01f);
+        assertEquals(150f, forwardedEvent.getY(), 0.01f);
+        scrollEvent.recycle();
+    }
+
+    @Test
+    public void testScrimScrollForwarding_RecursionGuard() {
+        showOverlay();
+
+        // Configure CompositorViewHolder to dispatch back to the scrim
+        // when receiving the event. This simulates the ViewGroup hierarchy
+        // traversing and trying to dispatch the transformed event to its child (scrim).
+        mCompositorViewHolder.setOnGenericMotionListener(
+                (v, event) -> mScrim.dispatchGenericMotionEvent(event));
+
+        MotionEvent scrollEvent =
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_SCROLL, 100f, 150f, 0);
+
+        // This call should terminate successfully (no StackOverflowError)
+        // and return false since the recursion was blocked and the target view
+        // returned false to the recursive dispatch.
+        assertFalse(mScrim.dispatchGenericMotionEvent(scrollEvent));
+
+        scrollEvent.recycle();
+    }
+
+    @Test
+    public void testScrimTouchForwardedToCompositorViewHolder_Drag() {
+        showOverlay();
+
+        // 1. Send ACTION_DOWN (touch start) - should be deferred and NOT forwarded yet.
+        MotionEvent downEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 100f, 150f, 0);
+        mScrim.dispatchTouchEvent(downEvent);
+
+        verify(mTouchListener, never()).onTouch(any(), any(MotionEvent.class));
+
+        // 2. Send ACTION_MOVE beyond touch slop (e.g., dx = 100f) to trigger drag.
+        // This should trigger forwarding both the saved ACTION_DOWN and current ACTION_MOVE.
+        MotionEvent moveEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_MOVE, 200f, 150f, 0);
+        mScrim.dispatchTouchEvent(moveEvent);
+
+        ArgumentCaptor<MotionEvent> touchCaptor = ArgumentCaptor.forClass(MotionEvent.class);
+        verify(mTouchListener, times(2)).onTouch(eq(mCompositorViewHolder), touchCaptor.capture());
+        List<MotionEvent> forwardedEvents = touchCaptor.getAllValues();
+        assertEquals(MotionEvent.ACTION_DOWN, forwardedEvents.get(0).getActionMasked());
+        assertEquals(100f, forwardedEvents.get(0).getX(), 0.01f);
+        assertEquals(150f, forwardedEvents.get(0).getY(), 0.01f);
+        assertEquals(MotionEvent.ACTION_MOVE, forwardedEvents.get(1).getActionMasked());
+        assertEquals(200f, forwardedEvents.get(1).getX(), 0.01f);
+        assertEquals(150f, forwardedEvents.get(1).getY(), 0.01f);
+        clearInvocations(mTouchListener);
+
+        // 3. Send ACTION_UP (drag end) - should be forwarded directly.
+        MotionEvent upEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_UP, 200f, 150f, 0);
+        mScrim.dispatchTouchEvent(upEvent);
+
+        verify(mTouchListener).onTouch(eq(mCompositorViewHolder), touchCaptor.capture());
+        assertEquals(MotionEvent.ACTION_UP, touchCaptor.getValue().getActionMasked());
+
+        downEvent.recycle();
+        moveEvent.recycle();
+        upEvent.recycle();
+    }
+
+    @Test
+    public void testScrimTouchForwardedToCompositorViewHolder_Tap() {
+        showOverlay();
+
+        // Register a click listener on the scrim/model to check for dismissal
+        class ClickTracker {
+            boolean mClicked;
+        }
+        ClickTracker tracker = new ClickTracker();
+        mCoordinator
+                .getModelForTesting()
+                .set(TabSearchOverlayProperties.ON_SCRIM_CLICK, v -> tracker.mClicked = true);
+
+        // 1. Send ACTION_DOWN - should be deferred and NOT forwarded yet.
+        MotionEvent downEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 100f, 150f, 0);
+        mScrim.dispatchTouchEvent(downEvent);
+
+        verify(mTouchListener, never()).onTouch(any(), any(MotionEvent.class));
+
+        // 2. Send ACTION_UP without exceeding touch slop (same coordinate)
+        MotionEvent upEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_UP, 100f, 150f, 0);
+        mScrim.dispatchTouchEvent(upEvent);
+
+        // Verify that NO events (neither DOWN, UP, nor CANCEL) were sent to the compositor view,
+        // since the touch sequence was a simple tap.
+        verify(mTouchListener, never()).onTouch(any(), any(MotionEvent.class));
+
+        // Verify that the scrim click action was triggered to dismiss overlay
+        assertTrue(tracker.mClicked);
+
+        downEvent.recycle();
+        upEvent.recycle();
+    }
+
+    @Test
+    public void testScrimTouchForwardedToCompositorViewHolder_CancelDuringDrag() {
+        showOverlay();
+
+        // 1. Send ACTION_DOWN (deferred)
+        MotionEvent downEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 100f, 150f, 0);
+        mScrim.dispatchTouchEvent(downEvent);
+
+        // 2. Send ACTION_MOVE beyond slop to start dragging
+        MotionEvent moveEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_MOVE, 200f, 150f, 0);
+        mScrim.dispatchTouchEvent(moveEvent);
+        clearInvocations(mTouchListener);
+
+        // 3. Send ACTION_CANCEL - should be forwarded directly since we are dragging.
+        MotionEvent cancelEvent =
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_CANCEL, 200f, 150f, 0);
+        mScrim.dispatchTouchEvent(cancelEvent);
+
+        ArgumentCaptor<MotionEvent> touchCaptor = ArgumentCaptor.forClass(MotionEvent.class);
+        verify(mTouchListener).onTouch(eq(mCompositorViewHolder), touchCaptor.capture());
+        assertEquals(MotionEvent.ACTION_CANCEL, touchCaptor.getValue().getActionMasked());
+
+        downEvent.recycle();
+        moveEvent.recycle();
+        cancelEvent.recycle();
+    }
+
+    @Test
+    public void testScrimTouchForwardedToCompositorViewHolder_CancelBeforeDrag() {
+        showOverlay();
+
+        // 1. Send ACTION_DOWN (deferred)
+        MotionEvent downEvent = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 100f, 150f, 0);
+        mScrim.dispatchTouchEvent(downEvent);
+
+        // 2. Send ACTION_CANCEL - should NOT be forwarded because drag never started.
+        MotionEvent cancelEvent =
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_CANCEL, 100f, 150f, 0);
+        mScrim.dispatchTouchEvent(cancelEvent);
+
+        verify(mTouchListener, never()).onTouch(any(), any(MotionEvent.class));
+
+        downEvent.recycle();
+        cancelEvent.recycle();
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.Q)
+    public void testSystemGestureExclusionRects_ShowAndHide() {
+        showOverlay();
+        View panelView = mPanelContainer.findViewById(R.id.tab_search_overlay_panel);
+        View closeButton = panelView.findViewById(R.id.tab_search_close_button);
+
+        // Mock layout bounds for close button.
+        closeButton.setLeft(228);
+        closeButton.setTop(4);
+        closeButton.setRight(260);
+        closeButton.setBottom(36);
+
+        // Trigger layout pass on panelView.
+        panelView.layout(0, 0, 264, 500);
+
+        // Verify exclusion rect matches close button bounds.
+        List<Rect> exclusionRects = mPanelContainer.getSystemGestureExclusionRects();
+        assertEquals(1, exclusionRects.size());
+        assertEquals(new Rect(228, 4, 260, 36), exclusionRects.get(0));
+
+        // Hide overlay and verify exclusion rect is cleared.
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        assertTrue(mPanelContainer.getSystemGestureExclusionRects().isEmpty());
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.Q)
+    public void testSystemGestureExclusionRects_DesktopWindowing() {
+        when(mAppHeaderState.isInDesktopWindow()).thenReturn(true);
+        when(mAppHeaderState.getAppHeaderHeight()).thenReturn(40);
+
+        showOverlay();
+
+        View panelView = mPanelContainer.findViewById(R.id.tab_search_overlay_panel);
+        View closeButton = panelView.findViewById(R.id.tab_search_close_button);
+        closeButton.setLeft(228);
+        closeButton.setTop(4);
+        closeButton.setRight(260);
+        closeButton.setBottom(36);
+
+        // Perform layout on panelView and mPanelContainer.
+        panelView.layout(0, 0, 264, 500);
+        mPanelContainer.layout(0, 0, 800, 500);
+
+        // Verify exclusion rects contain:
+        // 1. Close button rect: (228, 4, 260, 36)
+        // 2. Full header rect: (0, 0, 800, 40)
+        List<Rect> exclusionRects = mPanelContainer.getSystemGestureExclusionRects();
+        assertEquals(2, exclusionRects.size());
+        assertEquals(new Rect(228, 4, 260, 36), exclusionRects.get(0));
+        assertEquals(new Rect(0, 0, 800, 40), exclusionRects.get(1));
+
+        // Hide overlay and verify exclusion rects are cleared.
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        assertTrue(mPanelContainer.getSystemGestureExclusionRects().isEmpty());
+    }
+
+    @Test
+    public void testPanelTopMargin_ConventionalState_OffsetByStatusBarInset() {
+        setRawWindowInsets(
+                new WindowInsetsCompat.Builder()
+                        .setInsets(WindowInsetsCompat.Type.statusBars(), topInset(48))
+                        .build());
+
+        // Non-caption mode (e.g. fullscreen tablet): topMargin aligns below the status bar, header
+        // visible.
+        showOverlay();
+
+        View headerView = mPanelContainer.findViewById(R.id.tab_search_overlay_header);
+        assertPanelTopMargin(48);
+        assertNotNull(headerView);
+        assertEquals(View.VISIBLE, headerView.getVisibility());
+
+        // In desktop windowing mode (freeform window, caption offset = 0): topMargin is 0,
+        // header remains visible.
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        when(mAppHeaderState.isInDesktopWindow()).thenReturn(true);
+        when(mAppHeaderState.getAppHeaderHeight()).thenReturn(144);
+        when(mAppHeaderState.getCaptionControlsTopOffset()).thenReturn(0);
+        showOverlay();
+
+        assertPanelTopMargin(0);
+        assertEquals(View.VISIBLE, headerView.getVisibility());
+
+        // In desktop windowing mode with status bar offset (e.g. split-screen mode):
+        // topMargin matches caption top offset so overlay aligns below the status bar.
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        when(mAppHeaderState.getCaptionControlsTopOffset()).thenReturn(48);
+        showOverlay();
+
+        assertPanelTopMargin(48);
+        assertEquals(View.VISIBLE, headerView.getVisibility());
+    }
+
+    @Test
+    public void testPanelTopMargin_ConventionalState_NoStatusBarInset() {
+        // E.g. the bottom window in split-screen, which does not overlap the status bar.
+        setRawWindowInsets(new WindowInsetsCompat.Builder().build());
+        when(mAppHeaderState.isInDesktopWindow()).thenReturn(false);
+
+        showOverlay();
+
+        assertPanelTopMargin(0);
+    }
+
+    @Test
+    // WindowInsetsCompat.Builder only supports captionBar() insets on API 30+.
+    @Config(sdk = Build.VERSION_CODES.R)
+    public void testPanelTopMargin_ConventionalState_OffsetByCaptionBarInset() {
+        // An OS-drawn caption bar is present but the desktop windowing heuristics declined to draw
+        // the app header (e.g. external display), so isInDesktopWindow() is false.
+        when(mAppHeaderState.isInDesktopWindow()).thenReturn(false);
+        setRawWindowInsets(
+                new WindowInsetsCompat.Builder()
+                        .setInsets(WindowInsetsCompat.Type.captionBar(), topInset(96))
+                        .build());
+        showOverlay();
+
+        assertPanelTopMargin(96);
+
+        // When the status bar also overlaps the top of the window, the panel is offset by the
+        // larger of the two insets rather than their sum.
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        setRawWindowInsets(
+                new WindowInsetsCompat.Builder()
+                        .setInsets(WindowInsetsCompat.Type.statusBars(), topInset(48))
+                        .setInsets(WindowInsetsCompat.Type.captionBar(), topInset(96))
+                        .build());
+        showOverlay();
+
+        assertPanelTopMargin(96);
+    }
+
+    @Test
+    public void testPanelTopMargin_ConventionalState_NoInsetsObservedYet() {
+        setRawWindowInsets(null);
+        when(mAppHeaderState.isInDesktopWindow()).thenReturn(false);
+
+        showOverlay();
+
+        assertPanelTopMargin(0);
+    }
+
+    @Test
+    public void testPanelTopMargin_ConventionalState_NoInsetObserver() {
+        when(mWindowAndroid.getInsetObserver()).thenReturn(null);
+        when(mAppHeaderState.isInDesktopWindow()).thenReturn(false);
+
+        showOverlay();
+
+        assertPanelTopMargin(0);
+    }
+
+    @Test
+    public void testScrimNonScrollGenericMotionEvent_ConsumedAndNotForwarded() {
+        showOverlay();
+        MotionEvent clickEvent =
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_BUTTON_PRESS, 100f, 150f, 0);
+        assertTrue(mScrim.dispatchGenericMotionEvent(clickEvent));
+
+        MotionEvent hoverEvent =
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_HOVER_MOVE, 100f, 150f, 0);
+        assertTrue(mScrim.dispatchGenericMotionEvent(hoverEvent));
+
+        verify(mGenericMotionListener, never()).onGenericMotion(any(), any(MotionEvent.class));
+        clickEvent.recycle();
+        hoverEvent.recycle();
+    }
+
+    @Test
+    public void testWindowFocusLost_hidesOverlay() {
+        showOverlay();
+        assertTrue(mCoordinator.isVisible());
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason",
+                        TabSearchDismissalReason.WINDOW_FOCUS_LOST);
+        mCoordinator.getWindowFocusListenerForTesting().onWindowFocusChanged(false);
+        watcher.assertExpected();
+
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testWindowFocusLostWhenHidden_doesNothing() {
+        assertFalse(mCoordinator.isVisible());
+
+        mCoordinator.getWindowFocusListenerForTesting().onWindowFocusChanged(false);
+
+        verify(mLocationBarCoordinator, never()).clearOmniboxFocus();
+    }
+
+    @Test
+    public void testCloseButtonSizing_NonDesktopDensity() {
+        ImageButton closeButton = mPanelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(closeButton);
+
+        int expectedSize =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.tab_search_close_button_size);
+        assertEquals(expectedSize, closeButton.getLayoutParams().width);
+        assertEquals(expectedSize, closeButton.getLayoutParams().height);
+    }
+
+    @Test
+    public void testCloseButtonSizing_DesktopDensity() {
+        DeviceInfo.setIsDesktopForTesting(true);
+
+        // Re-create the coordinator under desktop density condition
+        mCoordinator.destroy();
+        clearInvocations(mSearchUiCoordinator);
+        mCoordinator =
+                new TabSearchOverlayCoordinator(
+                        mActivity,
+                        mWindowAndroid,
+                        mProfileSupplier,
+                        mSnackbarManager,
+                        ObservableSuppliers.createNonNull(mModalDialogManager),
+                        mActivityLifecycleDispatcher,
+                        mTabModelSelectorSupplier,
+                        /* edgeToEdgeSystemBarColorHelper= */ null,
+                        mBackPressManager,
+                        ObservableSuppliers.createNonNull(mCompositorViewHolder),
+                        mTabGroupUiActionHandlerSupplier,
+                        mDesktopWindowStateManager,
+                        mTabObscuringHandler,
+                        mFuseboxControls);
+        mCoordinator.setSearchUiCoordinatorForTesting(mSearchUiCoordinator);
+        mCoordinator.ensureInitialized();
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+
+        View panelContainer = mCoordinator.getPanelContainerForTesting();
+        assertNotNull(panelContainer);
+        ImageButton closeButton = panelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(closeButton);
+
+        int expectedSize =
+                mActivity
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.tab_search_close_button_size_desktop);
+        assertEquals(expectedSize, closeButton.getLayoutParams().width);
+        assertEquals(expectedSize, closeButton.getLayoutParams().height);
+    }
+
+    @Test
+    public void testOnConfigurationChanged_whenVisible_hidesOverlay() {
+        showOverlay();
+        assertTrue(mCoordinator.isVisible());
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason",
+                        TabSearchDismissalReason.WINDOW_RESIZED);
+        mCoordinator.onConfigurationChanged(new Configuration());
+        watcher.assertExpected();
+
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testOnConfigurationChanged_whenHidden_doesNothing() {
+        assertFalse(mCoordinator.isVisible());
+
+        mCoordinator.onConfigurationChanged(new Configuration());
+
+        verify(mLocationBarCoordinator, never()).clearOmniboxFocus();
+    }
+
+    @Test
+    public void testOnAppHeaderStateChanged_whenVisible_hidesOverlay() {
+        showOverlay();
+        assertTrue(mCoordinator.isVisible());
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason",
+                        TabSearchDismissalReason.WINDOW_RESIZED);
+        mCoordinator.onAppHeaderStateChanged(new AppHeaderState());
+        watcher.assertExpected();
+
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testOnAppHeaderStateChanged_whenHidden_doesNothing() {
+        assertFalse(mCoordinator.isVisible());
+
+        mCoordinator.onAppHeaderStateChanged(new AppHeaderState());
+
+        verify(mLocationBarCoordinator, never()).clearOmniboxFocus();
+    }
+
+    @Test
+    public void testOnDesktopWindowingModeChanged_whenVisible_hidesOverlay() {
+        showOverlay();
+        assertTrue(mCoordinator.isVisible());
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason",
+                        TabSearchDismissalReason.WINDOW_RESIZED);
+        mCoordinator.onDesktopWindowingModeChanged(true);
+        watcher.assertExpected();
+
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testOnDesktopWindowingModeChanged_whenHidden_doesNothing() {
+        assertFalse(mCoordinator.isVisible());
+
+        mCoordinator.onDesktopWindowingModeChanged(true);
+
+        verify(mLocationBarCoordinator, never()).clearOmniboxFocus();
+    }
+
+    @Test
+    public void testShow_obscuresTabsAndToolbar() {
+        assertFalse(mTabObscuringHandler.isToolbarObscured());
+        assertFalse(mTabObscuringHandler.isTabContentObscured());
+
+        mCoordinator.show(TabSearchEntryPoint.HORIZONTAL_TAB_STRIP);
+        assertTrue(mTabObscuringHandler.isToolbarObscured());
+        assertTrue(mTabObscuringHandler.isTabContentObscured());
+    }
+
+    @Test
+    public void testHide_unobscuresTabsAndToolbar() {
+        mCoordinator.show(TabSearchEntryPoint.HORIZONTAL_TAB_STRIP);
+        assertTrue(mTabObscuringHandler.isToolbarObscured());
+        assertTrue(mTabObscuringHandler.isTabContentObscured());
+
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        assertFalse(mTabObscuringHandler.isToolbarObscured());
+        assertFalse(mTabObscuringHandler.isTabContentObscured());
+    }
+
+    @Test
+    public void testPopupWindow_configuration() {
+        PopupWindow popupWindow = mCoordinator.getPopupWindowForTesting();
+        assertNotNull(popupWindow);
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, popupWindow.getWidth());
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, popupWindow.getHeight());
+        assertTrue(popupWindow.isFocusable());
+        assertTrue(popupWindow.isOutsideTouchable());
+        assertFalse(popupWindow.isClippingEnabled());
+        assertTrue(popupWindow.isAttachedInDecor());
+        assertEquals(PopupWindow.INPUT_METHOD_NEEDED, popupWindow.getInputMethodMode());
+        assertEquals(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+                popupWindow.getSoftInputMode());
+    }
+
+    @Test
+    public void testPopupWindow_dismiss_hidesOverlayWithBackPressReason() {
+        showOverlay();
+
+        PopupWindow popupWindow = mCoordinator.getPopupWindowForTesting();
+        assertNotNull(popupWindow);
+
+        var watcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.TabSearch.DismissalReason", TabSearchDismissalReason.BACK_PRESS);
+        popupWindow.dismiss();
+        watcher.assertExpected();
+        assertOverlayHidden();
+    }
+
+    @Test
+    public void testAccessibility_layoutAttributes() {
+        View panel = mPanelContainer.findViewById(R.id.tab_search_overlay_panel);
+        assertNotNull(panel);
+        assertFalse(panel.isFocusable());
+
+        View scrim = mPanelContainer.findViewById(R.id.tab_search_overlay_scrim);
+        assertNotNull(scrim);
+        assertFalse(scrim.isFocusable());
+        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, scrim.getImportantForAccessibility());
+
+        ImageButton closeButton = mPanelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(closeButton);
+        assertTrue(closeButton.isFocusable());
+        assertFalse(closeButton.isFocusableInTouchMode());
+        assertTrue(closeButton.isClickable());
+        assertEquals(
+                View.IMPORTANT_FOR_ACCESSIBILITY_YES, closeButton.getImportantForAccessibility());
+        assertEquals(R.id.search_activity_container, closeButton.getAccessibilityTraversalBefore());
+        assertEquals(R.id.tab_search_close_button, mUrlBar.getAccessibilityTraversalAfter());
+        assertEquals(
+                mActivity.getString(R.string.close),
+                closeButton.getContentDescription().toString());
+    }
+
+    @Test
+    public void testAccessibility_paneTitleLifecycle() {
+        View panel = mPanelContainer.findViewById(R.id.tab_search_overlay_panel);
+        ImageButton closeButton = mPanelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(panel);
+        assertNotNull(closeButton);
+
+        assertNull(ViewCompat.getAccessibilityPaneTitle(panel));
+
+        showOverlay();
+
+        assertEquals(
+                mActivity.getString(R.string.keyboard_shortcut_tab_search),
+                ViewCompat.getAccessibilityPaneTitle(panel));
+
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+
+        assertNull(ViewCompat.getAccessibilityPaneTitle(panel));
+    }
+
+    @Test
+    public void testKeyNavigation_betweenUrlBarAndCloseButton() {
+        showOverlay();
+        mUrlBar.setAllowFocus(true);
+        mUrlBar.requestFocus();
+
+        ImageButton closeButton = mPanelContainer.findViewById(R.id.tab_search_close_button);
+        assertNotNull(closeButton);
+        assertTrue(mUrlBar.isFocused());
+        assertFalse(closeButton.isFocused());
+
+        KeyEvent shiftTabEvent =
+                new KeyEvent(
+                        /* downTime= */ 0,
+                        /* eventTime= */ 0,
+                        KeyEvent.ACTION_DOWN,
+                        KeyEvent.KEYCODE_TAB,
+                        /* repeat= */ 0,
+                        KeyEvent.META_SHIFT_ON);
+        KeyEvent upEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP);
+
+        // When at the top suggestion (selectedIndex == 0), Shift+Tab and Up on UrlBar
+        // unselect the suggestion (returning focus to UrlBar) and do not focus Close button.
+        when(mAutocompleteCoordinator.getSelectedIndex()).thenReturn(0);
+        assertTrue(mUrlBar.dispatchKeyEvent(shiftTabEvent));
+        verify(mAutocompleteCoordinator).resetSelection();
+        assertTrue(mUrlBar.isFocused());
+        assertFalse(closeButton.isFocused());
+
+        // When unselected in UrlBar (selectedIndex == null), Shift+Tab focuses Close button.
+        when(mAutocompleteCoordinator.getSelectedIndex()).thenReturn(null);
+        assertTrue(mUrlBar.dispatchKeyEvent(shiftTabEvent));
+        assertTrue(closeButton.isFocused());
+        assertFalse(mUrlBar.isFocused());
+
+        // Forward Tab on Close button returns focus to UrlBar.
+        KeyEvent tabEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB);
+        closeButton.dispatchKeyEvent(tabEvent);
+        assertTrue(mUrlBar.isFocused());
+        assertFalse(closeButton.isFocused());
+
+        // Up arrow when unselected in UrlBar also focuses Close button.
+        assertTrue(mUrlBar.dispatchKeyEvent(upEvent));
+        assertTrue(closeButton.isFocused());
+        assertFalse(mUrlBar.isFocused());
+
+        // Down arrow on Close button returns focus to UrlBar.
+        KeyEvent downEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN);
+        closeButton.dispatchKeyEvent(downEvent);
+        assertTrue(mUrlBar.isFocused());
+        assertFalse(closeButton.isFocused());
+
+        // When deeper in suggestions (selectedIndex == 1), Up delegates to omnibox stub.
+        when(mAutocompleteCoordinator.getSelectedIndex()).thenReturn(1);
+        View.OnKeyListener omniboxListener = (View.OnKeyListener) mOmniboxStub;
+        when(omniboxListener.onKey(eq(mUrlBar), eq(KeyEvent.KEYCODE_DPAD_UP), eq(upEvent)))
+                .thenReturn(true);
+        assertTrue(mUrlBar.dispatchKeyEvent(upEvent));
+        verify(omniboxListener).onKey(mUrlBar, KeyEvent.KEYCODE_DPAD_UP, upEvent);
+        assertTrue(mUrlBar.isFocused());
+        assertFalse(closeButton.isFocused());
+    }
+
+    private void setRawWindowInsets(WindowInsetsCompat windowInsets) {
+        when(mInsetObserver.getLastRawWindowInsets()).thenReturn(windowInsets);
+        when(mWindowAndroid.getInsetObserver()).thenReturn(mInsetObserver);
+    }
+
+    private static Insets topInset(int top) {
+        return Insets.of(/* left= */ 0, top, /* right= */ 0, /* bottom= */ 0);
+    }
+
+    private void assertPanelTopMargin(int expected) {
+        View panelView = mPanelContainer.findViewById(R.id.tab_search_overlay_panel);
+        var params = (LinearLayout.LayoutParams) panelView.getLayoutParams();
+        assertEquals(expected, params.topMargin);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ARCHIVED_TABS_TEARDOWN)
+    public void testSearchSessionLease_lifecycle() {
+        ArchivedTabModelOrchestrator orchestrator =
+                ArchivedTabModelOrchestrator.createForTesting(mProfile);
+        ArchivedTabModelOrchestrator.setInstanceForTesting(orchestrator);
+
+        assertEquals(0, orchestrator.getLeaseCountForTesting());
+        assertNull(mCoordinator.getSearchSessionLeaseForTesting());
+
+        showOverlay();
+        assertNotNull(mCoordinator.getSearchSessionLeaseForTesting());
+        assertEquals(1, orchestrator.getLeaseCountForTesting());
+
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+        assertNull(mCoordinator.getSearchSessionLeaseForTesting());
+        assertEquals(0, orchestrator.getLeaseCountForTesting());
+
+        showOverlay();
+        assertEquals(1, orchestrator.getLeaseCountForTesting());
+        mCoordinator.destroy();
+        assertNull(mCoordinator.getSearchSessionLeaseForTesting());
+        assertEquals(0, orchestrator.getLeaseCountForTesting());
+    }
+
+    @Test
+    public void testSearchMetrics_warmPath_recordsWarmLatency() {
+        ArchivedTabModelOrchestrator orchestrator =
+                ArchivedTabModelOrchestrator.createForTesting(mProfile);
+        ArchivedTabModelOrchestrator.setInstanceForTesting(orchestrator);
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ true);
+
+        showOverlay();
+
+        var warmWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Warm");
+        var deferredWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords(
+                                "Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Deferred")
+                        .expectNoRecords("Tabs.ArchivedTabs.Search.TimeToAppendResultsMs")
+                        .build();
+
+        mCoordinator.onSearchQueryStarted("search term");
+        assertFalse(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+        assertNull(mCoordinator.getTabStateInitializedObserverForTesting());
+
+        mCoordinator.onSuggestionsRendered(/* hasSuggestions= */ true);
+
+        warmWatcher.assertExpected();
+        deferredWatcher.assertExpected();
+        assertEquals(0, mCoordinator.getSearchQueryStartTimeMsForTesting());
+    }
+
+    @Test
+    public void testSearchMetrics_deferredPath_recordsDeferredAndAppendLatency() {
+        ArchivedTabModelOrchestrator orchestrator =
+                ArchivedTabModelOrchestrator.createForTesting(mProfile);
+        ArchivedTabModelOrchestrator.setInstanceForTesting(orchestrator);
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ false);
+
+        showOverlay();
+
+        var warmWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords("Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Warm")
+                        .build();
+        var deferredWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Deferred");
+        var appendWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Tabs.ArchivedTabs.Search.TimeToAppendResultsMs");
+
+        when(mUrlBarCoordinator.getTextWithoutAutocomplete()).thenReturn("search query");
+        mCoordinator.onSearchQueryStarted("search query");
+        assertTrue(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+        assertNotNull(mCoordinator.getTabStateInitializedObserverForTesting());
+
+        // First pass: initial regular tab suggestions rendered while orchestrator is loading.
+        mCoordinator.onSuggestionsRendered(/* hasSuggestions= */ true);
+        assertTrue(mCoordinator.getInitialSuggestionsRenderTimeMsForTesting() > 0);
+
+        // Orchestrator completes disk load and flips supplier to true.
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ true);
+
+        // Autocomplete is refreshed with the query without modifying focus or selection.
+        verify(mLocationBarCoordinator).startAutocompleteForQuery(eq("search query"));
+
+        // Refreshed suggestions pass with archived tabs rendered.
+        mCoordinator.onSuggestionsRendered(/* hasSuggestions= */ true);
+
+        deferredWatcher.assertExpected();
+        appendWatcher.assertExpected();
+        warmWatcher.assertExpected();
+        assertEquals(0, mCoordinator.getSearchQueryStartTimeMsForTesting());
+        assertFalse(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+    }
+
+    @Test
+    public void testSearchMetrics_emptyQuery_noMetricsRecorded() {
+        showOverlay();
+
+        var warmWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords("Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Warm")
+                        .build();
+
+        mCoordinator.onSearchQueryStarted("");
+        assertEquals(0, mCoordinator.getSearchQueryStartTimeMsForTesting());
+        assertFalse(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+
+        mCoordinator.onSuggestionsRendered(/* hasSuggestions= */ false);
+        warmWatcher.assertExpected();
+    }
+
+    @Test
+    public void testSearchMetrics_cancelOnHide_detachesObserverWithoutMetrics() {
+        ArchivedTabModelOrchestrator orchestrator =
+                ArchivedTabModelOrchestrator.createForTesting(mProfile);
+        ArchivedTabModelOrchestrator.setInstanceForTesting(orchestrator);
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ false);
+
+        showOverlay();
+
+        var noMetricsWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords("Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Warm")
+                        .expectNoRecords(
+                                "Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Deferred")
+                        .expectNoRecords("Tabs.ArchivedTabs.Search.TimeToAppendResultsMs")
+                        .build();
+
+        mCoordinator.onSearchQueryStarted("search term");
+        assertTrue(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+        assertNotNull(mCoordinator.getTabStateInitializedObserverForTesting());
+
+        // Hide overlay before orchestrator completes.
+        mCoordinator.hide(TabSearchDismissalReason.CLOSE_BUTTON);
+
+        assertNull(mCoordinator.getTabStateInitializedObserverForTesting());
+        assertEquals(0, mCoordinator.getSearchQueryStartTimeMsForTesting());
+        assertFalse(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+
+        // Supplier resolves after hide.
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ true);
+
+        noMetricsWatcher.assertExpected();
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ARCHIVED_TABS_TEARDOWN)
+    public void testIncognito_doesNotAcquireLeaseOrWaitForArchivedTabs() {
+        ArchivedTabModelOrchestrator orchestrator =
+                ArchivedTabModelOrchestrator.createForTesting(mProfile);
+        ArchivedTabModelOrchestrator.setInstanceForTesting(orchestrator);
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ false);
+
+        mProfileSupplier.set(mIncognitoProfile);
+
+        var noMetricsWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords("Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Warm")
+                        .expectNoRecords(
+                                "Tabs.ArchivedTabs.Search.TimeToPopulateResultsMs.Deferred")
+                        .expectNoRecords("Tabs.ArchivedTabs.Search.TimeToAppendResultsMs")
+                        .build();
+
+        showOverlay();
+
+        // No lease should be acquired for incognito.
+        assertNull(mCoordinator.getSearchSessionLeaseForTesting());
+        assertEquals(0, orchestrator.getLeaseCountForTesting());
+
+        mCoordinator.onSearchQueryStarted("search term");
+        assertFalse(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+        assertNull(mCoordinator.getTabStateInitializedObserverForTesting());
+        assertEquals(0, mCoordinator.getSearchQueryStartTimeMsForTesting());
+
+        mCoordinator.onSuggestionsRendered(/* hasSuggestions= */ true);
+        noMetricsWatcher.assertExpected();
+    }
+
+    @Test
+    public void testIncognitoTransition_removesTabStateInitializedObserver() {
+        ArchivedTabModelOrchestrator orchestrator =
+                ArchivedTabModelOrchestrator.createForTesting(mProfile);
+        ArchivedTabModelOrchestrator.setInstanceForTesting(orchestrator);
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ false);
+
+        showOverlay();
+        clearInvocations(mSearchUiCoordinator);
+
+        mCoordinator.onSearchQueryStarted("test query");
+        assertTrue(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+        assertNotNull(mCoordinator.getTabStateInitializedObserverForTesting());
+        assertNotNull(mCoordinator.getObservedTabStateInitializedSupplierForTesting());
+
+        // Switch to incognito profile.
+        mProfileSupplier.set(mIncognitoProfile);
+
+        assertNull(mCoordinator.getTabStateInitializedObserverForTesting());
+        assertNull(mCoordinator.getObservedTabStateInitializedSupplierForTesting());
+        assertFalse(mCoordinator.isWaitingForArchivedTabResultsForTesting());
+
+        // Initializing the orchestrator afterwards must not trigger autocomplete query refresh.
+        orchestrator.setTabStateInitializedForTesting(/* initialized= */ true);
+        verify(mLocationBarCoordinator, never()).startAutocompleteForQuery(any());
+    }
+
+    @Test
+    public void testDestroy_removesUrlBarTextWatcher() {
+        showOverlay();
+        assertNotNull(mCoordinator.getUrlBarTextWatcherForTesting());
+        mUrlBar.setText("initial query");
+        assertTrue(mCoordinator.getSearchQueryStartTimeMsForTesting() > 0);
+
+        mCoordinator.destroy();
+        assertNull(mCoordinator.getUrlBarTextWatcherForTesting());
+        assertEquals(0, mCoordinator.getSearchQueryStartTimeMsForTesting());
+
+        mCoordinator.getModelForTesting().set(TabSearchOverlayProperties.VISIBLE, true);
+        mUrlBar.setText("query after destroy");
+        assertEquals(0, mCoordinator.getSearchQueryStartTimeMsForTesting());
+    }
+}

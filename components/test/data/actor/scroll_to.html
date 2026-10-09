@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Blank Page</title>
+    <style>
+      div {
+        border: 1px solid #000;
+        height: 100px;
+        position: absolute;
+        width: 50px;
+      }
+      #in-viewport {
+        left: 200px;
+        top: 300px;
+      }
+      #out-of-viewport {
+        left: 110vw;
+        top: 110vh;
+      }
+      #fixed {
+        left: 400px;
+        position: fixed;
+        top: 500px;
+      }
+      #display-none {
+        display: none;
+        left: 180vw;
+        top: 180vw;
+      }
+      #offscreen-fixed {
+        left: 400px;
+        position: fixed;
+        top: 1500px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Use labels that differ from visible text so APC keeps them for lookup. -->
+    <div id="in-viewport" aria-label="in-viewport">Viewport target</div>
+    <div id="out-of-viewport">out-of-viewport</div>
+    <div id="fixed" aria-label="fixed">Stationary target</div>
+    <div id="display-none">display-none</div>
+    <div id="offscreen-fixed" aria-label="offscreen-fixed">Offscreen stationary target</div>
+  </body>
+</html>

@@ -1,0 +1,77 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("ui") {
+  sources = [
+    "manage_accounts_consumer.h",
+    "manage_accounts_model_identity_data_source.h",
+    "manage_accounts_mutator.h",
+    "manage_accounts_table_view_controller.h",
+    "manage_accounts_table_view_controller.mm",
+  ]
+  public_deps = [
+    ":protocols",
+    "//ios/chrome/browser/settings/ui_bundled:settings_root",
+    "//ios/chrome/browser/shared/ui/table_view",
+  ]
+  deps = [
+    ":data",
+    "//base",
+    "//google_apis",
+    "//ios/chrome/app/strings:ios_strings",
+    "//ios/chrome/browser/authentication/ui_bundled/cells",
+    "//ios/chrome/browser/settings/manage_accounts/public",
+    "//ios/chrome/browser/shared/model/profile:features",
+    "//ios/chrome/browser/shared/ui/table_view:utils",
+    "//ios/chrome/browser/shared/ui/table_view/cells",
+    "//ios/chrome/browser/signin/model:constants",
+    "//ios/chrome/common/ui/colors",
+    "//ui/base",
+  ]
+}
+
+source_set("data") {
+  sources = [
+    "identity_view_data.h",
+    "identity_view_data.mm",
+  ]
+  deps = [ "//google_apis" ]
+}
+
+source_set("protocols") {
+  sources = [ "with_overridable_model_identity_data_source.h" ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "manage_accounts_table_view_controller_unittest.mm" ]
+  deps = [
+    ":ui",
+    "//base",
+    "//components/sync:test_support",
+    "//components/variations:test_support",
+    "//google_apis",
+    "//ios/chrome/browser/settings/manage_accounts/coordinator",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/browser/shared/ui/table_view:test_support",
+    "//ios/chrome/browser/signin/model",
+    "//ios/chrome/browser/signin/model:authentication_service",
+    "//ios/chrome/browser/signin/model:authentication_service_factory",
+    "//ios/chrome/browser/signin/model:fake_system_identity",
+    "//ios/chrome/browser/signin/model:fake_system_identity_manager",
+    "//ios/chrome/browser/signin/model:test_support",
+    "//ios/chrome/browser/sync/model",
+    "//ios/chrome/browser/sync/model:test_support",
+    "//ios/chrome/test:test_support",
+    "//ios/web/public/test",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//third_party/ocmock",
+  ]
+}

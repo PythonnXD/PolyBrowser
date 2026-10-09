@@ -1,0 +1,88 @@
+/*
+ * Copyright (C) 2012 Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/modules/speech/speech_recognition_result.h"
+
+#include "base/time/time.h"
+
+namespace blink {
+
+namespace {
+double FuzzTimestamp(const base::TimeDelta& time) {
+  // Quantize timestamps to 2ms precision to mitigate fingerprinting risks.
+  // The quantization granularity is independent of the reported unit, which
+  // is seconds per the Web Speech API spec.
+  constexpr base::TimeDelta kFuzzInterval = base::Milliseconds(2);
+  return time.FloorToMultiple(kFuzzInterval).InSecondsF();
+}
+}  // namespace
+
+SpeechRecognitionResult* SpeechRecognitionResult::Create(
+    const HeapVector<Member<SpeechRecognitionAlternative>>& alternatives,
+    bool final,
+    std::optional<base::TimeDelta> speech_start_time,
+    std::optional<base::TimeDelta> speech_end_time) {
+  return MakeGarbageCollected<SpeechRecognitionResult>(
+      alternatives, final, speech_start_time, speech_end_time);
+}
+
+SpeechRecognitionAlternative* SpeechRecognitionResult::item(unsigned index) {
+  if (index >= alternatives_.size()) {
+    return nullptr;
+  }
+
+  return alternatives_[index].Get();
+}
+
+SpeechRecognitionResult::SpeechRecognitionResult(
+    const HeapVector<Member<SpeechRecognitionAlternative>>& alternatives,
+    bool final,
+    std::optional<base::TimeDelta> speech_start_time,
+    std::optional<base::TimeDelta> speech_end_time)
+    : final_(final),
+      alternatives_(alternatives),
+      speech_start_time_(speech_start_time),
+      speech_end_time_(speech_end_time) {}
+
+double SpeechRecognitionResult::speechStartTime() const {
+  if (!speech_start_time_.has_value()) {
+    return 0.0;
+  }
+  return FuzzTimestamp(*speech_start_time_);
+}
+
+double SpeechRecognitionResult::speechEndTime() const {
+  if (!speech_end_time_.has_value()) {
+    return 0.0;
+  }
+  return FuzzTimestamp(*speech_end_time_);
+}
+
+void SpeechRecognitionResult::Trace(Visitor* visitor) const {
+  visitor->Trace(alternatives_);
+  ScriptWrappable::Trace(visitor);
+}
+
+}  // namespace blink

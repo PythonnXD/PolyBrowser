@@ -1,0 +1,4 @@
+file://chrome/android/java/src/org/chromium/chrome/browser/browserservices/OWNERS
+
+per-file ...BrowserServicesIntentDataProvider.java=file://chrome/android/java/src/org/chromium/chrome/browser/customtabs/OWNERS
+per-file ...CustomTabIntentDataHolder.java=file://chrome/android/java/src/org/chromium/chrome/browser/customtabs/OWNERS

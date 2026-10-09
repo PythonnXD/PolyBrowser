@@ -1,0 +1,36 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_PRESENTER_DELEGATE_H_
+#define CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_PRESENTER_DELEGATE_H_
+
+namespace views {
+class View;
+class Widget;
+}  // namespace views
+
+class OmniboxPopupAimPresenter;
+class OmniboxPopupFileSelector;
+
+class OmniboxPopupPresenterDelegate {
+ public:
+  virtual ~OmniboxPopupPresenterDelegate() = default;
+
+  // Returns the widget that hosts the location bar. Usually this is the
+  // browser window's widget, but in macOS immersive fullscreen it's a
+  // non-activatable overlay. Use its top-level widget for browser window
+  // activation, focus, and events.
+  virtual views::Widget* GetLocationBarWidget() = 0;
+  virtual OmniboxPopupFileSelector* GetOmniboxPopupFileSelector() const = 0;
+  virtual OmniboxPopupAimPresenter* GetOmniboxPopupAimPresenter() const = 0;
+
+  // This returns the view that will be given focus when the focus is given
+  // back to the location bar.
+  virtual views::View* GetLocationBarFocusRestoreView() = 0;
+
+  // Returns true if the host location bar has Full WebUI Omnibox enabled.
+  virtual bool is_full_webui_omnibox() const = 0;
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_PRESENTER_DELEGATE_H_

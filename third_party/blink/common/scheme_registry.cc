@@ -1,0 +1,95 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/public/common/scheme_registry.h"
+
+#include <unordered_set>
+
+#include "base/no_destructor.h"
+#include "base/strings/string_util.h"
+
+namespace blink {
+
+using URLSchemesSet = std::unordered_set<std::string>;
+
+URLSchemesSet& GetMutableExtensionSchemes() {
+  static base::NoDestructor<URLSchemesSet> extension_schemes;
+  return *extension_schemes;
+}
+
+URLSchemesSet& GetMutableIsolatedAppSchemes() {
+  static base::NoDestructor<URLSchemesSet> iwa_schemes;
+  return *iwa_schemes;
+}
+
+URLSchemesSet& GetMutableCodeCacheAllowedSchemes() {
+  static base::NoDestructor<URLSchemesSet> code_cache_schemes;
+  return *code_cache_schemes;
+}
+
+const URLSchemesSet& GetExtensionSchemes() {
+  return GetMutableExtensionSchemes();
+}
+
+const URLSchemesSet& GetIsolatedAppSchemes() {
+  return GetMutableIsolatedAppSchemes();
+}
+
+void CommonSchemeRegistry::RegisterURLSchemeAsExtension(
+    const std::string& scheme) {
+  DCHECK_EQ(scheme, base::ToLowerASCII(scheme));
+  GetMutableExtensionSchemes().insert(scheme);
+}
+
+void CommonSchemeRegistry::RegisterURLSchemeAsIsolatedApp(
+    const std::string& scheme) {
+  DCHECK_EQ(scheme, base::ToLowerASCII(scheme));
+  GetMutableIsolatedAppSchemes().insert(scheme);
+}
+
+void CommonSchemeRegistry::RemoveURLSchemeAsExtensionForTest(
+    const std::string& scheme) {
+  GetMutableExtensionSchemes().erase(scheme);
+}
+
+bool CommonSchemeRegistry::IsExtensionScheme(const std::string& scheme) {
+  if (scheme.empty()) {
+    return false;
+  }
+  DCHECK_EQ(scheme, base::ToLowerASCII(scheme));
+  return GetExtensionSchemes().contains(scheme);
+}
+
+bool CommonSchemeRegistry::IsIsolatedAppScheme(const std::string& scheme) {
+  if (scheme.empty()) {
+    return false;
+  }
+  DCHECK_EQ(scheme, base::ToLowerASCII(scheme));
+  return GetIsolatedAppSchemes().contains(scheme);
+}
+
+void CommonSchemeRegistry::RegisterURLSchemeAsSupportingCodeCache(
+    const std::string& scheme) {
+  DCHECK_EQ(scheme, base::ToLowerASCII(scheme));
+  GetMutableCodeCacheAllowedSchemes().insert(scheme);
+}
+
+void CommonSchemeRegistry::RemoveURLSchemeAsSupportingCodeCacheForTest(
+    const std::string& scheme) {
+  GetMutableCodeCacheAllowedSchemes().erase(scheme);
+}
+
+bool CommonSchemeRegistry::IsCodeCacheAllowedScheme(const std::string& scheme) {
+  if (scheme.empty()) {
+    return false;
+  }
+  DCHECK_EQ(scheme, base::ToLowerASCII(scheme));
+  return GetMutableCodeCacheAllowedSchemes().contains(scheme);
+}
+
+const URLSchemesSet& CommonSchemeRegistry::CodeCacheAllowedSchemes() {
+  return GetMutableCodeCacheAllowedSchemes();
+}
+
+}  // namespace blink

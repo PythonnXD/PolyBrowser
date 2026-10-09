@@ -1,0 +1,54 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_chromeos)
+
+source_set("mock_quick_answers_client") {
+  testonly = true
+
+  sources = [
+    "mock_quick_answers_client.cc",
+    "mock_quick_answers_client.h",
+  ]
+
+  deps = [
+    "//chromeos/components/quick_answers",
+    "//services/network/public/cpp",
+    "//testing/gmock",
+  ]
+}
+
+source_set("test_support") {
+  testonly = true
+
+  sources = [
+    "chrome_quick_answers_test_base.cc",
+    "chrome_quick_answers_test_base.h",
+  ]
+
+  public_deps = [
+    "//chrome/browser/ui/ash/quick_answers",
+    "//chrome/browser/ui/ash/read_write_cards",
+    "//chrome/test:test_support_unit",
+    "//components/session_manager/test:test_support",
+    "//components/user_manager",
+  ]
+
+  deps = [
+    "//ash:test_support",
+    "//base",
+    "//chrome/browser:global_features",
+    "//chrome/browser/ash/login/test:test_support",
+    "//chrome/browser/profiles:profile",
+    "//chrome/test/base:testing_browser_process",
+    "//chromeos/ash/components/browser_context_helper",
+    "//chromeos/components/quick_answers:test_support",
+    "//components/account_id",
+    "//google_apis",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx/geometry",
+    "//ui/menus",
+    "//ui/views",
+  ]
+}

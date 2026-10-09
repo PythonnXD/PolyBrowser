@@ -1,0 +1,40 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef ASH_WEBUI_RECORDER_APP_UI_RECORDER_APP_UI_DELEGATE_H_
+#define ASH_WEBUI_RECORDER_APP_UI_RECORDER_APP_UI_DELEGATE_H_
+
+#include <string>
+
+#include "components/soda/constants.h"
+#include "components/sync/protocol/user_consent_types.pb.h"
+
+namespace ash {
+// A delegate which exposes browser functionality from //chrome to the recorder
+// app ui page handler.
+class RecorderAppUIDelegate {
+ public:
+  virtual std::u16string GetLanguageDisplayName(
+      speech::LanguageCode language_code) = 0;
+
+  virtual std::string GetDefaultTranscriptionLanguage() = 0;
+
+  virtual void OpenAiFeedbackDialog(
+      const std::string& description_template) = 0;
+
+  virtual bool CanUseGenerativeAiForCurrentProfile() = 0;
+
+  virtual bool CanUseSpeakerLabelForCurrentProfile() = 0;
+
+  virtual void RecordSpeakerLabelConsent(
+      const sync_pb::UserConsentTypes::RecorderSpeakerLabelConsent&
+          consent) = 0;
+
+  virtual ~RecorderAppUIDelegate() = default;
+
+};
+
+}  // namespace ash
+
+#endif  // ASH_WEBUI_RECORDER_APP_UI_RECORDER_APP_UI_DELEGATE_H_

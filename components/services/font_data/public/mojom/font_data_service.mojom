@@ -1,0 +1,130 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module font_data_service.mojom;
+
+import "mojo/public/mojom/base/file.mojom";
+import "mojo/public/mojom/base/shared_memory.mojom";
+
+enum TypefaceSlant {
+  kRoman = 0,
+  kItalic = 1,
+  kOblique = 2,
+};
+
+struct TypefaceStyle {
+  uint16 weight;
+  uint8 width;
+  TypefaceSlant slant;
+};
+
+struct Coordinate {
+    uint32 axis;
+    float value;
+};
+
+struct VariationPosition {
+    array<Coordinate> coordinates;
+    uint16 coordinateCount;
+};
+
+struct TypefaceFile {
+    mojo_base.mojom.ReadOnlyFile file_handle;
+    // Represents a unique identifier for a font_file that the receiver of this
+    // result can use to avoid remapping the same file multiple times.
+    uint64 id;
+  };
+
+// Represents the different type of data that can recreate the typeface.
+union TypefaceData {
+  // Font data mapped to a shared memory region.
+  mojo_base.mojom.ReadOnlySharedMemoryRegion region;
+
+  // A file handle to the font.
+  TypefaceFile font_file;
+};
+
+struct MatchFamilyNameResult {
+  // The data used to recreate the typeface.
+  TypefaceData typeface_data;
+
+  // The index of the matching typeface, or zero if typeface is not a
+  // collection.
+  int32 ttc_index;
+
+  // Variable font properties.
+  VariationPosition? variation_position;
+
+  // Flags to indicate that bold/oblique are being internally simulated.
+  bool synthetic_bold;
+  bool synthetic_oblique;
+};
+
+// Why MatchFamilyName() produced no typeface. The renderer caches both
+// failures, but with different scope.
+enum MatchFamilyNameFailure {
+  // The host font manager has no usable typeface for this family and style,
+  // or the match could not be serialized. Says nothing about other styles of
+  // the same family, so the renderer caches it for this (family, style) only.
+  kNoMatch,
+  // The host font manager has no typeface for this family in any style:
+  // SkFontMgr::matchFamilyStyle() returned null, and it returns the closest
+  // style whenever the family exists. The renderer may answer later requests
+  // for this family, in any style, without calling the service again. Only
+  // reported while kCacheUnmatchedFontFamilies is enabled; otherwise such
+  // requests get kNoMatch.
+  kNoSuchFamily,
+};
+
+// Either the matched typeface or the reason there is none.
+union MatchFamilyNameResponse {
+  MatchFamilyNameResult result;
+  MatchFamilyNameFailure failure;
+};
+
+// Loads and resolves fonts from the renderer to the browser (embedder). Takes
+// requests by font family name and style and resolves it with the matching
+// typeface.
+//
+// Created on renderer process startup when constructing the font manager.
+interface FontDataService {
+
+  // Returns the closest typeface the host font manager has for |family_name|
+  // in |style|, or a MatchFamilyNameFailure saying how far the renderer may
+  // cache the miss. |family_name| is the name as the page wrote it; the host
+  // matches it case-insensitively. Called synchronously from layout and
+  // asynchronously by the renderer's font prewarmer.
+  [Sync]
+  MatchFamilyName(string family_name, TypefaceStyle style) =>
+     (MatchFamilyNameResponse response);
+
+  // Returns the best match for |family_name| and |style| for a given
+  // |character| in the languages described by |bcp47s|.
+  // On error, returns null.
+  [Sync]
+  MatchFamilyNameCharacter(
+    string family_name,
+    TypefaceStyle style,
+    array<string> bcp47s,
+    int32 character) =>
+     (MatchFamilyNameResult? result);
+
+  // Returns all the available font families on the system. Usage of this
+  // function is strongly discouraged as it iterates over all installed fonts.
+  [Sync]
+  GetAllFamilyNames() => (array<string> result);
+
+  // Returns a typeface matching |family_name| and |style|, or the default
+  // typeface if |family_name| is null. Use of this function is discouraged,
+  // prefer |MatchFamilyName*|.
+  [Sync]
+  LegacyMakeTypeface(string? family_name, TypefaceStyle style) =>
+      (MatchFamilyNameResult? result);
+
+  // Returns a match for a font identified by its PostScript name or full font
+  // name (as used by @font-face src: local()). Returns null if not found or
+  // if local font matching is not supported on the current platform.
+  [Sync]
+  MatchLocalFont(string font_unique_name) => (MatchFamilyNameResult? result);
+};

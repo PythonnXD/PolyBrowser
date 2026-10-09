@@ -1,0 +1,191 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/toasts/api/toast_specification.h"
+
+#include <memory>
+#include <utility>
+
+#include "base/check.h"
+#include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/types/pass_key.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "ui/menus/simple_menu_model.h"
+
+ToastSpecification::Builder::Builder(const gfx::VectorIcon& icon,
+                                     int body_string_id)
+    : toast_specification_(
+          std::make_unique<ToastSpecification>(base::PassKey<Builder>(),
+                                               icon,
+                                               body_string_id)) {}
+
+ToastSpecification::Builder::Builder(const gfx::VectorIcon& icon)
+    : toast_specification_(
+          std::make_unique<ToastSpecification>(base::PassKey<Builder>(),
+                                               icon)) {}
+
+ToastSpecification::Builder::Builder(int body_string_id)
+    : toast_specification_(
+          std::make_unique<ToastSpecification>(base::PassKey<Builder>(),
+                                               body_string_id)) {}
+
+ToastSpecification::Builder::Builder()
+    : toast_specification_(
+          std::make_unique<ToastSpecification>(base::PassKey<Builder>())) {}
+ToastSpecification::Builder::~Builder() {
+  // Verify that ToastSpecification::Builder::Build() has been called
+  // so the toast specification is completely built.
+  CHECK(!toast_specification_);
+}
+
+ToastSpecification::Builder& ToastSpecification::Builder::AddCloseButton() {
+  toast_specification_->AddCloseButton();
+  return *this;
+}
+
+ToastSpecification::Builder& ToastSpecification::Builder::AddActionButton(
+    int action_button_string_id,
+    ActionButtonCallback callback) {
+  toast_specification_->AddActionButton(action_button_string_id,
+                                        std::move(callback));
+  return *this;
+}
+
+ToastSpecification::Builder& ToastSpecification::Builder::AddMenu() {
+  toast_specification_->AddMenu();
+  return *this;
+}
+
+ToastSpecification::Builder& ToastSpecification::Builder::AddGlobalScoped() {
+  toast_specification_->AddGlobalScope();
+  return *this;
+}
+
+ToastSpecification::Builder&
+ToastSpecification::Builder::SetPersistOnNavigation() {
+  toast_specification_->SetPersistOnNavigation();
+  return *this;
+}
+
+ToastSpecification::Builder& ToastSpecification::Builder::SetHasThrobber() {
+  toast_specification_->SetHasThrobber();
+  return *this;
+}
+
+ToastSpecification::Builder&
+ToastSpecification::Builder::SetToastAsActionable() {
+  toast_specification_->SetToastAsActionable();
+  return *this;
+}
+
+std::unique_ptr<ToastSpecification> ToastSpecification::Builder::Build() {
+  ValidateSpecification();
+  return std::move(toast_specification_);
+}
+
+void ToastSpecification::Builder::ValidateSpecification() {
+  // A toast cannot have both a static vector icon and an animated throbber.
+  // Exactly one of them must be present.
+  if (toast_specification_->has_throbber()) {
+    CHECK(!toast_specification_->has_icon());
+  } else {
+    CHECK(toast_specification_->has_icon());
+  }
+
+  // Toasts with an action button must have a close button and not a menu.
+  if (toast_specification_->action_button_string_id().has_value()) {
+    CHECK(toast_specification_->has_close_button());
+    CHECK(!toast_specification_->has_menu());
+  }
+
+  // Toasts with a menu can't have a close button. If this behavior is needed,
+  // discuss with UX how to design this in a way that supports both.
+  if (toast_specification_->has_menu()) {
+    CHECK(!toast_specification_->has_close_button());
+  }
+
+  // Toasts can be manually set as actionable, or have close / menu buttons. Not
+  // both.
+  if (toast_specification_->has_actionable_override()) {
+    CHECK(!toast_specification_->has_close_button() &&
+          !toast_specification_->has_menu())
+        << "Avoid use of SetToastAsActionable() on an already actionable toast";
+  }
+}
+
+ToastSpecification::ToastSpecification(
+    base::PassKey<ToastSpecification::Builder>,
+    const gfx::VectorIcon& icon,
+    int string_id)
+    : icon_(&icon), body_string_id_(string_id) {}
+
+ToastSpecification::ToastSpecification(
+    base::PassKey<ToastSpecification::Builder>,
+    const gfx::VectorIcon& icon)
+    : icon_(&icon) {}
+
+ToastSpecification::ToastSpecification(
+    base::PassKey<ToastSpecification::Builder>,
+    int string_id)
+    : body_string_id_(string_id) {}
+
+ToastSpecification::ToastSpecification(
+    base::PassKey<ToastSpecification::Builder>) {}
+
+ToastSpecification::~ToastSpecification() = default;
+
+base::RepeatingClosure ToastSpecification::GetActionButtonCallback(
+    BrowserWindowInterface* browser_window_interface,
+    std::optional<base::Value> data) const {
+  CHECK_EQ(has_action_button_data_callback(), data.has_value());
+  if (has_action_button_data_callback()) {
+    return base::BindRepeating(action_button_data_callback_,
+                               base::Unretained(browser_window_interface),
+                               base::OwnedRef(std::move(*data)));
+  }
+  return base::BindRepeating(action_button_callback_,
+                             base::Unretained(browser_window_interface));
+}
+
+void ToastSpecification::AddCloseButton() {
+  has_close_button_ = true;
+}
+
+void ToastSpecification::AddActionButton(int string_id,
+                                         ActionButtonCallback callback) {
+  CHECK(!callback.is_null());
+  CHECK(!action_button_string_id_.has_value());
+  action_button_string_id_ = string_id;
+  action_button_callback_ = std::move(callback);
+}
+
+void ToastSpecification::AddActionButton(int string_id,
+                                         ActionButtonDataCallback callback) {
+  CHECK(!callback.is_null());
+  CHECK(!action_button_string_id_.has_value());
+  action_button_string_id_ = string_id;
+  action_button_data_callback_ = std::move(callback);
+}
+
+void ToastSpecification::AddMenu() {
+  has_menu_ = true;
+}
+
+void ToastSpecification::AddGlobalScope() {
+  is_global_scope_ = true;
+}
+
+void ToastSpecification::SetPersistOnNavigation() {
+  persist_on_navigation_ = true;
+}
+
+void ToastSpecification::SetHasThrobber() {
+  has_throbber_ = true;
+}
+
+void ToastSpecification::SetToastAsActionable() {
+  actionable_toast_override_ = true;
+}

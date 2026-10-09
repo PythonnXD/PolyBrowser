@@ -1,0 +1,297 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/signin/signin_promo.h"
+
+#include <algorithm>
+
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/string_number_conversions.h"
+#include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/google/google_brand.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/account_consistency_mode_manager.h"
+#include "chrome/browser/signin/chrome_signin_pref_names.h"
+#include "chrome/browser/signin/signin_promo_util.h"
+#include "chrome/common/pref_names.h"
+#include "chrome/common/url_constants.h"
+#include "components/google/core/common/google_util.h"
+#include "components/pref_registry/pref_registry_syncable.h"
+#include "components/prefs/pref_service.h"
+#include "components/signin/public/base/signin_metrics.h"
+#include "components/signin/public/base/signin_pref_names.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
+#include "components/sync/base/features.h"
+#include "content/public/browser/browser_context.h"
+#include "content/public/browser/storage_partition_config.h"
+#include "device/bluetooth/bluetooth_adapter.h"
+#include "device/bluetooth/bluetooth_adapter_factory.h"
+#include "extensions/browser/guest_view/web_view/web_view_guest.h"
+#include "google_apis/gaia/gaia_auth_util.h"
+#include "google_apis/gaia/gaia_urls.h"
+#include "net/base/url_util.h"
+#include "url/gurl.h"
+
+#if BUILDFLAG(IS_WIN)
+#include "base/win/windows_version.h"
+#endif
+
+namespace signin {
+
+namespace {
+
+// Gaia "Proceed To Challenge" capability: skips the identifier page when the
+// account is known (via `Email`).
+constexpr char kProceedToChallengeQueryKey[] = "ptc";
+
+constexpr char kReauthProceedToChallengeResultHistogram[] =
+    "Signin.Reauth.ProceedToChallengeResult";
+
+}  // namespace
+
+const char kSignInPromoQueryKeyAccessPoint[] = "access_point";
+const char kSignInPromoQueryKeyAutoClose[] = "auto_close";
+const char kSignInPromoQueryKeyForceKeepData[] = "force_keep_data";
+const char kSignInPromoQueryKeyReason[] = "reason";
+
+#if !BUILDFLAG(IS_CHROMEOS)
+GURL GetEmbeddedPromoURL(signin_metrics::AccessPoint access_point,
+                         signin_metrics::Reason reason,
+                         bool auto_close) {
+  CHECK_LE(static_cast<int>(access_point),
+           static_cast<int>(signin_metrics::AccessPoint::kMaxValue));
+  CHECK_LE(static_cast<int>(reason),
+           static_cast<int>(signin_metrics::Reason::kMaxValue));
+  CHECK_NE(static_cast<int>(reason),
+           static_cast<int>(signin_metrics::Reason::kUnknownReason));
+
+  GURL url(chrome::kChromeUIChromeSigninURL);
+  url = net::AppendQueryParameter(
+      url, signin::kSignInPromoQueryKeyAccessPoint,
+      base::NumberToString(static_cast<int>(access_point)));
+  url =
+      net::AppendQueryParameter(url, signin::kSignInPromoQueryKeyReason,
+                                base::NumberToString(static_cast<int>(reason)));
+  if (auto_close) {
+    url = net::AppendQueryParameter(url, signin::kSignInPromoQueryKeyAutoClose,
+                                    "1");
+  }
+  return url;
+}
+
+GURL GetEmbeddedReauthURLWithEmail(signin_metrics::AccessPoint access_point,
+                                   signin_metrics::Reason reason,
+                                   const std::string& email) {
+  GURL url = GetEmbeddedPromoURL(access_point, reason, /*auto_close=*/true);
+  url = net::AppendQueryParameter(url, "email", email);
+  url = net::AppendQueryParameter(url, "validateEmail", "1");
+  return net::AppendQueryParameter(url, "readOnlyEmail", "1");
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+GURL GetChromeSyncURLForDice(ChromeSyncUrlArgs args) {
+  GURL url = GaiaUrls::GetInstance()->signin_chrome_sync_dice();
+  if (!args.email.empty()) {
+    url = net::AppendQueryParameter(url, "email_hint", args.email);
+  }
+  if (!args.continue_url.is_empty()) {
+    url = net::AppendQueryParameter(url, "continue", args.continue_url.spec());
+  }
+  if (args.request_dark_scheme) {
+    url = net::AppendQueryParameter(url, "color_scheme", "dark");
+  }
+  switch (args.flow) {
+    // Default behavior.
+    case Flow::NONE:
+      if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
+        // If History Sync Opt-in is enabled, use a customized sign-in screen
+        // that does NOT mention history sync benefits.
+        url = net::AppendQueryParameter(url, "flow", "history_opt_in");
+      }
+      break;
+    case Flow::PROMO:
+      url = net::AppendQueryParameter(url, "flow", "promo");
+      break;
+    case Flow::EMBEDDED_PROMO:
+      url = net::AppendQueryParameter(url, "flow", "embedded_promo");
+      break;
+  }
+  if (base::FeatureList::IsEnabled(switches::kSignInPromoMaterialNextUI)) {
+    url = net::AppendQueryParameter(url, "theme", "mn");
+  }
+
+  if (base::FeatureList::IsEnabled(switches::kMagiChromePasskeySignIn)) {
+    int exp_branch = switches::kMagiChromePasskeySignInGaiaExpBranch.Get();
+    if (exp_branch > 0) {
+      url = net::AppendQueryParameter(url, "magichrome_fre_exp_branch",
+                                      base::NumberToString(exp_branch));
+    }
+  }
+  static const char kMagiChromeHybridTransportSupportedHistogram[] =
+      "Signin.MagiChrome.HybridTransportSupported";
+  // Record hybrid transport signal histogram.
+  IsHybridTransportSupportedForQrCodeSignin(base::BindOnce(
+      [](bool can_start, scoped_refptr<device::BluetoothAdapter>) {
+        base::UmaHistogramBoolean(kMagiChromeHybridTransportSupportedHistogram,
+                                  can_start);
+      }));
+
+  return url;
+}
+
+void IsHybridTransportSupportedForQrCodeSignin(
+    HybridTransportSupportedCallback callback) {
+  if (!device::BluetoothAdapterFactory::Get()->IsLowEnergySupported()) {
+    std::move(callback).Run(false, nullptr);
+    return;
+  }
+  device::BluetoothAdapterFactory::Get()->GetAdapter(base::BindOnce(
+      [](HybridTransportSupportedCallback callback,
+         scoped_refptr<device::BluetoothAdapter> adapter) {
+        bool can_show =
+            adapter && adapter->IsPresent() &&
+            adapter->GetOsPermissionStatus() ==
+                device::BluetoothAdapter::PermissionStatus::kAllowed &&
+            adapter->IsPowered();
+        std::move(callback).Run(can_show, std::move(adapter));
+      },
+      std::move(callback)));
+}
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+
+GURL GetChromeReauthURL(ChromeReauthUrlArgs args) {
+  GURL url = GaiaUrls::GetInstance()->reauth_chrome_dice();
+  if (!args.email.empty()) {
+    url = net::AppendQueryParameter(url, "Email", args.email);
+    // `ptc` needs a known identifier to proceed to the challenge page, so it
+    // is only meaningful together with `Email`.
+    if (args.proceed_to_challenge) {
+      url = net::AppendQueryParameter(url, kProceedToChallengeQueryKey, "1");
+    }
+  }
+  if (!args.continue_url.is_empty()) {
+    url = net::AppendQueryParameter(url, "continue", args.continue_url.spec());
+  }
+  return url;
+}
+
+bool CanReauthProceedToChallenge(
+    const std::string& email,
+    const AccountsInCookieJarInfo& accounts_in_cookie_jar) {
+  if (email.empty()) {
+    return false;
+  }
+
+  const auto has_matching_email = [&email](const gaia::ListedAccount& account) {
+    return gaia::AreEmailsSame(account.email, email);
+  };
+
+  // Without fresh cookie info, it is unknown whether Gaia still has a valid
+  // session for `email`. If Gaia does have a valid session, `/AccountChooser`
+  // completes immediately without a new sign-in, so Chrome never receives a
+  // new refresh token and stays in the auth error state. In both cases, fall
+  // back to `/AddSession`, which always requires the challenge.
+  if (!accounts_in_cookie_jar.AreAccountsFresh() ||
+      std::ranges::any_of(accounts_in_cookie_jar.GetValidSignedInAccounts(),
+                          has_matching_email)) {
+    base::UmaHistogramEnumeration(
+        kReauthProceedToChallengeResultHistogram,
+        ReauthProceedToChallengeResult::kAddSessionFallback);
+    return false;
+  }
+
+  const bool account_in_cookies = std::ranges::any_of(
+      accounts_in_cookie_jar.GetAllAccounts(), has_matching_email);
+  base::UmaHistogramEnumeration(
+      kReauthProceedToChallengeResultHistogram,
+      account_in_cookies
+          ? ReauthProceedToChallengeResult::kProceedToChallenge
+          : ReauthProceedToChallengeResult::kAccountNotInCookies);
+  return true;
+}
+
+GURL GetAddAccountURLForDice(const std::string& email,
+                             const GURL& continue_url) {
+  GURL url = GaiaUrls::GetInstance()->add_account_url();
+  if (!email.empty())
+    url = net::AppendQueryParameter(url, "Email", email);
+  if (!continue_url.is_empty()) {
+    url = net::AppendQueryParameter(url, "continue", continue_url.spec());
+  }
+  return url;
+}
+
+content::StoragePartition* GetSigninPartition(
+    content::BrowserContext* browser_context) {
+  const auto signin_partition_config = content::StoragePartitionConfig::Create(
+      browser_context, "chrome-signin", /* partition_name= */ "",
+      /* in_memory= */ true);
+  return browser_context->GetStoragePartition(signin_partition_config);
+}
+
+std::optional<signin_metrics::AccessPoint> GetAccessPointForEmbeddedPromoURL(
+    const GURL& url) {
+  std::string value;
+  if (!net::GetValueForKeyInQuery(url, kSignInPromoQueryKeyAccessPoint,
+                                  &value)) {
+    return std::nullopt;
+  }
+
+  int access_point_value = -1;
+  base::StringToInt(value, &access_point_value);
+
+  return signin_metrics::AccessPointFromInt(access_point_value);
+}
+
+signin_metrics::Reason GetSigninReasonForEmbeddedPromoURL(const GURL& url) {
+  std::string value;
+  if (!net::GetValueForKeyInQuery(url, kSignInPromoQueryKeyReason, &value))
+    return signin_metrics::Reason::kUnknownReason;
+
+  int reason = -1;
+  base::StringToInt(value, &reason);
+  if (reason <
+          static_cast<int>(signin_metrics::Reason::kSigninPrimaryAccount) ||
+      reason > static_cast<int>(signin_metrics::Reason::kMaxValue)) {
+    return signin_metrics::Reason::kUnknownReason;
+  }
+
+  return static_cast<signin_metrics::Reason>(reason);
+}
+
+void RegisterProfilePrefs(
+    user_prefs::PrefRegistrySyncable* registry) {
+  registry->RegisterIntegerPref(prefs::kDiceSigninUserMenuPromoCount, 0);
+  registry->RegisterIntegerPref(
+      prefs::kAutofillSignInPromoDismissCountPerProfile, 0);
+  registry->RegisterIntegerPref(prefs::kPasswordSignInPromoShownCountPerProfile,
+                                0);
+  registry->RegisterIntegerPref(prefs::kAddressSignInPromoShownCountPerProfile,
+                                0);
+  registry->RegisterIntegerPref(prefs::kBookmarkSignInPromoShownCountPerProfile,
+                                0);
+  registry->RegisterIntegerPref(
+      prefs::kHistoryPageHistorySyncPromoShownCountPerProfile, 0);
+  registry->RegisterTimePref(
+      prefs::kHistoryPageHistorySyncPromoLastDismissedTimestampPerProfile,
+      base::Time());
+  registry->RegisterBooleanPref(
+      prefs::kHistoryPageHistorySyncPromoShownAfterDismissalPerProfile, false);
+
+  registry->RegisterIntegerPref(
+      prefs::kSearchAIModeSignInPromoShownCountPerProfile, 0);
+  registry->RegisterIntegerPref(
+      prefs::kSearchAIModeSignInPromoDismissCountPerProfile, 0);
+  registry->RegisterTimePref(
+      prefs::kSearchAIModeSignInPromoLastImpressionTimestampPerProfile,
+      base::Time());
+}
+
+}  // namespace signin

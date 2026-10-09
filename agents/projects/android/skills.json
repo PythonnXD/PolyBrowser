@@ -1,0 +1,25 @@
+{
+  "entries": [
+    {
+      "path": "agents/skills/android-do-not-mock"
+    },
+    {
+      "path": "agents/skills/android-test-batching"
+    },
+    {
+      "path": "agents/skills/android-unit-test"
+    },
+    {
+      "path": "agents/skills/java-memory-leaks"
+    },
+    {
+      "path": "agents/skills/jni-type-conversion"
+    },
+    {
+      "path": "agents/skills/loadline"
+    },
+    {
+      "path": "agents/skills/nullaway"
+    }
+  ]
+}

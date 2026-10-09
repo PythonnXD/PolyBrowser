@@ -1,0 +1,729 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/web/model/web_state_delegate_browser_agent.h"
+
+#import "base/functional/callback_helpers.h"
+#import "base/run_loop.h"
+#import "base/test/bind.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "base/test/test_future.h"
+#import "components/content_settings/core/browser/host_content_settings_map.h"
+#import "ios/chrome/browser/app_launcher/model/app_launcher_abuse_detector.h"
+#import "ios/chrome/browser/app_launcher/model/app_launcher_tab_helper.h"
+#import "ios/chrome/browser/app_launcher/model/app_launcher_tab_helper_browser_presentation_provider.h"
+#import "ios/chrome/browser/app_launcher/model/app_launcher_tab_helper_delegate.h"
+#import "ios/chrome/browser/content_settings/model/host_content_settings_map_factory.h"
+#import "ios/chrome/browser/enterprise/data_controls/model/data_controls_tab_helper.h"
+#import "ios/chrome/browser/geolocation/model/geolocation_manager.h"
+#import "ios/chrome/browser/overlays/model/public/overlay_request.h"
+#import "ios/chrome/browser/overlays/model/public/overlay_request_queue.h"
+#import "ios/chrome/browser/overlays/model/public/web_content_area/http_auth_overlay.h"
+#import "ios/chrome/browser/overlays/model/public/web_content_area/java_script_alert_dialog_overlay.h"
+#import "ios/chrome/browser/permissions/model/permissions_metrics.h"
+#import "ios/chrome/browser/permissions/model/permissions_tab_helper.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_source_tab_helper.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
+#import "ios/chrome/browser/tab_insertion/model/tab_insertion_browser_agent.h"
+#import "ios/chrome/browser/web/model/blocked_popup_tab_helper.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/testing/scoped_block_swizzler.h"
+#import "ios/web/public/navigation/navigation_item.h"
+#import "ios/web/public/permissions/permissions.h"
+#import "ios/web/public/test/fakes/fake_web_state.h"
+#import "ios/web/public/test/web_state_test_util.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "ios/web/public/ui/java_script_dialog_presenter.h"
+#import "ios/web/public/web_state.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+
+const char kURL1[] = "https://www.some.url.com";
+const char kURL2[] = "https://www.some.url2.com";
+
+namespace {
+
+class StubAppLauncherTabHelperDelegate : public AppLauncherTabHelperDelegate {
+ public:
+  void CompleteAppLaunch() {
+    CHECK(app_launch_completion_);
+    CHECK(back_to_app_completion_);
+    std::move(app_launch_completion_).Run(/*success=*/true);
+    std::move(back_to_app_completion_).Run();
+  }
+
+  // Whether `LaunchAppForTabHelper()` was called and the launch has not been
+  // completed yet.
+  bool IsAppLaunchPending() const { return !!app_launch_completion_; }
+
+  // AppLauncherTabHelperDelegate:
+  void LaunchAppForTabHelper(
+      AppLauncherTabHelper* tab_helper,
+      const GURL& url,
+      base::OnceCallback<void(bool)> completion,
+      base::OnceCallback<void()> back_to_app_completion) override {
+    app_launch_completion_ = std::move(completion);
+    back_to_app_completion_ = std::move(back_to_app_completion);
+  }
+  void ShowAppLaunchAlert(AppLauncherTabHelper* tab_helper,
+                          AppLauncherAlertCause cause,
+                          base::OnceCallback<void(bool)> completion) override {
+    std::move(completion).Run(/*user_allowed=*/false);
+  }
+
+ private:
+  base::OnceCallback<void(bool)> app_launch_completion_;
+  base::OnceCallback<void()> back_to_app_completion_;
+};
+
+}  // namespace
+
+@interface WebStateDelegateTestAppLauncherPresentationProvider
+    : NSObject <AppLauncherTabHelperBrowserPresentationProvider>
+@end
+
+@implementation WebStateDelegateTestAppLauncherPresentationProvider
+
+- (BOOL)isBrowserPresentingUI {
+  return NO;
+}
+
+@end
+
+// Test fixture for WebStateDelegateTabHelper.
+class WebStateDelegateBrowserAgentTest : public PlatformTest {
+ public:
+  WebStateDelegateBrowserAgentTest() {
+    // Ensure RequestToLaunchApp() treats the application as active on device
+    // bots.
+    application_state_swizzler_ = std::make_unique<ScopedBlockSwizzler>(
+        [UIApplication class], @selector(applicationState), ^{
+          return UIApplicationStateActive;
+        });
+    profile_ = TestProfileIOS::Builder().Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+    TabInsertionBrowserAgent::CreateForBrowser(browser_.get());
+    WebStateDelegateBrowserAgent::CreateForBrowser(browser_.get());
+    app_launcher_presentation_provider_ =
+        [[WebStateDelegateTestAppLauncherPresentationProvider alloc] init];
+  }
+  ~WebStateDelegateBrowserAgentTest() override = default;
+
+  web::WebStateDelegate* delegate() {
+    return WebStateDelegateBrowserAgent::FromBrowser(browser_.get());
+  }
+
+  web::WebState* InsertNewWebState(const GURL& url) {
+    web::NavigationManager::WebLoadParams load_params(url);
+    load_params.transition_type = ui::PAGE_TRANSITION_TYPED;
+
+    web::WebState::CreateParams create_params(browser_->GetProfile());
+    create_params.created_with_opener = false;
+
+    std::unique_ptr<web::WebState> web_state =
+        web::WebState::Create(create_params);
+    OverlayRequestQueue::CreateForWebState(web_state.get());
+    BlockedPopupTabHelper::CreateForWebState(web_state.get());
+    SnapshotTabHelper::CreateForWebState(web_state.get());
+    SnapshotSourceTabHelper::CreateForWebState(web_state.get());
+    PermissionsTabHelper::CreateForWebState(web_state.get());
+    data_controls::DataControlsTabHelper::CreateForWebState(web_state.get());
+    web_state->GetNavigationManager()->LoadURLWithParams(load_params);
+
+    WebStateList* web_state_list = browser_->GetWebStateList();
+    web_state_list->InsertWebState(
+        std::move(web_state),
+        WebStateList::InsertionParams::Automatic().Activate());
+    return web_state_list->GetActiveWebState();
+  }
+
+  AppLauncherTabHelper* AttachAppLauncherTabHelper(web::WebState* web_state) {
+    AppLauncherTabHelper::CreateForWebState(
+        web_state, [[AppLauncherAbuseDetector alloc] init],
+        /*incognito=*/false);
+    AppLauncherTabHelper* tab_helper =
+        AppLauncherTabHelper::FromWebState(web_state);
+    tab_helper->SetDelegate(&app_launcher_delegate_);
+    tab_helper->SetBrowserPresentationProvider(
+        app_launcher_presentation_provider_);
+    return tab_helper;
+  }
+
+ protected:
+  web::WebTaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  std::unique_ptr<ScopedBlockSwizzler> application_state_swizzler_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  StubAppLauncherTabHelperDelegate app_launcher_delegate_;
+  WebStateDelegateTestAppLauncherPresentationProvider*
+      app_launcher_presentation_provider_;
+  std::unique_ptr<TestBrowser> browser_;
+};
+
+// Test that CreateNewWebState() creates a new web state in the correct place.
+TEST_F(WebStateDelegateBrowserAgentTest, CreateNewWebState) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  web::WebState* web_state2 =
+      delegate()->CreateNewWebState(web_state, GURL(kURL2), GURL(kURL1), true);
+  EXPECT_NE(web_state2, nullptr);
+
+  // Check that it was inserted correctly
+  EXPECT_EQ(browser_->GetWebStateList()->GetIndexOfWebState(web_state2),
+            browser_->GetWebStateList()->GetIndexOfWebState(web_state) + 1);
+}
+
+// Test that CreateNewWebState() doesn't create a popup if popups aren't
+// enabled.
+TEST_F(WebStateDelegateBrowserAgentTest, CreateNewWebStateAndPopup) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+
+  // Verify that this webstate's popups are blocked
+  BlockedPopupTabHelper* popup_helper =
+      BlockedPopupTabHelper::FromWebState(web_state);
+  EXPECT_TRUE(popup_helper->ShouldBlockPopup(GURL(kURL1)));
+  // Create a new webstate without user initiation.
+  web::WebState* web_state2 =
+      delegate()->CreateNewWebState(web_state, GURL(kURL2), GURL(kURL1), false);
+  // Expect that the webstate isn't created, returned, or inserted into the\
+  // web state list.
+  EXPECT_EQ(web_state2, nullptr);
+  EXPECT_EQ(browser_->GetWebStateList()->count(), 1);
+}
+
+// Test that CreateNewWebState() and CloseWebState() are dropped (including
+// from background opener WebStates) while a call-prompt app launch (e.g.
+// facetime-audio:) is pending in the active WebState, and allowed again once
+// the launch resolves.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       DropWindowRequestsDuringCallPromptLaunch) {
+  web::WebState* opener_web_state = InsertNewWebState(GURL(kURL1));
+  AttachAppLauncherTabHelper(opener_web_state);
+  web::WebState* active_web_state = InsertNewWebState(GURL(kURL1));
+  AppLauncherTabHelper* tab_helper =
+      AttachAppLauncherTabHelper(active_web_state);
+  active_web_state->WasShown();
+
+  tab_helper->RequestToLaunchApp(GURL("facetime-audio://+1234"), GURL(kURL1),
+                                 /*link_transition=*/true,
+                                 /*is_user_initiated=*/true,
+                                 /*user_tapped_recently=*/true);
+  ASSERT_TRUE(tab_helper->IsCallPromptLaunchPending());
+
+  // Window open and close requests from both the active WebState and a
+  // background opener WebState are dropped while the call prompt is pending.
+  EXPECT_EQ(nullptr, delegate()->CreateNewWebState(
+                         active_web_state, GURL(kURL2), GURL(kURL1), true));
+  EXPECT_EQ(nullptr, delegate()->CreateNewWebState(
+                         opener_web_state, GURL(kURL2), GURL(kURL1), true));
+  delegate()->CloseWebState(active_web_state);
+  delegate()->CloseWebState(opener_web_state);
+  EXPECT_EQ(browser_->GetWebStateList()->count(), 2);
+
+  // Once the call prompt launch completes, window requests succeed again.
+  app_launcher_delegate_.CompleteAppLaunch();
+  ASSERT_FALSE(tab_helper->IsCallPromptLaunchPending());
+  EXPECT_NE(nullptr, delegate()->CreateNewWebState(
+                         active_web_state, GURL(kURL2), GURL(kURL1), true));
+  EXPECT_EQ(browser_->GetWebStateList()->count(), 3);
+}
+
+// Test that window open and close requests are allowed while an app launch
+// that shows no iOS system prompt (e.g. calshow:) is pending. Chrome is
+// backgrounded for the whole round-trip for those schemes, so the renderer is
+// suspended and there is nothing to spoof; dropping the requests would instead
+// orphan tabs, since a page that launches an app and then closes itself gets
+// no second chance to call `window.close()`.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       AllowWindowRequestsDuringNonPromptLaunch) {
+  WebStateList* web_state_list = browser_->GetWebStateList();
+  web::WebState* active_web_state = InsertNewWebState(GURL(kURL1));
+  AppLauncherTabHelper* tab_helper =
+      AttachAppLauncherTabHelper(active_web_state);
+  active_web_state->WasShown();
+
+  tab_helper->RequestToLaunchApp(GURL("calshow://1234"), GURL(kURL1),
+                                 /*link_transition=*/true,
+                                 /*is_user_initiated=*/true,
+                                 /*user_tapped_recently=*/true);
+  // The launch is under way, but it shows no system prompt.
+  ASSERT_TRUE(app_launcher_delegate_.IsAppLaunchPending());
+  ASSERT_FALSE(tab_helper->IsCallPromptLaunchPending());
+
+  EXPECT_NE(nullptr, delegate()->CreateNewWebState(
+                         active_web_state, GURL(kURL2), GURL(kURL1), true));
+  EXPECT_EQ(web_state_list->count(), 2);
+
+  // The DOM insertion above activated the new WebState. Re-activate the
+  // launching WebState so the close request below is evaluated against it.
+  web_state_list->ActivateWebStateAt(
+      web_state_list->GetIndexOfWebState(active_web_state));
+
+  delegate()->CloseWebState(active_web_state);
+  EXPECT_EQ(web_state_list->count(), 1);
+}
+
+// Test that CloseWebState() removed the web state from the web state list.
+TEST_F(WebStateDelegateBrowserAgentTest, CloseWebState) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  delegate()->CloseWebState(web_state);
+  EXPECT_EQ(browser_->GetWebStateList()->count(), 0);
+}
+
+// Test that the new tab options for OpenURLFromWebState() creates new web
+// states and activates them appropriately.
+TEST_F(WebStateDelegateBrowserAgentTest, OpenURLNewTabs) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  web::WebState::OpenURLParams fg_open_params(
+      GURL(kURL2), web::Referrer(), WindowOpenDisposition::NEW_FOREGROUND_TAB,
+      ui::PAGE_TRANSITION_LINK, false);
+  web::WebState* web_state2 =
+      delegate()->OpenURLFromWebState(web_state, fg_open_params);
+  EXPECT_EQ(browser_->GetWebStateList()->count(), 2);
+  // NEW_FOREGROUND_TAB should activate the newly added webstate.
+  EXPECT_EQ(browser_->GetWebStateList()->GetActiveWebState(), web_state2);
+
+  web::WebState::OpenURLParams bg_open_params(
+      GURL(kURL2), web::Referrer(), WindowOpenDisposition::NEW_BACKGROUND_TAB,
+      ui::PAGE_TRANSITION_LINK, false);
+  delegate()->OpenURLFromWebState(web_state, bg_open_params);
+  EXPECT_EQ(browser_->GetWebStateList()->count(), 3);
+  // NEW_BACKGROUND_TAB should *not* activate the newly added webstate, so
+  // web_state2 should still be active.
+  EXPECT_EQ(browser_->GetWebStateList()->GetActiveWebState(), web_state2);
+}
+
+// Tests that OpenURLFromWebState() correctly copies the text fragment.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       OpenURLWithInternalScrollToTextFragment) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  web::WebState::OpenURLParams open_params(
+      GURL(kURL2), web::Referrer(), WindowOpenDisposition::NEW_FOREGROUND_TAB,
+      ui::PAGE_TRANSITION_LINK, false);
+  open_params.internal_scroll_to_text_fragment = "start,end";
+  web::WebState* web_state2 =
+      delegate()->OpenURLFromWebState(web_state, open_params);
+
+  ASSERT_TRUE(web_state2);
+  web::NavigationItem* pending_item =
+      web_state2->GetNavigationManager()->GetPendingItem();
+  ASSERT_TRUE(pending_item);
+  ASSERT_TRUE(pending_item->GetInternalScrollToTextFragment().has_value());
+  EXPECT_EQ("start,end",
+            pending_item->GetInternalScrollToTextFragment().value());
+}
+
+// Tests that OpenURLFromWebState() doesn't create a new tab with the
+// CURRENT_TAB option.
+TEST_F(WebStateDelegateBrowserAgentTest, OpenURLCurrentTab) {
+  InsertNewWebState(GURL(kURL1));
+  web::WebState::OpenURLParams open_params(GURL(kURL2), web::Referrer(),
+                                           WindowOpenDisposition::CURRENT_TAB,
+                                           ui::PAGE_TRANSITION_LINK, false);
+  EXPECT_EQ(browser_->GetWebStateList()->count(), 1);
+}
+
+// Tests that OnAuthRequired() adds an HTTP authentication overlay request to
+// the WebState's OverlayRequestQueue at OverlayModality::kWebContentArea.
+TEST_F(WebStateDelegateBrowserAgentTest, OnAuthRequired) {
+  NSURLProtectionSpace* protection_space =
+      [[NSURLProtectionSpace alloc] initWithProxyHost:@"http://chromium.test"
+                                                 port:0
+                                                 type:nil
+                                                realm:nil
+                                 authenticationMethod:nil];
+  NSURLCredential* credential =
+      [[NSURLCredential alloc] initWithUser:@""
+                                   password:@""
+                                persistence:NSURLCredentialPersistenceNone];
+  web::WebStateDelegate::HTTPAuthCallback callback =
+      base::BindOnce(^(NSString* user, NSString* password){
+      });
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  delegate()->OnAuthRequired(web_state, protection_space, credential,
+                             std::move(callback));
+
+  // Verify that an HTTP auth overlay request has been created for the WebState.
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state, OverlayModality::kWebContentArea);
+  ASSERT_TRUE(queue);
+  OverlayRequest* request = queue->front_request();
+  EXPECT_TRUE(request);
+  EXPECT_TRUE(request->GetConfig<HTTPAuthOverlayRequestConfig>());
+}
+
+// Test that OnProxyAuthChallenge defaults to OnAuthRequired and adds an HTTP
+// auth overlay request for non-managed profiles.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       OnProxyAuthChallenge_DefaultsToOnAuthRequired) {
+  if (@available(iOS 18.1, *)) {
+    NSURLProtectionSpace* protection_space =
+        [[NSURLProtectionSpace alloc] initWithProxyHost:@"http://chromium.test"
+                                                   port:0
+                                                   type:nil
+                                                  realm:nil
+                                   authenticationMethod:nil];
+    NSURLCredential* credential =
+        [[NSURLCredential alloc] initWithUser:@""
+                                     password:@""
+                                  persistence:NSURLCredentialPersistenceNone];
+    web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+    delegate()->OnProxyAuthChallenge(web_state, protection_space, credential,
+                                     /*failure_response=*/nil,
+                                     base::DoNothing());
+
+    OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+        web_state, OverlayModality::kWebContentArea);
+    ASSERT_TRUE(queue);
+    OverlayRequest* request = queue->front_request();
+    ASSERT_TRUE(request);
+    EXPECT_TRUE(request->GetConfig<HTTPAuthOverlayRequestConfig>());
+  } else {
+    GTEST_SKIP() << "Requires iOS 18.1+";
+  }
+}
+
+// Tests that GetJavaScriptDialogPresenter() returns an overlay-based JavaScript
+// dialog presenter.
+TEST_F(WebStateDelegateBrowserAgentTest, GetJavaScriptDialogPresenter) {
+  // Verify that the delegate returns a non-null presenter.
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  web::JavaScriptDialogPresenter* presenter =
+      delegate()->GetJavaScriptDialogPresenter(web_state);
+  EXPECT_TRUE(presenter);
+
+  // Present a JavaScript alert.
+  GURL kOriginUrl("http://chromium.test");
+  presenter->RunJavaScriptAlertDialog(
+      web_state, url::Origin::Create(kOriginUrl), @"", base::DoNothing());
+
+  // Verify that JavaScript alert OverlayRequest has been added to the
+  // WebState's queue.
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state, OverlayModality::kWebContentArea);
+  ASSERT_TRUE(queue);
+  OverlayRequest* request = queue->front_request();
+  EXPECT_TRUE(request);
+  EXPECT_TRUE(request->GetConfig<JavaScriptAlertDialogRequest>());
+}
+
+// Tests that copy is allowed by default for non-enterprise profiles.
+TEST_F(WebStateDelegateBrowserAgentTest, ShouldAllowCopy) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  base::RunLoop run_loop;
+  delegate()->ShouldAllowCopy(web_state,
+                              base::BindLambdaForTesting([&](bool allowed) {
+                                EXPECT_TRUE(allowed);
+                                run_loop.Quit();
+                              }));
+  run_loop.Run();
+}
+
+// Tests that paste is allowed by default for non-enterprise profiles.
+TEST_F(WebStateDelegateBrowserAgentTest, ShouldAllowPaste) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  base::RunLoop run_loop;
+  delegate()->ShouldAllowPaste(web_state,
+                               base::BindLambdaForTesting([&](bool allowed) {
+                                 EXPECT_TRUE(allowed);
+                                 run_loop.Quit();
+                               }));
+  run_loop.Run();
+}
+
+// Tests that cut is allowed by default for non-enterprise profiles.
+TEST_F(WebStateDelegateBrowserAgentTest, ShouldAllowCut) {
+  web::WebState* web_state = InsertNewWebState(GURL(kURL1));
+  base::RunLoop run_loop;
+  delegate()->ShouldAllowCut(web_state,
+                             base::BindLambdaForTesting([&](bool allowed) {
+                               EXPECT_TRUE(allowed);
+                               run_loop.Quit();
+                             }));
+  run_loop.Run();
+}
+
+// Tests that HandlePermissionsDecisionRequest immediately grants permission
+// when HostContentSettingsMap has an explicit ALLOW rule and
+// kDomainLevelSitePermissions is enabled.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       HandlePermissionsDecisionRequestExplicitAllow) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kDomainLevelSitePermissions);
+  base::HistogramTester histogram_tester;
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetBrowserState(profile_.get());
+  web_state->SetCurrentURL(GURL(kURL1));
+
+  scoped_refptr<HostContentSettingsMap> settings_map =
+      ios::HostContentSettingsMapFactory::GetForProfile(profile_.get());
+  settings_map->SetContentSettingDefaultScope(
+      GURL(kURL1), GURL(kURL1), ContentSettingsType::MEDIASTREAM_CAMERA,
+      CONTENT_SETTING_ALLOW);
+
+  base::test::TestFuture<web::PermissionDecision> decision_future;
+  delegate()->HandlePermissionsDecisionRequest(
+      web_state.get(), @[ @(web::PermissionCamera) ],
+      base::CallbackToBlock(decision_future.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionGrant, decision_future.Get());
+  histogram_tester.ExpectUniqueSample(
+      kPermissionRequestResolutionCameraHistogram,
+      IOSPermissionRequestResolution::kAllowedBySavedSetting, 1);
+}
+
+// Tests that HandlePermissionsDecisionRequest immediately denies permission
+// when HostContentSettingsMap has an explicit BLOCK rule and
+// kDomainLevelSitePermissions is enabled.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       HandlePermissionsDecisionRequestExplicitBlock) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kDomainLevelSitePermissions);
+  base::HistogramTester histogram_tester;
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetBrowserState(profile_.get());
+  web_state->SetCurrentURL(GURL(kURL1));
+
+  scoped_refptr<HostContentSettingsMap> settings_map =
+      ios::HostContentSettingsMapFactory::GetForProfile(profile_.get());
+  settings_map->SetContentSettingDefaultScope(
+      GURL(kURL1), GURL(kURL1), ContentSettingsType::MEDIASTREAM_MIC,
+      CONTENT_SETTING_BLOCK);
+
+  base::test::TestFuture<web::PermissionDecision> decision_future;
+  delegate()->HandlePermissionsDecisionRequest(
+      web_state.get(), @[ @(web::PermissionMicrophone) ],
+      base::CallbackToBlock(decision_future.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionDeny, decision_future.Get());
+  histogram_tester.ExpectUniqueSample(
+      kPermissionRequestResolutionMicrophoneHistogram,
+      IOSPermissionRequestResolution::kDeniedBySavedSetting, 1);
+}
+
+// Tests that HandlePermissionsDecisionRequest immediately denies permission
+// without presenting a dialog when one requested permission is ALLOW but
+// another is BLOCK.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       HandlePermissionsDecisionRequestMixedBlockAndAllow) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kDomainLevelSitePermissions);
+  base::HistogramTester histogram_tester;
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetBrowserState(profile_.get());
+  web_state->SetCurrentURL(GURL(kURL1));
+  OverlayRequestQueue::CreateForWebState(web_state.get());
+  PermissionsTabHelper::CreateForWebState(web_state.get());
+
+  scoped_refptr<HostContentSettingsMap> settings_map =
+      ios::HostContentSettingsMapFactory::GetForProfile(profile_.get());
+  settings_map->SetContentSettingDefaultScope(
+      GURL(kURL1), GURL(kURL1), ContentSettingsType::MEDIASTREAM_CAMERA,
+      CONTENT_SETTING_ALLOW);
+  settings_map->SetContentSettingDefaultScope(
+      GURL(kURL1), GURL(kURL1), ContentSettingsType::MEDIASTREAM_MIC,
+      CONTENT_SETTING_BLOCK);
+
+  base::test::TestFuture<web::PermissionDecision> decision_future;
+  delegate()->HandlePermissionsDecisionRequest(
+      web_state.get(),
+      @[ @(web::PermissionCamera), @(web::PermissionMicrophone) ],
+      base::CallbackToBlock(decision_future.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionDeny, decision_future.Get());
+  histogram_tester.ExpectUniqueSample(
+      kPermissionRequestResolutionCameraAndMicrophoneHistogram,
+      IOSPermissionRequestResolution::kDeniedBySavedSetting, 1);
+
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state.get(), OverlayModality::kWebContentArea);
+  EXPECT_EQ(0U, queue->size());
+}
+
+// Tests that HandlePermissionsDecisionRequest falls back to presenting a dialog
+// when one requested permission is ALLOW but another is unconfigured (ASK).
+TEST_F(WebStateDelegateBrowserAgentTest,
+       HandlePermissionsDecisionRequestMixedAllowAndUnconfigured) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kDomainLevelSitePermissions);
+  base::HistogramTester histogram_tester;
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetBrowserState(profile_.get());
+  web_state->SetCurrentURL(GURL(kURL1));
+  OverlayRequestQueue::CreateForWebState(web_state.get());
+  PermissionsTabHelper::CreateForWebState(web_state.get());
+
+  scoped_refptr<HostContentSettingsMap> settings_map =
+      ios::HostContentSettingsMapFactory::GetForProfile(profile_.get());
+  settings_map->SetContentSettingDefaultScope(
+      GURL(kURL1), GURL(kURL1), ContentSettingsType::MEDIASTREAM_CAMERA,
+      CONTENT_SETTING_ALLOW);
+
+  delegate()->HandlePermissionsDecisionRequest(
+      web_state.get(),
+      @[ @(web::PermissionCamera), @(web::PermissionMicrophone) ],
+      ^(web::PermissionDecision decision){
+      });
+
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state.get(), OverlayModality::kWebContentArea);
+  EXPECT_EQ(1U, queue->size());
+  histogram_tester.ExpectUniqueSample(
+      kPermissionRequestResolutionCameraAndMicrophoneHistogram,
+      IOSPermissionRequestResolution::kPromptShown, 1);
+}
+
+// Tests that when kDomainLevelSitePermissions is disabled, configured content
+// settings are bypassed and the dialog is presented.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       HandlePermissionsDecisionRequestFeatureDisabledFallsBackToDialog) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(kDomainLevelSitePermissions);
+  base::HistogramTester histogram_tester;
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetBrowserState(profile_.get());
+  web_state->SetCurrentURL(GURL(kURL1));
+  OverlayRequestQueue::CreateForWebState(web_state.get());
+  PermissionsTabHelper::CreateForWebState(web_state.get());
+
+  scoped_refptr<HostContentSettingsMap> settings_map =
+      ios::HostContentSettingsMapFactory::GetForProfile(profile_.get());
+  settings_map->SetContentSettingDefaultScope(
+      GURL(kURL1), GURL(kURL1), ContentSettingsType::MEDIASTREAM_CAMERA,
+      CONTENT_SETTING_ALLOW);
+
+  delegate()->HandlePermissionsDecisionRequest(
+      web_state.get(), @[ @(web::PermissionCamera) ],
+      ^(web::PermissionDecision decision){
+      });
+
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state.get(), OverlayModality::kWebContentArea);
+  EXPECT_EQ(1U, queue->size());
+  histogram_tester.ExpectUniqueSample(
+      kPermissionRequestResolutionCameraHistogram,
+      IOSPermissionRequestResolution::kPromptShown, 1);
+}
+
+// Tests that RequestGeolocationPermission returns
+// PermissionDecisionShowDefaultPrompt without presenting a dialog when system
+// location authorization is authorized.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       RequestGeolocationPermissionAuthorizedShowsDefaultPrompt) {
+  ScopedBlockSwizzler auth_status_swizzler(
+      [GeolocationManager class], @selector(authorizationStatus), ^{
+        return kCLAuthorizationStatusAuthorizedWhenInUse;
+      });
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  OverlayRequestQueue::CreateForWebState(web_state.get());
+
+  base::test::TestFuture<web::PermissionDecision> decision_future;
+  delegate()->RequestGeolocationPermission(
+      web_state.get(), GURL(kURL1),
+      base::CallbackToBlock(decision_future.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionShowDefaultPrompt, decision_future.Get());
+
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state.get(), OverlayModality::kWebContentArea);
+  EXPECT_EQ(0U, queue->size());
+}
+
+// Tests that RequestGeolocationPermission returns
+// PermissionDecisionShowDefaultPrompt without presenting a dialog when system
+// location authorization is not determined.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       RequestGeolocationPermissionNotDeterminedShowsDefaultPrompt) {
+  ScopedBlockSwizzler auth_status_swizzler(
+      [GeolocationManager class], @selector(authorizationStatus), ^{
+        return kCLAuthorizationStatusNotDetermined;
+      });
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  OverlayRequestQueue::CreateForWebState(web_state.get());
+
+  base::test::TestFuture<web::PermissionDecision> decision_future;
+  delegate()->RequestGeolocationPermission(
+      web_state.get(), GURL(kURL1),
+      base::CallbackToBlock(decision_future.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionShowDefaultPrompt, decision_future.Get());
+
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state.get(), OverlayModality::kWebContentArea);
+  EXPECT_EQ(0U, queue->size());
+}
+
+// Tests that RequestGeolocationPermission presents a dialog only once when
+// system location authorization is denied, and denies immediately on subsequent
+// requests.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       RequestGeolocationPermissionDeniedPresentsDialogOnce) {
+  ScopedBlockSwizzler auth_status_swizzler(
+      [GeolocationManager class], @selector(authorizationStatus), ^{
+        return kCLAuthorizationStatusDenied;
+      });
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  OverlayRequestQueue::CreateForWebState(web_state.get());
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state.get(), OverlayModality::kWebContentArea);
+
+  // First request should present the dialog.
+  delegate()->RequestGeolocationPermission(web_state.get(), GURL(kURL1),
+                                           ^(web::PermissionDecision decision){
+                                           });
+  EXPECT_EQ(1U, queue->size());
+  queue->CancelAllRequests();
+  EXPECT_EQ(0U, queue->size());
+
+  // A subsequent request should immediately deny without presenting a dialog.
+  base::test::TestFuture<web::PermissionDecision> second_decision;
+  delegate()->RequestGeolocationPermission(
+      web_state.get(), GURL(kURL1),
+      base::CallbackToBlock(second_decision.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionDeny, second_decision.Get());
+  EXPECT_EQ(0U, queue->size());
+
+  // Even after 24 hours, the dialog should not be presented again.
+  task_environment_.FastForwardBy(base::Days(1));
+  base::test::TestFuture<web::PermissionDecision> later_decision;
+  delegate()->RequestGeolocationPermission(
+      web_state.get(), GURL(kURL1),
+      base::CallbackToBlock(later_decision.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionDeny, later_decision.Get());
+  EXPECT_EQ(0U, queue->size());
+}
+
+// Tests that RequestGeolocationPermission denies immediately without presenting
+// a dialog when system location authorization is restricted.
+TEST_F(WebStateDelegateBrowserAgentTest,
+       RequestGeolocationPermissionRestrictedDeniesPermission) {
+  ScopedBlockSwizzler auth_status_swizzler(
+      [GeolocationManager class], @selector(authorizationStatus), ^{
+        return kCLAuthorizationStatusRestricted;
+      });
+
+  auto web_state = std::make_unique<web::FakeWebState>();
+  OverlayRequestQueue::CreateForWebState(web_state.get());
+
+  base::test::TestFuture<web::PermissionDecision> decision_future;
+  delegate()->RequestGeolocationPermission(
+      web_state.get(), GURL(kURL1),
+      base::CallbackToBlock(decision_future.GetCallback()));
+  EXPECT_EQ(web::PermissionDecisionDeny, decision_future.Get());
+
+  OverlayRequestQueue* queue = OverlayRequestQueue::FromWebState(
+      web_state.get(), OverlayModality::kWebContentArea);
+  EXPECT_EQ(0U, queue->size());
+}

@@ -1,0 +1,89 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/tab_group_sync/android/tab_group_sync_delegate_android.h"
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_string.h"
+#include "components/saved_tab_groups/public/android/tab_group_sync_conversions_bridge.h"
+#include "components/saved_tab_groups/public/android/tab_group_sync_conversions_utils.h"
+#include "components/saved_tab_groups/public/types.h"
+#include "third_party/jni_zero/default_conversions.h"
+
+// Must come after headers that provide symbols used by @JniType.
+#include "chrome/browser/tab_group_sync/delegate_jni_headers/TabGroupSyncDelegate_jni.h"
+
+namespace tab_groups {
+
+TabGroupSyncDelegateAndroid::TabGroupSyncDelegateAndroid(
+    base::android::ScopedJavaLocalRef<jobject> j_delegate_deps) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  java_obj_.Reset(env, Java_TabGroupSyncDelegate_create(env, j_delegate_deps));
+}
+
+TabGroupSyncDelegateAndroid::~TabGroupSyncDelegateAndroid() {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_TabGroupSyncDelegate_destroy(env, java_obj_);
+}
+
+std::optional<LocalTabGroupID>
+TabGroupSyncDelegateAndroid::HandleOpenTabGroupRequest(
+    const base::Uuid& sync_tab_group_id,
+    std::unique_ptr<TabGroupActionContext> context) {
+  return std::nullopt;
+}
+
+std::unique_ptr<ScopedLocalObservationPauser>
+TabGroupSyncDelegateAndroid::CreateScopedLocalObserverPauser() {
+  return nullptr;
+}
+
+void TabGroupSyncDelegateAndroid::CreateLocalTabGroup(
+    const SavedTabGroup& tab_group) {}
+
+void TabGroupSyncDelegateAndroid::CloseLocalTabGroup(
+    const LocalTabGroupID& local_id) {}
+
+void TabGroupSyncDelegateAndroid::ConnectLocalTabGroup(
+    const SavedTabGroup& group) {}
+
+void TabGroupSyncDelegateAndroid::DisconnectLocalTabGroup(
+    const LocalTabGroupID& local_id) {}
+
+void TabGroupSyncDelegateAndroid::UpdateLocalTabGroup(
+    const SavedTabGroup& group) {}
+
+std::vector<LocalTabGroupID>
+TabGroupSyncDelegateAndroid::GetLocalTabGroupIds() {
+  return std::vector<LocalTabGroupID>();
+}
+
+std::vector<LocalTabID> TabGroupSyncDelegateAndroid::GetLocalTabIdsForTabGroup(
+    const LocalTabGroupID& local_tab_group_id) {
+  return std::vector<LocalTabID>();
+}
+
+std::set<LocalTabID> TabGroupSyncDelegateAndroid::GetSelectedTabs() {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  std::vector<int32_t> selected_tabs =
+      Java_TabGroupSyncDelegate_getSelectedTabs(env, java_obj_);
+  return std::set<LocalTabID>(selected_tabs.begin(), selected_tabs.end());
+}
+
+std::u16string TabGroupSyncDelegateAndroid::GetTabTitle(
+    const LocalTabID& local_tab_id) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  return Java_TabGroupSyncDelegate_getTabTitle(env, java_obj_,
+                                               ToJavaTabId(local_tab_id));
+}
+
+std::unique_ptr<SavedTabGroup>
+TabGroupSyncDelegateAndroid::CreateSavedTabGroupFromLocalGroup(
+    const LocalTabGroupID& local_tab_group_id) {
+  return nullptr;
+}
+
+}  // namespace tab_groups
+
+DEFINE_JNI(TabGroupSyncDelegate)

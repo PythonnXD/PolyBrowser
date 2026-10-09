@@ -1,0 +1,74 @@
+# Copyright 2016 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("model") {
+  sources = [
+    "omaha_service.h",
+    "omaha_service.mm",
+  ]
+  public_deps = [
+    "//base",
+    "//base/i18n:language_tag_no_icu",
+    "//ios/chrome/browser/upgrade/model:public",
+  ]
+  deps = [
+    ":backend",
+    "//build:branding_buildflags",
+    "//components/metrics:metrics_pref_names",
+    "//components/prefs",
+    "//ios/chrome/app:tests_hook",
+    "//ios/public/provider/chrome/browser/omaha:omaha_api",
+    "//services/network/public/cpp",
+    "//url",
+  ]
+}
+
+source_set("backend") {
+  visibility = [
+    ":model",
+    ":unit_tests",
+  ]
+  sources = [
+    "omaha_backend.h",
+    "omaha_backend.mm",
+    "omaha_persistent_state.h",
+    "omaha_persistent_state.mm",
+    "omaha_ping.h",
+    "omaha_ping.mm",
+    "omaha_response.h",
+    "omaha_response.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/version_info",
+    "//ios/chrome/browser/upgrade/model:public",
+    "//ios/chrome/common",
+    "//ios/public/provider/chrome/browser/omaha:omaha_api",
+    "//services/network/public/cpp",
+    "//services/network/public/cpp:cpp_base",
+    "//third_party/libxml:xml_writer",
+  ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "omaha_backend_unittest.mm",
+    "omaha_persistent_state_unittest.mm",
+    "omaha_ping_unittest.mm",
+    "omaha_response_unittest.mm",
+  ]
+  deps = [
+    ":backend",
+    ":model",
+    "//base/test:test_support",
+    "//components/version_info",
+    "//ios/public/provider/chrome/browser/omaha:omaha_api",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+}

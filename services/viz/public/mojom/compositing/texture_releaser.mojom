@@ -1,0 +1,16 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module viz.mojom;
+
+import "gpu/ipc/common/exported_shared_image.mojom";
+
+// This interface behaves similar to viz::ReleaseCallback but works across
+// process boundaries. Once Release is called, it releases the texture that it
+// is associated with.
+interface TextureReleaser {
+  // `export_result` carries the SyncTokens that must be waited on before the
+  // texture can be reused or destroyed.
+  Release(gpu.mojom.SharedImageExportResult export_result, bool is_lost);
+};

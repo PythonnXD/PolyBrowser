@@ -1,0 +1,24 @@
+include_rules = [
+  "+chrome/browser/tab_list",
+  "+chrome/browser/ui/browser_tab_strip_tracker.h",
+  "+chrome/browser/ui/browser_tab_strip_tracker_delegate.h",
+  "+chrome/browser/ui/browser_window/public",
+  "+chrome/browser/ui/tabs",
+  "+components/database_utils",
+  "+components/optimization_guide/core",
+  "+components/page_content_annotations/content",
+  "+components/page_content_annotations/core",
+  "+components/passage_embeddings/core",
+  "+components/personal_context/proto",
+  "+components/saved_tab_groups/test_support",
+  "+components/sync_tab_context",
+  "+components/tabs",
+]
+
+specific_include_rules = {
+  ".*_unittest\\.cc": [
+    "+chrome/browser/ui/browser_manager_service.h",
+    "+chrome/browser/ui/browser_manager_service_factory.h",
+    "+chrome/browser/ui/browser_window/test",
+  ],
+}

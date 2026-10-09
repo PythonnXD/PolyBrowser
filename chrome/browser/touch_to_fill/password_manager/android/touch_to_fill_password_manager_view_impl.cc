@@ -1,0 +1,188 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/touch_to_fill/password_manager/android/touch_to_fill_password_manager_view_impl.h"
+
+#include <jni.h>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_string.h"
+#include "base/time/time.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/touch_to_fill/password_manager/touch_to_fill_password_manager_controller.h"  // nogncheck
+#include "chrome/browser/ui/passwords/ui_utils.h"
+#include "components/password_manager/core/browser/password_manager_util.h"
+#include "components/password_manager/core/browser/password_ui_utils.h"
+#include "third_party/jni_zero/default_conversions.h"
+#include "ui/android/view_android.h"
+#include "ui/android/window_android.h"
+#include "url/android/gurl_android.h"
+#include "url/gurl.h"
+#include "url/origin.h"
+
+// Must come after headers that provide symbols used by @JniType.
+#include "chrome/browser/touch_to_fill/password_manager/android/internal/jni/TouchToFillPasswordManagerBridge_jni.h"
+#include "chrome/browser/touch_to_fill/password_manager/android/jni_headers/Credential_jni.h"
+#include "chrome/browser/touch_to_fill/password_manager/android/jni_headers/WebauthnCredential_jni.h"
+
+using base::android::AttachCurrentThread;
+using jni_zero::JavaRef;
+using password_manager::PasskeyCredential;
+using password_manager::UiCredential;
+
+namespace {
+
+UiCredential ConvertJavaCredential(JNIEnv* env,
+                                   const JavaRef<jobject>& credential) {
+  return UiCredential(
+      Java_Credential_getUsername(env, credential),
+      Java_Credential_getPassword(env, credential),
+      url::Origin::Create(GURL(Java_Credential_getOriginUrl(env, credential))),
+      Java_Credential_getDisplayName(env, credential),
+      static_cast<password_manager_util::GetLoginMatchType>(
+          Java_Credential_getMatchType(env, credential)),
+      base::Time::FromMillisecondsSinceUnixEpoch(
+          Java_Credential_lastUsedMsSinceEpoch(env, credential)),
+      UiCredential::IsBackupCredential(
+          Java_Credential_isBackupCredential(env, credential)));
+}
+
+PasskeyCredential ConvertJavaWebauthnCredential(
+    JNIEnv* env,
+    const JavaRef<jobject>& credential) {
+  return PasskeyCredential(
+      PasskeyCredential::Source::kAndroidPhone,
+      PasskeyCredential::RpId(Java_WebauthnCredential_getRpId(env, credential)),
+      PasskeyCredential::CredentialId(
+          Java_WebauthnCredential_getCredentialId(env, credential)),
+      PasskeyCredential::UserId(
+          Java_WebauthnCredential_getUserId(env, credential)),
+      PasskeyCredential::Username(
+          Java_WebauthnCredential_getUsername(env, credential)));
+}
+
+}  // namespace
+
+TouchToFillPasswordManagerViewImpl::TouchToFillPasswordManagerViewImpl(
+    TouchToFillPasswordManagerController* controller)
+    : controller_(controller) {}
+
+TouchToFillPasswordManagerViewImpl::~TouchToFillPasswordManagerViewImpl() {
+  if (java_object_internal_) {
+    // Don't create an object just for destruction.
+    Java_TouchToFillPasswordManagerBridge_destroy(AttachCurrentThread(),
+                                                  java_object_internal_);
+  }
+}
+
+bool TouchToFillPasswordManagerViewImpl::Show(
+    const GURL& url,
+    IsOriginSecure is_origin_secure,
+    base::span<const Credential> credentials,
+    int flags) {
+  if (!RecreateJavaObject()) {
+    // It's possible that the constructor cannot access the bottom sheet clank
+    // component. That case may be temporary but we can't let users in a waiting
+    // state so report that TouchToFill is dismissed in order to show the normal
+    // Android keyboard (plus keyboard accessory) instead.
+    controller_->OnDismiss();
+    return false;
+  }
+  // Serialize the |credentials| span into a Java array and instruct the bridge
+  // to show it together with |url| to the user.
+  JNIEnv* env = AttachCurrentThread();
+  jni_zero::ScopedJavaLocalRef<jobjectArray> credential_array =
+      Java_TouchToFillPasswordManagerBridge_createCredentialArray(
+          env, credentials.size());
+
+  for (size_t i = 0; i < credentials.size(); ++i) {
+    if (auto* credential =
+            std::get_if<password_manager::UiCredential>(&credentials[i])) {
+      Java_TouchToFillPasswordManagerBridge_insertCredential(
+          env, credential_array, i, credential->username(),
+          credential->password(), GetDisplayUsername(*credential),
+          credential->origin().Serialize(), credential->display_name(),
+          static_cast<int>(credential->match_type()),
+          credential->last_used().InMillisecondsSinceUnixEpoch(),
+          credential->is_shared(), credential->sender_name(),
+          credential->sender_profile_image_url(),
+          credential->sharing_notification_displayed(),
+          credential->is_backup_credential().value());
+    } else {
+      const PasskeyCredential& passkey_credential =
+          std::get<PasskeyCredential>(credentials[i]);
+      Java_TouchToFillPasswordManagerBridge_insertWebAuthnCredential(
+          env, credential_array, i, passkey_credential.rp_id(),
+          passkey_credential.credential_id(), passkey_credential.user_id(),
+          password_manager::ToUsernameString(passkey_credential.username()));
+    }
+  }
+
+  Java_TouchToFillPasswordManagerBridge_showCredentials(
+      env, java_object_internal_, url, is_origin_secure.value(),
+      credential_array,
+      !!(flags & TouchToFillPasswordManagerView::kTriggerSubmission),
+      !!(flags & TouchToFillPasswordManagerView::kShouldShowHybridOption),
+      !!(flags & TouchToFillPasswordManagerView::kShouldShowCredManEntry));
+  return true;
+}
+
+void TouchToFillPasswordManagerViewImpl::OnCredentialSelected(
+    const UiCredential& credential) {
+  controller_->OnCredentialSelected(credential);
+}
+
+void TouchToFillPasswordManagerViewImpl::OnDismiss() {
+  controller_->OnDismiss();
+}
+
+void TouchToFillPasswordManagerViewImpl::OnCredentialSelected(
+    JNIEnv* env,
+    const JavaRef<jobject>& credential) {
+  OnCredentialSelected(ConvertJavaCredential(env, credential));
+}
+
+void TouchToFillPasswordManagerViewImpl::OnWebAuthnCredentialSelected(
+    JNIEnv* env,
+    const JavaRef<jobject>& credential) {
+  controller_->OnPasskeyCredentialSelected(
+      ConvertJavaWebauthnCredential(env, credential));
+}
+
+void TouchToFillPasswordManagerViewImpl::OnManagePasswordsSelected(
+    bool passkeys_shown) {
+  controller_->OnManagePasswordsSelected(passkeys_shown);
+}
+
+void TouchToFillPasswordManagerViewImpl::OnHybridSignInSelected() {
+  controller_->OnHybridSignInSelected();
+}
+
+void TouchToFillPasswordManagerViewImpl::OnShowCredManSelected() {
+  controller_->OnShowCredManSelected();
+}
+
+bool TouchToFillPasswordManagerViewImpl::RecreateJavaObject() {
+  if (controller_->GetNativeView() == nullptr ||
+      controller_->GetNativeView()->GetWindowAndroid() == nullptr) {
+    return false;  // No window attached (yet or anymore).
+  }
+  if (java_object_internal_) {
+    Java_TouchToFillPasswordManagerBridge_destroy(AttachCurrentThread(),
+                                                  java_object_internal_);
+  }
+  java_object_internal_ = Java_TouchToFillPasswordManagerBridge_create(
+      AttachCurrentThread(), reinterpret_cast<intptr_t>(this),
+      controller_->GetProfile(),
+      controller_->GetNativeView()->GetWindowAndroid());
+  return !!java_object_internal_;
+}
+
+DEFINE_JNI(TouchToFillPasswordManagerBridge)
+DEFINE_JNI(Credential)
+DEFINE_JNI(WebauthnCredential)

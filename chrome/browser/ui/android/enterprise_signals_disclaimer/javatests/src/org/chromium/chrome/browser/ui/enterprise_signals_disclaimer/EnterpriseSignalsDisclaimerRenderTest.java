@@ -1,0 +1,302 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ui.enterprise_signals_disclaimer;
+
+import static androidx.test.espresso.matcher.ViewMatchers.withId;
+
+import static org.chromium.ui.test.util.ViewUtils.waitForStableView;
+import static org.chromium.ui.test.util.ViewUtils.waitForVisibleView;
+
+import android.app.Activity;
+import android.view.View;
+import android.view.ViewGroup;
+
+import androidx.test.filters.MediumTest;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.test.BaseActivityTestRule;
+import org.chromium.base.test.params.ParameterAnnotations;
+import org.chromium.base.test.params.ParameterSet;
+import org.chromium.base.test.params.ParameterizedRunner;
+import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.CriteriaHelper;
+import org.chromium.base.test.util.DoNotBatch;
+import org.chromium.base.test.util.Feature;
+import org.chromium.base.test.util.Restriction;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.flags.ChromeSwitches;
+import org.chromium.chrome.browser.ui.enterprise_signals_disclaimer.EnterpriseSignalsDisclaimerCoordinator.PresentationMode;
+import org.chromium.chrome.browser.ui.signin.DialogWhenLargeContentLayout;
+import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
+import org.chromium.chrome.test.util.ChromeRenderTestRule;
+import org.chromium.chrome.test.util.browser.signin.AccountManagerTestRule;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetControllerFactory;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetTestSupport;
+import org.chromium.components.browser_ui.modaldialog.AppModalPresenter;
+import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.components.browser_ui.widget.scrim.ScrimManager;
+import org.chromium.components.browser_ui.widget.scrim.ScrimManager.ScrimClient;
+import org.chromium.components.signin.base.AccountInfo;
+import org.chromium.components.signin.test.util.TestAccounts;
+import org.chromium.ui.base.DeviceFormFactor;
+import org.chromium.ui.base.ImmutableWeakReference;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.insets.InsetObserver;
+import org.chromium.ui.test.util.BlankUiTestActivity;
+import org.chromium.ui.test.util.NightModeTestUtils;
+import org.chromium.ui.test.util.RenderTestRule;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+
+@RunWith(ParameterizedRunner.class)
+@ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
+@CommandLineFlags.Add(ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE)
+@DoNotBatch(reason = "Night mode requires clean activity launch.")
+public class EnterpriseSignalsDisclaimerRenderTest {
+    @Rule
+    public final BaseActivityTestRule<BlankUiTestActivity> mActivityTestRule =
+            new BaseActivityTestRule<>(BlankUiTestActivity.class);
+
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Rule
+    public final AccountManagerTestRule mAccountManagerTestRule = new AccountManagerTestRule();
+
+    @Rule
+    public final ChromeRenderTestRule mRenderTestRule =
+            new ChromeRenderTestRule.Builder()
+                    .setCorpus(ChromeRenderTestRule.Corpus.ANDROID_RENDER_TESTS_PUBLIC)
+                    .setRevision(4)
+                    .setDescription("Ligatures and contextual alternates disabled in UI text")
+                    .setBugComponent(RenderTestRule.Component.ENTERPRISE)
+                    .build();
+
+    private @Nullable EnterpriseSignalsDisclaimerCoordinator mCoordinator;
+    private @Nullable EnterpriseSignalsDisclaimerHost mHost;
+    private @Nullable WindowAndroid mWindowAndroid;
+    private @Nullable ViewGroup mContainer;
+    private final AccountInfo mAccountInfo;
+    private final boolean mUseRtlLayout;
+
+    private static AccountInfo getAccountWithoutImage(AccountInfo accountInfo) {
+        return new AccountInfo.Builder(accountInfo).accountImage(null).build();
+    }
+
+    @ParameterAnnotations.ClassParameter
+    private static final List<ParameterSet> sClassParams =
+            Arrays.asList(
+                    new ParameterSet().value(false, false, false).name("Default"),
+                    new ParameterSet().value(true, false, false).name("NightMode"),
+                    new ParameterSet().value(false, true, false).name("RTL"),
+                    new ParameterSet().value(false, false, true).name("DefaultProfilePicture"));
+
+    public EnterpriseSignalsDisclaimerRenderTest(
+            boolean nightModeEnabled, boolean useRtlLayout, boolean defaultProfilePicture) {
+        mUseRtlLayout = useRtlLayout;
+        NightModeTestUtils.setUpNightModeForBlankUiTestActivity(nightModeEnabled);
+        mRenderTestRule.setVariantPrefix(
+                (useRtlLayout ? "rtl" : "") + (defaultProfilePicture ? "PicturePlaceholder" : ""));
+        mRenderTestRule.setNightModeEnabled(nightModeEnabled);
+        mAccountInfo =
+                defaultProfilePicture
+                        ? getAccountWithoutImage(TestAccounts.MANAGED_ACCOUNT)
+                        : TestAccounts.MANAGED_ACCOUNT;
+    }
+
+    @Before
+    @SuppressWarnings("unchecked")
+    public void setUp() {
+        mActivityTestRule.launchActivity(null);
+        mAccountManagerTestRule.addAccount(mAccountInfo);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(mAccountInfo);
+    }
+
+    @After
+    public void tearDown() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    if (mHost != null) {
+                        mHost.destroy();
+                        mHost = null;
+                    }
+                    if (mCoordinator != null) {
+                        mCoordinator.destroy();
+                        mCoordinator = null;
+                    }
+                    if (mWindowAndroid != null) {
+                        mWindowAndroid.destroy();
+                        mWindowAndroid = null;
+                    }
+                    mAccountManagerTestRule.removeAllAccounts();
+                    NightModeTestUtils.tearDownNightModeForBlankUiTestActivity();
+                });
+    }
+
+    private BottomSheetController createBottomSheetController(
+            Activity activity, ViewGroup container) {
+        mWindowAndroid = new WindowAndroid(activity, /* occlusionTrackingAllowed= */ true);
+        InsetObserver insetObserver =
+                new InsetObserver(
+                        new ImmutableWeakReference<>(activity.getWindow().getDecorView()),
+                        new ImmutableWeakReference<>(activity.getApplicationContext()),
+                        /* enableKeyboardOverlayMode= */ false,
+                        /* enableExtraEdgeToEdgeLogging= */ false);
+        ScrimManager scrimManager = new ScrimManager(activity, container, ScrimClient.NONE);
+        return BottomSheetControllerFactory.createFullWidthBottomSheetController(
+                () -> scrimManager,
+                activity.getWindow(),
+                mWindowAndroid.getKeyboardDelegate(),
+                () -> container,
+                insetObserver);
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    @Restriction({DeviceFormFactor.PHONE})
+    public void testBottomSheetOnPhone() throws IOException {
+        BlankUiTestActivity activity = mActivityTestRule.getActivity();
+        BottomSheetController bottomSheetController =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            mContainer = activity.findViewById(android.R.id.content);
+                            mContainer.setLayoutDirection(
+                                    mUseRtlLayout
+                                            ? View.LAYOUT_DIRECTION_RTL
+                                            : View.LAYOUT_DIRECTION_LTR);
+                            mContainer.removeAllViews();
+                            BottomSheetController controller =
+                                    createBottomSheetController(activity, mContainer);
+                            EnterpriseSignalsDisclaimerCoordinator coordinator =
+                                    createCoordinator(activity, PresentationMode.BOTTOM_SHEET);
+                            mHost =
+                                    new BottomSheetDisclaimerHost(
+                                            controller,
+                                            coordinator.getView(),
+                                            coordinator::getVerticalScrollOffset,
+                                            (dismissalCause) -> {});
+                            mHost.show();
+                            return controller;
+                        });
+        BottomSheetTestSupport.waitForOpen(bottomSheetController);
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> new BottomSheetTestSupport(bottomSheetController).endAllAnimations());
+        waitForVisibleView(withId(R.id.disclaimer_container));
+        waitForStableView(mContainer);
+        ChromeRenderTestRule.sanitize(mContainer);
+        mRenderTestRule.render(mContainer, "bottom_sheet");
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    @Restriction({DeviceFormFactor.TABLET_OR_DESKTOP})
+    public void testModalDialogOnLargeFormFactor() throws IOException {
+        BlankUiTestActivity activity = mActivityTestRule.getActivity();
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mContainer = activity.findViewById(android.R.id.content);
+                    mContainer.setLayoutDirection(
+                            mUseRtlLayout ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+                    mContainer.removeAllViews();
+                    EnterpriseSignalsDisclaimerCoordinator coordinator =
+                            createCoordinator(activity, PresentationMode.MODAL_DIALOG);
+                    mHost =
+                            new ModalDialogDisclaimerHost(
+                                    activity.getModalDialogManager(),
+                                    coordinator.getView(),
+                                    (dismissalCause) -> {});
+                    mHost.show();
+                });
+        CriteriaHelper.pollUiThread(() -> activity.getModalDialogManager().isShowing());
+        View dialogDecorView =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            AppModalPresenter presenter =
+                                    (AppModalPresenter)
+                                            activity.getModalDialogManager()
+                                                    .getCurrentPresenterForTest();
+                            return presenter.getDialogForTesting().getWindow().getDecorView();
+                        });
+        waitForVisibleView(withId(R.id.disclaimer_container));
+        waitForStableView(dialogDecorView);
+        ChromeRenderTestRule.sanitize(dialogDecorView);
+        mRenderTestRule.render(dialogDecorView, "modal_dialog");
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    @Restriction({DeviceFormFactor.PHONE})
+    public void testFreOnPhone() throws IOException {
+        renderFre("fre_phone");
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    @Restriction({DeviceFormFactor.TABLET_OR_DESKTOP})
+    public void testFreOnLargeFormFactor() throws IOException {
+        renderFre("fre_large_form_factor");
+    }
+
+    private void renderFre(String goldenId) throws IOException {
+        BlankUiTestActivity activity = mActivityTestRule.getActivity();
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mContainer = activity.findViewById(android.R.id.content);
+                    mContainer.setLayoutDirection(
+                            mUseRtlLayout ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+                    mContainer.removeAllViews();
+                    EnterpriseSignalsDisclaimerCoordinator coordinator =
+                            createCoordinator(activity, PresentationMode.FIRST_RUN_EXPERIENCE);
+                    // Mirror FirstRunActivity, which wraps the FRE pages in a DialogWhenLarge
+                    // layout. On large form factors this renders the content as a centered card.
+                    mContainer.addView(
+                            DialogWhenLargeContentLayout.wrapInDialogWhenLargeLayout(
+                                    coordinator.getView(),
+                                    SemanticColorUtils.getColorSurfaceContainerLow(activity)));
+                });
+        waitForVisibleView(withId(R.id.disclaimer_footer));
+        waitForStableView(mContainer);
+        ChromeRenderTestRule.sanitize(mContainer);
+        mRenderTestRule.render(mContainer, goldenId);
+    }
+
+    private EnterpriseSignalsDisclaimerCoordinator createCoordinator(
+            Activity activity, @PresentationMode int presentationMode) {
+        mCoordinator =
+                new EnterpriseSignalsDisclaimerCoordinator(
+                        activity,
+                        mAccountManagerTestRule.getIdentityManager(),
+                        mAccountInfo,
+                        presentationMode,
+                        new EnterpriseSignalsDisclaimerCoordinator.Delegate() {
+                            @Override
+                            public void showInfoPage(String url) {}
+
+                            @Override
+                            public void onAccept() {}
+
+                            @Override
+                            public void onDecline() {}
+
+                            @Override
+                            public void onShown() {}
+                        });
+        return mCoordinator;
+    }
+}

@@ -1,0 +1,58 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.base;
+
+import org.chromium.build.annotations.NullMarked;
+
+/** Convenience static methods to access {@link BaseFeatureMap}. */
+@NullMarked
+public class BaseFeatureList {
+    private BaseFeatureList() {}
+
+    public static final MutableFlagWithSafeDefault sBackgroundNotPerceptibleBinding =
+            new MutableFlagWithSafeDefault(
+                    BaseFeatureMap.getInstance(),
+                    BaseFeatures.BACKGROUND_NOT_PERCEPTIBLE_BINDING,
+                    true);
+
+    public static final MutableFlagWithSafeDefault sRebindingChildServiceConnectionController =
+            new MutableFlagWithSafeDefault(
+                    BaseFeatureMap.getInstance(),
+                    BaseFeatures.REBINDING_CHILD_SERVICE_CONNECTION_CONTROLLER,
+                    false);
+
+    public static final MutableFlagWithSafeDefault sRebindServiceBatchApi =
+            new MutableFlagWithSafeDefault(
+                    BaseFeatureMap.getInstance(), BaseFeatures.REBIND_SERVICE_BATCH_API, false);
+
+    public static final MutableBooleanParamWithSafeDefault sRebindServiceBatchApiFlushOnIdle =
+            sRebindServiceBatchApi.newBooleanParam("flush-on-idle", true);
+
+    // Whether a rebind request which raises the priority of a process is sent immediately instead
+    // of waiting for the enclosing ScopedServiceBindingBatch to be closed. Deferring an upgrade
+    // keeps the process on its previous (lower) binding flags, and therefore its previous
+    // oom_score_adj and scheduler group, while it is already expected to produce visible content.
+    // See crbug.com/562252127.
+    public static final MutableBooleanParamWithSafeDefault sRebindServiceBatchApiFlushOnUpgrade =
+            sRebindServiceBatchApi.newBooleanParam("flush-on-upgrade", true);
+
+    public static final MutableIntParamWithSafeDefault sRebindServiceBatchApiBatchSize =
+            sRebindServiceBatchApi.newIntParam("batch-size", 300);
+
+    public static final MutableFlagWithSafeDefault sUseSharedRebindServiceConnection =
+            new MutableFlagWithSafeDefault(
+                    BaseFeatureMap.getInstance(),
+                    BaseFeatures.USE_SHARED_REBIND_SERVICE_CONNECTION,
+                    false);
+
+    public static final MutableIntParamWithSafeDefault sMaxDeferredSharedRebindServiceConnection =
+            sUseSharedRebindServiceConnection.newIntParam("max-deferred-bindings", 10);
+
+    public static final MutableFlagWithSafeDefault sVirtualKeyboardGeometryAndInsetFixes =
+            new MutableFlagWithSafeDefault(
+                    BaseFeatureMap.getInstance(),
+                    BaseFeatures.VIRTUAL_KEYBOARD_GEOMETRY_AND_INSET_FIXES,
+                    true);
+}

@@ -1,0 +1,2790 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+
+import {ContentType, HIGHLIGHTED_LINK_CLASS, LOG_EMPTY_DELAY_MS, MIN_MS_TO_READ, previousReadHighlightClass, ReadAloudNode} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import type {ContentController, ContentListener, NodeStore, SpeechController} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {assertArrayEquals, assertDeepEquals, assertEquals, assertFalse, assertNotEquals, assertStringContains, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
+import {MockTimer} from 'chrome-untrusted://webui-test/mock_timer.js';
+import {microtasksFinished} from 'chrome-untrusted://webui-test/test_util.js';
+
+import {setupBasicSpeech, setupTestEnvironment, stubAnimationFrame} from './common.js';
+import type {TestContentBrowserProxy} from './test_content_browser_proxy.js';
+import type {TestMetricsBrowserProxy} from './test_metrics_browser_proxy.js';
+import type {TestReadAloudModelBrowserProxy} from './test_read_aloud_browser_proxy.js';
+import type {TestSpeechBrowserProxy} from './test_speech_browser_proxy.js';
+import type {TestVisualBrowserProxy} from './test_visual_browser_proxy.js';
+
+suite('ContentController', () => {
+  let contentController: ContentController;
+  let nodeStore: NodeStore;
+  let speech: TestSpeechBrowserProxy;
+  let speechController: SpeechController;
+  let metrics: TestMetricsBrowserProxy;
+  let readAloudModel: TestReadAloudModelBrowserProxy;
+  let listener: ContentListener;
+  let receivedContentStateChange: boolean;
+  let receivedNewPageDrawn: boolean;
+  let receivedContentChange: boolean;
+  let contentBrowserProxy: TestContentBrowserProxy;
+  let visualBrowserProxy: TestVisualBrowserProxy;
+
+  setup(() => {
+    const result = setupTestEnvironment();
+    contentBrowserProxy = result.contentBrowserProxy;
+    visualBrowserProxy = result.visualBrowserProxy;
+    metrics = result.metrics;
+    readAloudModel = result.readAloudModel;
+    nodeStore = result.nodeStore;
+    speech = result.speech;
+    speechController = result.speechController;
+    contentController = result.contentController;
+
+    receivedContentStateChange = false;
+    receivedNewPageDrawn = false;
+    receivedContentChange = false;
+    listener = {
+      onContentStateChange() {
+        receivedContentStateChange = true;
+      },
+      onNewPageDrawn() {
+        receivedNewPageDrawn = true;
+      },
+      onContentChange() {
+        receivedContentChange = true;
+      },
+    };
+    contentController.addListener(listener);
+  });
+
+  suite('setEmpty', () => {
+    setup(() => {
+      contentController.setState(ContentType.HAS_CONTENT);
+    });
+
+    test('sets empty state', () => {
+      const emptyPath = 'empty_state.svg';
+
+      contentController.setEmpty();
+
+      const empty = contentController.getState();
+      assertTrue(contentController.isEmpty());
+      assertStringContains(empty.darkImagePath, emptyPath);
+      assertStringContains(empty.imagePath, emptyPath);
+    });
+
+    test('logs if still empty after delay', () => {
+      const mockTimer = new MockTimer();
+      mockTimer.install();
+
+      contentController.setEmpty();
+      assertTrue(contentController.isEmpty());
+      assertEquals(0, metrics.getCallCount('recordEmptyState'));
+
+      mockTimer.tick(LOG_EMPTY_DELAY_MS);
+      assertTrue(contentController.isEmpty());
+      assertEquals(1, metrics.getCallCount('recordEmptyState'));
+
+      mockTimer.uninstall();
+    });
+
+    test('does not log if not empty after delay', () => {
+      const mockTimer = new MockTimer();
+      mockTimer.install();
+
+      contentController.setEmpty();
+      assertEquals(0, metrics.getCallCount('recordEmptyState'));
+
+      contentController.setState(ContentType.HAS_CONTENT);
+      mockTimer.tick(LOG_EMPTY_DELAY_MS);
+      assertEquals(0, metrics.getCallCount('recordEmptyState'));
+
+      mockTimer.uninstall();
+    });
+
+    test('logs empty state once if still empty', () => {
+      const mockTimer = new MockTimer();
+      mockTimer.install();
+
+      contentController.setEmpty();
+      mockTimer.tick(LOG_EMPTY_DELAY_MS);
+      assertEquals(1, metrics.getCallCount('recordEmptyState'));
+      assertTrue(contentController.isEmpty());
+
+      contentController.setEmpty();
+      mockTimer.tick(LOG_EMPTY_DELAY_MS);
+      assertEquals(1, metrics.getCallCount('recordEmptyState'));
+      assertTrue(contentController.isEmpty());
+
+      mockTimer.uninstall();
+    });
+  });
+
+  test('setState notifies listeners of state change', () => {
+    contentController.setState(ContentType.HAS_CONTENT);
+    assertTrue(receivedContentStateChange);
+
+    // Don't notify a second time for the same state.
+    receivedContentStateChange = false;
+    contentController.setState(ContentType.HAS_CONTENT);
+    assertFalse(receivedContentStateChange);
+  });
+
+  test('setEmpty depends on google docs', () => {
+    contentBrowserProxy.googleDocs = true;
+    contentController.setEmpty();
+    const docsHeading = contentController.getState().heading;
+
+    contentBrowserProxy.googleDocs = false;
+    contentController.setEmpty();
+    const regularHeading = contentController.getState().heading;
+
+    assertNotEquals(docsHeading, regularHeading);
+  });
+
+  test('hasContent', () => {
+    assertFalse(contentController.hasContent());
+
+    contentController.setState(ContentType.HAS_CONTENT);
+    assertTrue(contentController.hasContent());
+
+    contentController.setState(ContentType.LOADING);
+    assertFalse(contentController.hasContent());
+
+    contentController.setEmpty();
+    assertFalse(contentController.hasContent());
+  });
+
+  test('isEmpty', () => {
+    assertTrue(contentController.isEmpty());
+
+    contentController.setState(ContentType.HAS_CONTENT);
+    assertFalse(contentController.isEmpty());
+
+    contentController.setState(ContentType.LOADING);
+    assertFalse(contentController.isEmpty());
+
+    contentController.setEmpty();
+    assertTrue(contentController.isEmpty());
+  });
+
+  test('onNodeWillBeDeleted removes node', () => {
+    const id1 = 10;
+    const id2 = 12;
+    contentBrowserProxy.rootId = id2;
+    const node1 = document.createTextNode('Huntrx don\'t miss');
+    const node2 = document.createTextNode('How it\'s done done done');
+    nodeStore.setDomNode(node1, id1);
+    nodeStore.setDomNode(node2, id2);
+    contentController.setState(ContentType.HAS_CONTENT);
+
+    contentController.onNodeWillBeDeleted(id1);
+
+    assertFalse(!!nodeStore.getDomNode(id1));
+    assertTrue(contentController.hasContent());
+  });
+
+  test('onNodeWillBeDeleted shows empty if no more nodes', () => {
+    const id = 10;
+    const node = document.createTextNode('Huntrx don\'t quit');
+    contentBrowserProxy.rootId = id;
+    nodeStore.setDomNode(node, id);
+    contentController.setState(ContentType.HAS_CONTENT);
+
+    contentController.onNodeWillBeDeleted(id);
+
+    assertFalse(!!nodeStore.getDomNode(id));
+    assertFalse(contentController.hasContent());
+    assertTrue(contentController.isEmpty());
+  });
+
+  test('onNodeWillBeDeleted shows empty if only whitespace nodes', () => {
+    const id = 10;
+    const node = document.createTextNode('   ');
+    contentBrowserProxy.rootId = id;
+    nodeStore.setDomNode(node, id);
+    contentController.setState(ContentType.HAS_CONTENT);
+
+    contentController.onNodeWillBeDeleted(id);
+
+    assertFalse(!!nodeStore.getDomNode(id));
+    assertFalse(contentController.hasContent());
+    assertTrue(contentController.isEmpty());
+  });
+
+  test('onNodeWillBeDeleted notifies of new content', () => {
+    const id = 12;
+    contentBrowserProxy.rootId = id;
+    const node = document.createTextNode('How it\'s done done done');
+    nodeStore.setDomNode(node, id);
+    contentController.setState(ContentType.HAS_CONTENT);
+
+    contentController.onNodeWillBeDeleted(id);
+
+    assertTrue(receivedContentChange);
+  });
+
+  suite('updateContent', () => {
+    const rootId = 29;
+    let node: HTMLElement;
+
+    setup(() => {
+      const text = 'One swing ahead of the sword';
+      node = document.createElement('p');
+      node.textContent = text;
+      nodeStore.setDomNode(node, rootId);
+      const segments = [
+        {node: ReadAloudNode.create(node)!, start: 0, length: text.length},
+      ];
+      readAloudModel.setCurrentTextSegments(segments);
+      readAloudModel.setCurrentTextContent(text);
+      contentBrowserProxy.rootId = rootId;
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeScreen2x;
+      speechController.clearReadAloudState();
+    });
+
+    test('logs speech stop if called while speech active', async () => {
+      speechController.onPlayPauseToggle(node);
+
+      contentController.updateContent();
+
+      assertEquals(
+          contentBrowserProxy.unexpectedUpdateContentStopSource,
+          await metrics.whenCalled('recordSpeechStopSource'));
+    });
+
+    test('does not crash with no root', () => {
+      contentBrowserProxy.rootId = 0;
+      assertFalse(!!contentController.updateContent());
+    });
+
+    test('hides loading page', () => {
+      contentBrowserProxy
+          .textContentMap = {[contentBrowserProxy.rootId]: 'but I bite'};
+      contentController.setState(ContentType.LOADING);
+
+      const root = contentController.updateContent();
+
+      assertTrue(!!root);
+      assertTrue(contentController.hasContent());
+      assertFalse(contentController.isEmpty());
+    });
+
+    test('sets empty if no content', () => {
+      contentController.setState(ContentType.LOADING);
+
+      const root = contentController.updateContent();
+
+      assertFalse(!!root);
+      assertFalse(contentController.hasContent());
+      assertTrue(contentController.isEmpty());
+    });
+
+    test('sets empty if only whitespace content', () => {
+      contentBrowserProxy
+          .textContentMap = {[contentBrowserProxy.rootId]: '   '};
+      contentController.setState(ContentType.LOADING);
+
+      const root = contentController.updateContent();
+
+      assertFalse(!!root);
+      assertFalse(contentController.hasContent());
+      assertTrue(contentController.isEmpty());
+    });
+
+    test('sets empty if only whitespace content with readability', () => {
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      contentBrowserProxy.htmlContent = '   ';
+      contentController.setState(ContentType.LOADING);
+
+      const root = contentController.updateContent();
+
+      assertFalse(!!root);
+      assertFalse(contentController.hasContent());
+      assertTrue(contentController.isEmpty());
+    });
+
+    test('sets empty if whitespace content with tags in readability', () => {
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      contentBrowserProxy.htmlContent = '<div>   </div>';
+      contentController.setState(ContentType.LOADING);
+
+      const root = contentController.updateContent();
+
+      assertFalse(!!root);
+      assertFalse(contentController.hasContent());
+      assertTrue(contentController.isEmpty());
+    });
+
+    test(
+        'Readability replaces single newlines but keeps consecutive newlines',
+        async () => {
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+          contentBrowserProxy.htmlContent =
+              'I see my present\npartner\n\nin the imperfect tense';
+
+          const root = contentController.updateContent();
+          await microtasksFinished();
+
+          assertTrue(!!root);
+          const contentDiv = (root as DocumentFragment).querySelector('div');
+          assertTrue(!!contentDiv);
+          assertEquals(
+              'I see my present partner\n\nin the imperfect tense',
+              contentDiv.textContent);
+        });
+
+    test(
+        'Readability does not replace single newlines inside pre tags',
+        async () => {
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+          contentBrowserProxy.htmlContent =
+              '<pre>I see my present\npartner\n\nin the imperfect tense</pre>';
+
+          const root = contentController.updateContent();
+          await microtasksFinished();
+
+          assertTrue(!!root);
+          const contentDiv = (root as DocumentFragment).querySelector('div');
+          assertTrue(!!contentDiv);
+          assertEquals(
+              'I see my present\npartner\n\nin the imperfect tense',
+              contentDiv.textContent);
+        });
+
+    test('logs new page with new tree', () => {
+      contentBrowserProxy.textContentMap = {
+        [rootId]: 'okay like I know I ramble',
+        [rootId + 1]: 'okay like I know I ramble',
+      };
+
+      contentController.updateContent();
+      contentController.updateContent();
+      assertEquals(1, metrics.getCallCount('recordNewPage'));
+
+      contentBrowserProxy.rootId = rootId + 1;
+      contentController.updateContent();
+
+      assertEquals(2, metrics.getCallCount('recordNewPage'));
+    });
+
+    test('loads images with flag enabled', () => {
+      const rootId = 1;
+      const imgId1 = 89;
+      const imgId2 = 88;
+      const textId = 90;
+      contentBrowserProxy.rootId = rootId;
+
+      contentBrowserProxy.htmlTagMap = {
+        [rootId]: 'div',
+        [imgId1]: 'img',
+        [imgId2]: 'img',
+      };
+      contentBrowserProxy.textContentMap = {
+        [textId]: 'I don\'t own a motorbike.',
+      };
+
+      // So that nodeStore.addImageToFetch(imgId1) is called in updateContent
+      contentBrowserProxy.childrenMap = {
+        [rootId]: [imgId1, textId],
+      };
+
+      visualBrowserProxy.imagesEnabled = true;
+      contentController.updateContent();
+
+      // So that nodeStore.addImageToFetch(imgId2) is called in updateContent
+      contentBrowserProxy.childrenMap = {
+        [rootId]: [imgId2, textId],
+      };
+      visualBrowserProxy.imagesEnabled = false;
+      contentController.updateContent();
+
+      assertArrayEquals([imgId1, imgId2], visualBrowserProxy.fetchedImages);
+    });
+
+    test('notifies listeners of new page drawn', () => {
+      contentBrowserProxy
+          .textContentMap = {[contentBrowserProxy.rootId]: 'I go Rambo'};
+      stubAnimationFrame();
+
+      contentController.updateContent();
+
+      assertTrue(receivedNewPageDrawn);
+    });
+
+    test('notifies listeners of new content', () => {
+      contentBrowserProxy
+          .textContentMap = {[contentBrowserProxy.rootId]: 'I go Rambo'};
+      stubAnimationFrame();
+
+      contentController.updateContent();
+
+      assertTrue(receivedContentChange);
+    });
+
+    test('estimates words seen after draw', () => {
+      contentBrowserProxy
+          .textContentMap = {[contentBrowserProxy.rootId]: 'full of venom'};
+      stubAnimationFrame();
+      const mockTimer = new MockTimer();
+      mockTimer.install();
+
+      contentController.updateContent();
+      mockTimer.tick(MIN_MS_TO_READ);
+      mockTimer.uninstall();
+
+      assertEquals(1, metrics.getCallCount('updateWordsSeen'));
+    });
+
+    test('builds a simple text node', () => {
+      const text = 'Knockin you out like a lullaby';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+
+      const root = contentController.updateContent();
+
+      assertTrue(!!root);
+      assertEquals(Node.TEXT_NODE, root.nodeType);
+      assertEquals(text, root.textContent);
+    });
+
+    test('builds a bolded text node', () => {
+      const text = 'Hear that sound ringin in your mind';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+      contentBrowserProxy.shouldBoldMap = {[contentBrowserProxy.rootId]: true};
+
+      const root = contentController.updateContent();
+
+      assertTrue(!!root);
+      assertEquals('B', root.nodeName);
+      assertEquals(text, root.textContent);
+    });
+
+    test('builds an overline text node', () => {
+      const text = 'Better sit down for the show';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+      contentBrowserProxy.isOverlineMap = {[contentBrowserProxy.rootId]: true};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLSpanElement);
+      assertEquals(text, root.textContent);
+      assertEquals('overline', root.style.textDecoration);
+    });
+
+    test('builds a superscript text node', () => {
+      visualBrowserProxy.pdf = true;
+      const text = '1';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+      contentBrowserProxy.isSuperscriptMap = {
+        [contentBrowserProxy.rootId]: true,
+      };
+
+      const root = contentController.updateContent();
+
+      assertTrue(!!root);
+      assertEquals('SUP', root.nodeName);
+      assertEquals(text, root.textContent);
+    });
+
+    test('builds a subscript text node', () => {
+      visualBrowserProxy.pdf = true;
+      const text = '2';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+      contentBrowserProxy.isSubscriptMap = {[contentBrowserProxy.rootId]: true};
+
+      const root = contentController.updateContent();
+
+      assertTrue(!!root);
+      assertEquals('SUB', root.nodeName);
+      assertEquals(text, root.textContent);
+    });
+
+    test('does not wrap superscript or subscript when not a PDF', () => {
+      visualBrowserProxy.pdf = false;
+      const text = '1';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+      contentBrowserProxy.isSuperscriptMap = {
+        [contentBrowserProxy.rootId]: true,
+      };
+      contentBrowserProxy.isSubscriptMap = {[contentBrowserProxy.rootId]: true};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof Text);
+      assertEquals(text, root.textContent);
+      assertEquals(0, contentBrowserProxy.getCallCount('isSuperscript'));
+      assertEquals(0, contentBrowserProxy.getCallCount('isSubscript'));
+    });
+
+    test('builds an element with a text child', () => {
+      const parentId = 10;
+      const childId = 11;
+      const text = 'Run, run, we run the town';
+      // Parent is a <p> tag with one text child.
+      contentBrowserProxy.htmlTagMap = {[parentId]: 'p'};
+      contentBrowserProxy.childrenMap = {[parentId]: [childId]};
+      contentBrowserProxy.textContentMap = {[childId]: text};
+      contentBrowserProxy.rootId = parentId;
+
+      const root = contentController.updateContent();
+
+      assertTrue(!!root);
+      assertEquals('P', root.nodeName);
+      assertTrue(!!root.firstChild);
+      assertEquals(text, root.textContent);
+    });
+
+    test('builds a link as an <a> tag when links are shown', () => {
+      const childId = 65;
+      const url = 'https://www.google.com/';
+      visualBrowserProxy.linksEnabled = true;
+      contentBrowserProxy
+          .htmlTagMap = {[contentBrowserProxy.rootId]: 'a', [childId]: ''};
+      contentBrowserProxy.urlMap = {[contentBrowserProxy.rootId]: url};
+      contentBrowserProxy.textContentMap = {[childId]: url};
+      contentBrowserProxy
+          .childrenMap = {[contentBrowserProxy.rootId]: [childId]};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLAnchorElement, 'instance');
+      assertEquals(url, root.href);
+      root.click();
+      assertEquals(1, contentBrowserProxy.getCallCount('onLinkClicked'));
+    });
+
+    test('builds a link as a <span> tag when links are hidden', () => {
+      const childId = 71;
+      const url = 'https://www.relsilicon.com/';
+      visualBrowserProxy.linksEnabled = false;
+      contentBrowserProxy
+          .htmlTagMap = {[contentBrowserProxy.rootId]: 'a', [childId]: ''};
+      contentBrowserProxy.urlMap = {[contentBrowserProxy.rootId]: url};
+      contentBrowserProxy.textContentMap = {[childId]: url};
+      contentBrowserProxy
+          .childrenMap = {[contentBrowserProxy.rootId]: [childId]};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLSpanElement);
+      assertEquals(url, root.dataset['link']);
+      assertFalse(!!root.getAttribute('href'));
+    });
+
+    test('builds an input as a <div> tag', () => {
+      const rootId = 5;
+      const childId = 7;
+      const inputText = 'For her';
+
+      // Set up the AX Tree with an input that has a text child.
+      contentBrowserProxy.rootId = rootId;
+      contentBrowserProxy.htmlTagMap = {[rootId]: 'input', [childId]: ''};
+      contentBrowserProxy.textContentMap = {[childId]: inputText};
+      contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+      const root = contentController.updateContent();
+      assertTrue(root instanceof HTMLDivElement);
+      assertEquals(inputText, root.textContent);
+    });
+
+    suite('block tracking', () => {
+      const pdfRootId = 1;
+      const paragraphId = 10;
+      const paragraphTextId = 11;
+      const linkId = 12;
+      const linkTextId = 13;
+      const headingLineId = 20;
+      const headingLineTextId = 21;
+
+      setup(() => {
+        // A paragraph with a link, followed by a heading line, which is
+        // shown as a <span>.
+        contentBrowserProxy.rootId = pdfRootId;
+        contentBrowserProxy.htmlTagMap = {
+          [pdfRootId]: 'span',
+          [paragraphId]: 'p',
+          [linkId]: 'a',
+          [headingLineId]: 'span',
+        };
+        contentBrowserProxy.childrenMap = {
+          [pdfRootId]: [paragraphId, headingLineId],
+          [paragraphId]: [paragraphTextId, linkId],
+          [linkId]: [linkTextId],
+          [headingLineId]: [headingLineTextId],
+        };
+        contentBrowserProxy.textContentMap = {
+          [paragraphTextId]: 'Follow the ',
+          [linkTextId]: 'link',
+          [headingLineTextId]: 'Heading',
+        };
+        contentBrowserProxy.urlMap = {[linkId]: 'https://www.google.com/'};
+        contentBrowserProxy.translatePdfEnabled = true;
+        visualBrowserProxy.pdf = true;
+      });
+
+      test('groups text by the innermost block', () => {
+        contentController.updateContent();
+
+        assertTrue(nodeStore.isBlock(paragraphId));
+        assertFalse(nodeStore.isBlock(linkId));
+        assertFalse(nodeStore.isBlock(pdfRootId));
+        assertEquals(paragraphId, nodeStore.getBlockIdForText(paragraphTextId));
+        assertEquals(paragraphId, nodeStore.getBlockIdForText(linkTextId));
+      });
+
+      test('groups text that is not in a block by its parent', () => {
+        contentController.updateContent();
+
+        assertTrue(nodeStore.isBlock(headingLineId));
+        assertEquals(
+            headingLineId, nodeStore.getBlockIdForText(headingLineTextId));
+      });
+
+      test('groups text in nested blocks by the innermost block', () => {
+        const divId = 30;
+        const divTextId = 31;
+        contentBrowserProxy.htmlTagMap[divId] = 'div';
+        contentBrowserProxy.childrenMap[pdfRootId] = [divId];
+        contentBrowserProxy.childrenMap[divId] = [divTextId, paragraphId];
+        contentBrowserProxy.textContentMap[divTextId] = 'Before';
+
+        contentController.updateContent();
+
+        assertEquals(divId, nodeStore.getBlockIdForText(divTextId));
+        assertEquals(paragraphId, nodeStore.getBlockIdForText(paragraphTextId));
+      });
+
+      test('registers text in document order', () => {
+        contentController.updateContent();
+
+        assertDeepEquals(
+            {
+              anchorNodeId: paragraphTextId,
+              anchorOffset: 0,
+              focusNodeId: headingLineTextId,
+              focusOffset: 'Heading'.length,
+            },
+            nodeStore.getAxSelectionForBlockRange(paragraphId, headingLineId));
+      });
+
+      test('does not track blocks if disabled', () => {
+        contentBrowserProxy.translatePdfEnabled = false;
+
+        contentController.updateContent();
+
+        assertFalse(nodeStore.isBlock(paragraphId));
+        assertEquals(undefined, nodeStore.getBlockIdForText(paragraphTextId));
+      });
+
+      test('does not track blocks if not a PDF', () => {
+        visualBrowserProxy.pdf = false;
+
+        contentController.updateContent();
+
+        assertFalse(nodeStore.isBlock(paragraphId));
+        assertEquals(undefined, nodeStore.getBlockIdForText(paragraphTextId));
+      });
+    });
+
+    test('link visibility toggled toggles links with Readability', async () => {
+      const url = 'https://www.relsilicon.com/';
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      const text = 'a link';
+      contentBrowserProxy.htmlContent = `<a href="${url}">${text}</a>`;
+
+      const root = contentController.updateContent();
+      await microtasksFinished();
+      assertTrue(!!root);
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const shadowRoot = container.attachShadow({mode: 'open'});
+      const contentDiv = (root as DocumentFragment).querySelector('div');
+      assertTrue(!!contentDiv);
+      shadowRoot.append(...contentDiv.childNodes);
+
+      // Hide the links.
+      visualBrowserProxy.linksEnabled = false;
+      contentController.updateLinks(shadowRoot);
+      let link = shadowRoot.querySelector('a');
+      assertFalse(!!link);
+      let span = shadowRoot.querySelector<HTMLElement>('span[data-link]');
+      assertTrue(!!span);
+      assertEquals(url, span.dataset['link']);
+      assertEquals(text, span.textContent);
+
+      // Show the links.
+      visualBrowserProxy.linksEnabled = true;
+      contentController.updateLinks(shadowRoot);
+      span = shadowRoot.querySelector<HTMLElement>('span[data-link]');
+      assertFalse(!!span);
+      link = shadowRoot.querySelector('a');
+      assertTrue(!!link);
+      assertEquals(url, link.href);
+      assertEquals(text, link.textContent);
+    });
+
+    test('builds an image as a <canvas> tag', () => {
+      const rootId = contentBrowserProxy.rootId;
+      const altText = 'how it\'s done done done';
+      visualBrowserProxy.imagesEnabled = true;
+      contentBrowserProxy.htmlTagMap = {[rootId]: 'img'};
+      contentBrowserProxy.altText = altText;
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLCanvasElement);
+      assertEquals(altText, root.getAttribute('alt'));
+      assertEquals('', root.style.display);
+      assertArrayEquals([rootId], visualBrowserProxy.fetchedImages);
+    });
+
+    test('builds a video as a <canvas> tag', () => {
+      const rootId = contentBrowserProxy.rootId;
+      const altText = 'Huntrx';
+      visualBrowserProxy.imagesEnabled = true;
+      contentBrowserProxy.htmlTagMap = {[rootId]: 'video'};
+      contentBrowserProxy.altText = altText;
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLCanvasElement);
+      assertEquals(altText, root.getAttribute('alt'));
+      assertEquals('', root.style.display);
+      assertArrayEquals([rootId], visualBrowserProxy.fetchedImages);
+    });
+
+    test(
+        'builds a figure with display none when images disabled and no selection',
+        () => {
+          const rootId = contentBrowserProxy.rootId;
+          const childId = 11;
+          const captionText = 'A scenic landscape';
+          visualBrowserProxy.imagesEnabled = false;
+          contentBrowserProxy.hasValidSelectionVal = false;
+          contentBrowserProxy.htmlTagMap = {[rootId]: 'figure', [childId]: ''};
+          contentBrowserProxy.textContentMap = {[childId]: captionText};
+          contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+
+          const root = contentController.updateContent();
+
+          assertTrue(root instanceof HTMLElement);
+          assertEquals('FIGURE', root.nodeName);
+          assertEquals('none', root.style.display);
+        });
+
+    test(
+        'builds a figure with display visible when images disabled and figure is selected',
+        () => {
+          const rootId = contentBrowserProxy.rootId;
+          const childId = 11;
+          const captionText = 'A scenic landscape';
+          visualBrowserProxy.imagesEnabled = false;
+          contentBrowserProxy.hasValidSelectionVal = true;
+          contentBrowserProxy.startNodeId = childId;
+          contentBrowserProxy.endNodeId = childId;
+          contentBrowserProxy.htmlTagMap = {[rootId]: 'figure', [childId]: ''};
+          contentBrowserProxy.textContentMap = {[childId]: captionText};
+          contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+
+          const root = contentController.updateContent();
+
+          assertTrue(root instanceof HTMLElement);
+          assertEquals('FIGURE', root.nodeName);
+          assertEquals('', root.style.display);
+          assertEquals(captionText, root.textContent);
+        });
+
+    test(
+        'builds a figure with display none when images disabled and selection is unrelated',
+        () => {
+          const rootId = contentBrowserProxy.rootId;
+          const childId = 11;
+          const captionText = 'A scenic landscape';
+          visualBrowserProxy.imagesEnabled = false;
+          contentBrowserProxy.hasValidSelectionVal = true;
+          contentBrowserProxy.startNodeId = 99;
+          contentBrowserProxy.endNodeId = 99;
+          contentBrowserProxy.htmlTagMap = {[rootId]: 'figure', [childId]: ''};
+          contentBrowserProxy.textContentMap = {[childId]: captionText};
+          contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+
+          const root = contentController.updateContent();
+
+          assertTrue(root instanceof HTMLElement);
+          assertEquals('FIGURE', root.nodeName);
+          assertEquals('none', root.style.display);
+        });
+
+    test('builds a button as a <div> tag', () => {
+      const rootId = 5;
+      const childId = 7;
+      const buttonText = 'Automatic';
+
+      // Set up the AX Tree with a button that has a text child.
+      contentBrowserProxy.rootId = rootId;
+      contentBrowserProxy.htmlTagMap = {[rootId]: 'button', [childId]: ''};
+      contentBrowserProxy.textContentMap = {[childId]: buttonText};
+      contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+      const root = contentController.updateContent();
+      assertTrue(root instanceof HTMLDivElement);
+      assertEquals(buttonText, root.textContent);
+    });
+
+    test(
+        'builds a button as a <div> tag when Readability enabled', async () => {
+          contentBrowserProxy.readabilityEnabled = true;
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+          const buttonText = 'Buttons should be seen and not clicked';
+          contentBrowserProxy.htmlContent = `<button>${buttonText}</button>`;
+
+          const root = contentController.updateContent();
+          await microtasksFinished();
+
+          assertTrue(!!root);
+          assertFalse(!!(root as DocumentFragment).querySelector('button'));
+          const newDiv = (root as DocumentFragment).querySelector('div > div');
+          assertTrue(!!newDiv);
+          assertEquals(buttonText, newDiv.textContent);
+        });
+
+    test(
+        'builds a mark tag as a <div> tag when Readability enabled',
+        async () => {
+          contentBrowserProxy.readabilityEnabled = true;
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+          const markText = 'When everything is important, nothing is';
+          contentBrowserProxy.htmlContent = `<mark>${markText}</mark>`;
+
+          const root = contentController.updateContent();
+          await microtasksFinished();
+
+          assertTrue(!!root);
+          assertFalse(!!(root as DocumentFragment).querySelector('mark'));
+          const newSpan = (root as DocumentFragment).querySelector('div > div');
+          assertTrue(!!newSpan);
+          assertEquals(markText, newSpan.textContent);
+        });
+
+    test('sets text direction', () => {
+      const childId = 70;
+      const rootId = contentBrowserProxy.rootId;
+      contentBrowserProxy.htmlTagMap = {[rootId]: 'p', [childId]: ''};
+      contentBrowserProxy.textDirectionMap = {[rootId]: 'rtl'};
+      contentBrowserProxy.textContentMap = {[childId]: 'spittin facts'};
+      contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLParagraphElement);
+      assertEquals('rtl', root.getAttribute('dir'));
+    });
+
+    test('sets the language', () => {
+      const childId = 70;
+      const rootId = contentBrowserProxy.rootId;
+      contentBrowserProxy.htmlTagMap = {[rootId]: 'p', [childId]: ''};
+      contentBrowserProxy.languageMap = {[rootId]: 'ko'};
+      contentBrowserProxy.textContentMap = {[childId]: 'you know that\'s'};
+      contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLParagraphElement);
+      assertEquals('ko', root.getAttribute('lang'));
+    });
+
+    test('builds details as a div', () => {
+      const childId = 67;
+      const rootId = contentBrowserProxy.rootId;
+      contentBrowserProxy.htmlTagMap = {[rootId]: 'details', [childId]: ''};
+      contentBrowserProxy.childrenMap = {[rootId]: [childId]};
+      contentBrowserProxy.textContentMap = {[childId]: 'I don\'t talk'};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLDivElement);
+    });
+
+    test('builds a bolded and overlined text node', () => {
+      const text = 'Overlined and bold';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+      contentBrowserProxy.shouldBoldMap = {[contentBrowserProxy.rootId]: true};
+      contentBrowserProxy.isOverlineMap = {[contentBrowserProxy.rootId]: true};
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLElement);
+      assertEquals('B', root.nodeName);
+      assertEquals(text, root.textContent);
+      assertEquals('overline', root.style.textDecoration);
+    });
+
+    test('builds a bolded superscript text node', () => {
+      visualBrowserProxy.pdf = true;
+      const text = '1';
+      contentBrowserProxy.textContentMap = {[contentBrowserProxy.rootId]: text};
+      contentBrowserProxy.shouldBoldMap = {[contentBrowserProxy.rootId]: true};
+      contentBrowserProxy.isSuperscriptMap = {
+        [contentBrowserProxy.rootId]: true,
+      };
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLElement);
+      assertEquals('SUP', root.nodeName);
+      assertTrue(!!root.firstElementChild);
+      assertEquals('B', root.firstElementChild.nodeName);
+      assertEquals(text, root.textContent);
+    });
+
+    test('builds child elements with different text directions', () => {
+      const parentId = 10;
+      const child1Id = 11;
+      const child2Id = 12;
+      const text1 = 'This is ltr';
+      const text2 = 'This link is rtl';
+      contentBrowserProxy.rootId = parentId;
+      contentBrowserProxy.htmlTagMap = {
+        [parentId]: 'p',
+        [child1Id]: '',
+        [child2Id]: 'a',
+      };
+      contentBrowserProxy.childrenMap = {[parentId]: [child1Id, child2Id]};
+      contentBrowserProxy.textContentMap = {
+        [child1Id]: text1,
+        [child2Id]: text2,
+      };
+      contentBrowserProxy.textDirectionMap = {
+        [parentId]: 'ltr',
+        [child2Id]: 'rtl',
+      };
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLParagraphElement);
+      assertEquals('ltr', root.getAttribute('dir'));
+      const link = root.querySelector('a');
+      assertTrue(!!link);
+      assertEquals('rtl', link.getAttribute('dir'));
+    });
+
+    test('builds child elements with different languages', () => {
+      const parentId = 10;
+      const child1Id = 11;
+      const child2Id = 12;
+      const text1 = 'This is in English';
+      const text2 = 'This is a link in Chinese';
+      contentBrowserProxy.rootId = parentId;
+      contentBrowserProxy.htmlTagMap = {
+        [parentId]: 'p',
+        [child1Id]: '',
+        [child2Id]: 'a',
+      };
+      contentBrowserProxy.childrenMap = {[parentId]: [child1Id, child2Id]};
+      contentBrowserProxy.textContentMap = {
+        [child1Id]: text1,
+        [child2Id]: text2,
+      };
+      contentBrowserProxy.languageMap = {
+        [parentId]: 'en',
+        [child2Id]: 'zh',
+      };
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLParagraphElement);
+      assertEquals('en', root.getAttribute('lang'));
+      const link = root.querySelector('a');
+      assertTrue(!!link);
+      assertEquals('zh', link.getAttribute('lang'));
+    });
+
+    test('builds headings with other content', () => {
+      const rootId = 1;
+      const h1Id = 2;
+      const h1TextId = 3;
+      const h2Id = 4;
+      const h2TextId = 5;
+      const h3Id = 6;
+      const h3TextId = 7;
+      const h4Id = 8;
+      const h4TextId = 9;
+      const h5Id = 10;
+      const h5TextId = 11;
+      const h6Id = 12;
+      const h6TextId = 13;
+      const pId = 14;
+      const pTextId = 15;
+
+      contentBrowserProxy.rootId = rootId;
+      contentBrowserProxy.htmlTagMap = {
+        [rootId]: 'div',
+        [h1Id]: 'h1',
+        [h1TextId]: '',
+        [h2Id]: 'h2',
+        [h2TextId]: '',
+        [h3Id]: 'h3',
+        [h3TextId]: '',
+        [h4Id]: 'h4',
+        [h4TextId]: '',
+        [h5Id]: 'h5',
+        [h5TextId]: '',
+        [h6Id]: 'h6',
+        [h6TextId]: '',
+        [pId]: 'p',
+        [pTextId]: '',
+      };
+      contentBrowserProxy.childrenMap = {
+        [rootId]: [h1Id, h2Id, h3Id, h4Id, h5Id, h6Id, pId],
+        [h1Id]: [h1TextId],
+        [h2Id]: [h2TextId],
+        [h3Id]: [h3TextId],
+        [h4Id]: [h4TextId],
+        [h5Id]: [h5TextId],
+        [h6Id]: [h6TextId],
+        [pId]: [pTextId],
+      };
+      contentBrowserProxy.textContentMap = {
+        [h1TextId]: 'This is an h1.',
+        [h2TextId]: 'This is an h2.',
+        [h3TextId]: 'This is an h3.',
+        [h4TextId]: 'This is an h4.',
+        [h5TextId]: 'This is an h5.',
+        [h6TextId]: 'This is an h6.',
+        [pTextId]: 'This is a paragraph.',
+      };
+
+      const root = contentController.updateContent();
+
+      assertTrue(root instanceof HTMLDivElement);
+      assertEquals(7, root.children.length);
+      assertEquals('H1', root.children[0]!.tagName);
+      assertEquals('This is an h1.', root.children[0]!.textContent);
+      assertEquals('H2', root.children[1]!.tagName);
+      assertEquals('This is an h2.', root.children[1]!.textContent);
+      assertEquals('H3', root.children[2]!.tagName);
+      assertEquals('This is an h3.', root.children[2]!.textContent);
+      assertEquals('H4', root.children[3]!.tagName);
+      assertEquals('This is an h4.', root.children[3]!.textContent);
+      assertEquals('H5', root.children[4]!.tagName);
+      assertEquals('This is an h5.', root.children[4]!.textContent);
+      assertEquals('H6', root.children[5]!.tagName);
+      assertEquals('This is an h6.', root.children[5]!.textContent);
+      assertEquals('P', root.children[6]!.tagName);
+      assertEquals('This is a paragraph.', root.children[6]!.textContent);
+    });
+
+    test(
+        'honors links disabled preference on first open with Readability',
+        async () => {
+          const url = 'https://www.google.com/';
+          const text = 'best link ever';
+          contentBrowserProxy.readabilityEnabled = true;
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+          contentBrowserProxy.htmlContent = `<a href="${url}">${text}</a>`;
+          visualBrowserProxy.linksEnabled = false;
+
+          const root = contentController.updateContent();
+          await microtasksFinished();
+
+          assertTrue(!!root);
+          const container = document.createElement('div');
+          document.body.appendChild(container);
+          const shadowRoot = container.attachShadow({mode: 'open'});
+          const contentDiv = (root as DocumentFragment).querySelector('div');
+          assertTrue(!!contentDiv);
+          shadowRoot.append(...contentDiv.childNodes);
+
+          const link = shadowRoot.querySelector('a');
+          assertFalse(!!link);
+          const span = shadowRoot.querySelector<HTMLElement>('span[data-link]');
+          assertTrue(!!span);
+          assertEquals(url, span.dataset['link']);
+          assertEquals(text, span.textContent);
+        });
+
+    test(
+        'honors links enabled preference on first open with Readability',
+        async () => {
+          const url = 'https://www.google.com/';
+          const text = 'best link ever';
+          contentBrowserProxy.readabilityEnabled = true;
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+          contentBrowserProxy.htmlContent = `<a href="${url}">${text}</a>`;
+          visualBrowserProxy.linksEnabled = true;
+
+          const root = contentController.updateContent();
+          await microtasksFinished();
+
+          assertTrue(!!root);
+          const container = document.createElement('div');
+          document.body.appendChild(container);
+          const shadowRoot = container.attachShadow({mode: 'open'});
+          const contentDiv = (root as DocumentFragment).querySelector('div');
+          assertTrue(!!contentDiv);
+          shadowRoot.append(...contentDiv.childNodes);
+
+          const link = shadowRoot.querySelector('a');
+          assertTrue(!!link);
+          assertEquals(url, link.href);
+          assertEquals(text, link.textContent);
+        });
+
+    test(
+        'read aloud state resets on new content (Readability enabled)',
+        async () => {
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+
+          let resetCallCount = 0;
+          speechController.resetForNewContent = () => {
+            resetCallCount++;
+          };
+
+          contentBrowserProxy.htmlContent =
+              '<div> My name is Regina George.</div>';
+
+          contentController.updateContent();
+          await microtasksFinished();
+
+          assertEquals(
+              1, resetCallCount,
+              'resetForNewContent() should have been called once');
+        });
+
+    test(
+        'calls updateContentForScreen2x if readability enabled and has failed',
+        async () => {
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeScreen2x;
+
+          let callCount = 0;
+          contentController.updateContentForScreen2x =
+              (_shadowRoot?: ShadowRoot) => {
+                callCount++;
+                return null;
+              };
+
+          contentController.updateContent();
+          await microtasksFinished();
+
+          assertEquals(
+              1, callCount,
+              'updateContentForScreen2x() should have been called');
+        });
+
+    test(
+        'calls updateContentForReadability if readability enabled and success',
+        async () => {
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+
+          let callCount = 0;
+          contentController.updateContentForReadability =
+              (_shadowRoot?: ShadowRoot) => {
+                callCount++;
+                return null;
+              };
+
+          contentController.updateContent();
+          await microtasksFinished();
+
+          assertEquals(
+              1, callCount,
+              'updateContentForReadability() should have been called');
+        });
+  });
+
+  suite('updateLinks', () => {
+    const linkId = 52;
+    const linkUrl = 'https://www.docs.google.com/';
+    let link: HTMLAnchorElement;
+    let shadowRoot: ShadowRoot;
+
+    setup(() => {
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      shadowRoot = container.attachShadow({mode: 'open'});
+      link = document.createElement('a');
+      link.href = linkUrl;
+      contentBrowserProxy.htmlTagMap = {[linkId]: 'a'};
+      contentBrowserProxy.urlMap = {[linkId]: linkUrl};
+    });
+
+    test('does nothing if no content', () => {
+      visualBrowserProxy.linksEnabled = false;
+      contentController.setState(ContentType.NO_CONTENT);
+      contentController.updateLinks(shadowRoot);
+      assertFalse(!!shadowRoot.firstChild);
+    });
+
+    test('replaces <a> with <span> when hiding links', () => {
+      visualBrowserProxy.linksEnabled = false;
+      shadowRoot.appendChild(link);
+      nodeStore.setDomNode(link, linkId);
+
+      contentController.setState(ContentType.HAS_CONTENT);
+      contentController.updateLinks(shadowRoot);
+
+      assertFalse(!!shadowRoot.querySelector('a'));
+      const span = shadowRoot.querySelector('span[data-link]');
+      assertTrue(span instanceof HTMLSpanElement);
+      assertEquals(linkUrl, span.dataset['link']);
+    });
+
+    test('replaces <span> with <a> when showing links', () => {
+      const span = document.createElement('span');
+      span.dataset['link'] = linkUrl;
+      shadowRoot.appendChild(span);
+      nodeStore.setDomNode(span, linkId);
+      visualBrowserProxy.linksEnabled = true;
+
+      contentController.setState(ContentType.HAS_CONTENT);
+      contentController.updateLinks(shadowRoot);
+
+      assertFalse(!!shadowRoot.querySelector('span[data-link]'));
+      const link = shadowRoot.querySelector('a');
+      assertTrue(!!link);
+      assertEquals(linkUrl, link.href);
+    });
+
+    test(
+        'does not set href on link with empty url when toggling links', () => {
+          const textId = 53;
+          contentBrowserProxy.rootId = linkId;
+          contentBrowserProxy.htmlTagMap = {[linkId]: 'a', [textId]: ''};
+          contentBrowserProxy.urlMap = {[linkId]: ''};
+          contentBrowserProxy.textContentMap = {[textId]: 'Internal Ref'};
+          contentBrowserProxy.childrenMap = {[linkId]: [textId]};
+          visualBrowserProxy.linksEnabled = true;
+
+          const root = contentController.updateContent();
+          assertTrue(!!root);
+          shadowRoot.appendChild(root);
+          assertFalse(!!shadowRoot.querySelector('a')?.hasAttribute('href'));
+
+          // Hide links, then show links again.
+          visualBrowserProxy.linksEnabled = false;
+          contentController.updateLinks(shadowRoot);
+          assertFalse(!!shadowRoot.querySelector('span[data-link]'));
+
+          visualBrowserProxy.linksEnabled = true;
+          contentController.updateLinks(shadowRoot);
+          assertFalse(!!shadowRoot.querySelector('a'));
+        });
+
+    test('restores previous highlighting when hiding links', () => {
+      const innerSpan = document.createElement('span');
+      innerSpan.classList.add(HIGHLIGHTED_LINK_CLASS);
+      link.appendChild(innerSpan);
+      shadowRoot.appendChild(link);
+      nodeStore.setDomNode(link, linkId);
+      visualBrowserProxy.linksEnabled = false;
+
+      contentController.setState(ContentType.HAS_CONTENT);
+      contentController.updateLinks(shadowRoot);
+
+      const newInnerSpan = shadowRoot.querySelector('span[data-link] span');
+      assertTrue(!!newInnerSpan);
+      assertTrue(newInnerSpan.classList.contains(previousReadHighlightClass));
+      assertFalse(newInnerSpan.classList.contains(HIGHLIGHTED_LINK_CLASS));
+    });
+
+    test('removes previous highlighting when showing links', () => {
+      const innerSpan = document.createElement('span');
+      innerSpan.classList.add(previousReadHighlightClass);
+      const outerSpan = document.createElement('span');
+      outerSpan.dataset['link'] = linkUrl;
+      outerSpan.appendChild(innerSpan);
+      shadowRoot.appendChild(outerSpan);
+      nodeStore.setDomNode(outerSpan, linkId);
+      visualBrowserProxy.linksEnabled = true;
+
+      contentController.setState(ContentType.HAS_CONTENT);
+      contentController.updateLinks(shadowRoot);
+
+      const newInnerSpan = shadowRoot.querySelector('a span');
+      assertTrue(!!newInnerSpan);
+      assertTrue(newInnerSpan.classList.contains(HIGHLIGHTED_LINK_CLASS));
+      assertFalse(newInnerSpan.classList.contains(previousReadHighlightClass));
+    });
+
+    test(
+        'does not add previous highlighting when hiding links that were not' +
+            ' highlighted',
+        () => {
+          const innerSpan = document.createElement('span');
+          link.appendChild(innerSpan);
+          shadowRoot.appendChild(link);
+          nodeStore.setDomNode(link, linkId);
+          visualBrowserProxy.linksEnabled = false;
+
+          contentController.setState(ContentType.HAS_CONTENT);
+          contentController.updateLinks(shadowRoot);
+
+          const newInnerSpan = shadowRoot.querySelector('span[data-link] span');
+          assertTrue(!!newInnerSpan);
+          assertFalse(
+              newInnerSpan.classList.contains(previousReadHighlightClass));
+          assertFalse(newInnerSpan.classList.contains(HIGHLIGHTED_LINK_CLASS));
+        });
+
+    test(
+        'does not mark as highlighted when showing links that were not' +
+            ' highlighted',
+        () => {
+          const innerSpan = document.createElement('span');
+          const outerSpan = document.createElement('span');
+          outerSpan.dataset['link'] = linkUrl;
+          outerSpan.appendChild(innerSpan);
+          shadowRoot.appendChild(outerSpan);
+          nodeStore.setDomNode(outerSpan, linkId);
+          visualBrowserProxy.linksEnabled = true;
+
+          contentController.setState(ContentType.HAS_CONTENT);
+          contentController.updateLinks(shadowRoot);
+
+          const newInnerSpan = shadowRoot.querySelector('a span');
+          assertTrue(!!newInnerSpan);
+          assertFalse(newInnerSpan.classList.contains(HIGHLIGHTED_LINK_CLASS));
+          assertFalse(
+              newInnerSpan.classList.contains(previousReadHighlightClass));
+        });
+
+    test(
+        'does not add previous highlighting when hiding links that were ' +
+            'highlighted and then cleared',
+        () => {
+          const innerSpan = document.createElement('span');
+          innerSpan.classList.add(HIGHLIGHTED_LINK_CLASS);
+          link.appendChild(innerSpan);
+          shadowRoot.appendChild(link);
+          nodeStore.setDomNode(link, linkId);
+          visualBrowserProxy.linksEnabled = false;
+
+          contentController.onSelectionChange(shadowRoot);
+          contentController.setState(ContentType.HAS_CONTENT);
+          contentController.updateLinks(shadowRoot);
+
+          const newInnerSpan = shadowRoot.querySelector('span[data-link] span');
+          assertTrue(!!newInnerSpan);
+          assertFalse(
+              newInnerSpan.classList.contains(previousReadHighlightClass));
+          assertFalse(newInnerSpan.classList.contains(HIGHLIGHTED_LINK_CLASS));
+        });
+
+    suite('with speech', () => {
+      const textId = 45;
+      const linkText = 'Try to keep it hidden';
+      const noLinksHtml = '<span data-link="' + linkUrl +
+          '"><span class="parent-of-highlight"><span class="' +
+          'current-read-highlight">Try</span> to keep it hidden</span></span>';
+      const linksHtml = '<a href="' + linkUrl +
+          '"><span class="parent-of-highlight"><span class="' +
+          'current-read-highlight">Try</span> to keep it hidden</span></a>';
+
+      setup(() => {
+        setupBasicSpeech(speech);
+        contentBrowserProxy.rootId = linkId;
+        contentBrowserProxy.htmlTagMap = {[linkId]: 'a'};
+        contentBrowserProxy.textContentMap = {[textId]: linkText};
+        contentBrowserProxy.childrenMap = {[linkId]: [textId]};
+        contentBrowserProxy.urlMap = {[linkId]: linkUrl};
+
+        const root = contentController.updateContent();
+        assertTrue(!!root);
+        shadowRoot.appendChild(root);
+
+        let calls = 0;
+        readAloudModel.setInitialized(true);
+        readAloudModel.setCurrentTextContent(linkText);
+        readAloudModel.getCurrentTextSegments = () => {
+          calls++;
+          if (calls === 1) {
+            return [{
+              node: ReadAloudNode.create(nodeStore.getDomNode(textId)!)!,
+              start: 0,
+              length: 3,
+            }];
+          } else {
+            return [];
+          }
+        };
+      });
+
+      test('hides links when speech active', () => {
+        speechController.onPlayPauseToggle(
+            shadowRoot.firstElementChild as HTMLElement);
+        contentController.updateLinks(shadowRoot);
+        assertEquals(noLinksHtml, shadowRoot.innerHTML);
+      });
+
+      test('shows links when speech paused', () => {
+        speechController.onPlayPauseToggle(
+            shadowRoot.firstElementChild as HTMLElement);
+        contentController.updateLinks(shadowRoot);
+
+        speechController.onPlayPauseToggle(
+            shadowRoot.firstElementChild as HTMLElement);
+        contentController.updateLinks(shadowRoot);
+
+        assertEquals(linksHtml, shadowRoot.innerHTML);
+      });
+
+      test('shows links when speech finished', async () => {
+        const expectedHTML = '<a href="' + linkUrl +
+            '"><span class="parent-of-highlight"><span class="">' +
+            'Try</span> to keep it hidden</span></a>';
+        speechController.onPlayPauseToggle(
+            shadowRoot.firstElementChild as HTMLElement);
+        contentController.updateLinks(shadowRoot);
+
+        const spoken = await speech.whenCalled('speak');
+        spoken.onend();
+        contentController.updateLinks(shadowRoot);
+
+        assertEquals(expectedHTML, shadowRoot.innerHTML);
+      });
+
+      test('hides links when speech active and links disabled', () => {
+        visualBrowserProxy.linksEnabled = false;
+        contentController.updateLinks(shadowRoot);
+
+        speechController.onPlayPauseToggle(
+            shadowRoot.firstElementChild as HTMLElement);
+        contentController.updateLinks(shadowRoot);
+        assertEquals(noLinksHtml, shadowRoot.innerHTML);
+      });
+
+      test('hides links when speech paused and links disabled', () => {
+        visualBrowserProxy.linksEnabled = false;
+        contentController.updateLinks(shadowRoot);
+        speechController.onPlayPauseToggle(
+            shadowRoot.firstElementChild as HTMLElement);
+        contentController.updateLinks(shadowRoot);
+
+        speechController.onPlayPauseToggle(
+            shadowRoot.firstElementChild as HTMLElement);
+        contentController.updateLinks(shadowRoot);
+
+        assertEquals(noLinksHtml, shadowRoot.innerHTML);
+      });
+    });
+  });
+
+  suite('loadImages', () => {
+    test('fetches images', () => {
+      const imageId = 33;
+      nodeStore.addImageToFetch(imageId);
+
+      contentController.loadImages();
+
+      assertArrayEquals([imageId], visualBrowserProxy.fetchedImages);
+    });
+  });
+
+  suite('onImageDownloaded', () => {
+    const nodeId = 5;
+    const imageData = {
+      data: new Uint8ClampedArray([255, 0, 0, 255]),
+      width: 1,
+      height: 1,
+      scale: 1.5,
+    };
+    let canvas: HTMLCanvasElement;
+    let drewImage: boolean;
+
+    setup(() => {
+      canvas = document.createElement('canvas');
+      contentBrowserProxy.imageBitmap = imageData;
+      const context = canvas.getContext('2d');
+      assertTrue(!!context);
+      drewImage = false;
+      context.drawImage = () => {
+        drewImage = true;
+      };
+    });
+
+    test('updates canvas when data and element are valid', async () => {
+      nodeStore.setDomNode(canvas, nodeId);
+
+      await contentController.onImageDownloaded(nodeId);
+      await microtasksFinished();
+
+      assertEquals(imageData.width, canvas.width);
+      assertEquals(imageData.height, canvas.height);
+      assertEquals(imageData.scale.toString(), canvas.style.zoom);
+      assertTrue(drewImage);
+      assertTrue(receivedContentChange);
+    });
+
+    test('does nothing if element is missing', async () => {
+      await contentController.onImageDownloaded(nodeId);
+      await microtasksFinished();
+
+      assertFalse(drewImage);
+      assertFalse(receivedContentChange);
+    });
+
+    test('does nothing if element is not a canvas', async () => {
+      const element = document.createElement('p');
+      nodeStore.setDomNode(element, nodeId);
+
+      await contentController.onImageDownloaded(nodeId);
+      await microtasksFinished();
+
+      assertFalse(drewImage);
+      assertFalse(receivedContentChange);
+    });
+
+    test('does nothing if content is cleared while decoding', async () => {
+      nodeStore.setDomNode(canvas, nodeId);
+
+      // Don't await yet, so that the content can be cleared while the image is
+      // still decoding, as it would be if the page were redistilled.
+      const downloaded = contentController.onImageDownloaded(nodeId);
+      nodeStore.clearDomNodes();
+      await downloaded;
+      await microtasksFinished();
+
+      assertFalse(drewImage);
+      assertFalse(receivedContentChange);
+    });
+
+    test('does nothing if node is replaced while decoding', async () => {
+      nodeStore.setDomNode(canvas, nodeId);
+
+      // Don't await yet, so that this node can be redrawn with a new canvas
+      // while the image for the old canvas is still decoding.
+      const downloaded = contentController.onImageDownloaded(nodeId);
+      nodeStore.setDomNode(document.createElement('canvas'), nodeId);
+      await downloaded;
+      await microtasksFinished();
+
+      assertFalse(drewImage);
+      assertFalse(receivedContentChange);
+    });
+  });
+
+  suite('updateImages', () => {
+    const id1 = 2;
+    const textId = 4;
+    const id3 = 6;
+    const captionId = 8;
+    const captionTextId = 10;
+    let shadowRoot: ShadowRoot;
+    let canvas: HTMLCanvasElement;
+    let figure: HTMLElement;
+    let textNode: Text;
+    let captionTextNode: Text;
+
+    setup(() => {
+      contentBrowserProxy.hasValidSelectionVal = false;
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      shadowRoot = container.attachShadow({mode: 'open'});
+
+      canvas = document.createElement('canvas');
+      textNode = document.createTextNode('Canvas text');
+      canvas.appendChild(textNode);
+      shadowRoot.appendChild(canvas);
+
+      figure = document.createElement('figure');
+      const figcaption = document.createElement('figcaption');
+      captionTextNode = document.createTextNode('Caption text');
+      figcaption.appendChild(captionTextNode);
+      figure.appendChild(figcaption);
+      shadowRoot.appendChild(figure);
+
+      // Associate nodes with IDs for the test.
+      nodeStore.setDomNode(canvas, id1);
+      nodeStore.setDomNode(textNode, textId);
+      nodeStore.setDomNode(figure, id3);
+      nodeStore.setDomNode(figcaption, captionId);
+      nodeStore.setDomNode(captionTextNode, captionTextId);
+    });
+
+    test('hides images and associated text nodes when disabled', async () => {
+      visualBrowserProxy.imagesEnabled = false;
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      contentController.updateImages(shadowRoot);
+      await microtasksFinished();
+
+      assertEquals('none', canvas.style.display);
+      assertEquals('none', figure.style.display);
+      assertTrue(nodeStore.areNodesAllHidden(
+          [ReadAloudNode.createFromAxNode(textId)!]));
+      assertTrue(nodeStore.areNodesAllHidden(
+          [ReadAloudNode.createFromAxNode(captionTextId)!]));
+      assertTrue(receivedContentChange);
+    });
+
+    test('shows images and clears hidden nodes when enabled', async () => {
+      visualBrowserProxy.imagesEnabled = true;
+      nodeStore.hideImageNode(textId);
+      canvas.style.display = 'none';
+      figure.style.display = 'none';
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      contentController.updateImages(shadowRoot);
+      await microtasksFinished();
+
+      assertEquals('', canvas.style.display);
+      assertEquals('', figure.style.display);
+      assertFalse(nodeStore.areNodesAllHidden(
+          [ReadAloudNode.createFromAxNode(textId)!]));
+      assertTrue(receivedContentChange);
+    });
+
+    test(
+        'shows figure and does not hide caption text nodes when images disabled with figure selected',
+        async () => {
+          visualBrowserProxy.imagesEnabled = false;
+          contentBrowserProxy.hasValidSelectionVal = true;
+          contentBrowserProxy.startNodeId = captionTextId;
+          contentBrowserProxy.endNodeId = captionTextId;
+          contentController.setState(ContentType.HAS_CONTENT);
+
+          contentController.updateImages(shadowRoot);
+          await microtasksFinished();
+
+          assertEquals('none', canvas.style.display);
+          assertEquals('', figure.style.display);
+          assertTrue(nodeStore.areNodesAllHidden(
+              [ReadAloudNode.createFromAxNode(textId)!]));
+          assertFalse(nodeStore.areNodesAllHidden(
+              [ReadAloudNode.createFromAxNode(captionTextId)!]));
+          assertTrue(receivedContentChange);
+        });
+
+    test(
+        'hides figure when images disabled with unrelated selection',
+        async () => {
+          visualBrowserProxy.imagesEnabled = false;
+          contentBrowserProxy.hasValidSelectionVal = true;
+          contentBrowserProxy.startNodeId = 99;
+          contentBrowserProxy.endNodeId = 99;
+          const unrelatedNode = document.createElement('p');
+          shadowRoot.appendChild(unrelatedNode);
+          nodeStore.setDomNode(unrelatedNode, 99);
+
+          contentController.setState(ContentType.HAS_CONTENT);
+
+          contentController.updateImages(shadowRoot);
+          await microtasksFinished();
+
+          assertEquals('none', canvas.style.display);
+          assertEquals('none', figure.style.display);
+        });
+
+    test('notifies of content change with readability', async () => {
+      visualBrowserProxy.imagesEnabled = false;
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      contentController.setState(ContentType.HAS_CONTENT);
+      receivedContentChange = false;
+
+      contentController.updateImages(shadowRoot);
+      await microtasksFinished();
+
+      assertTrue(receivedContentChange);
+    });
+
+    test(
+        'readability: hides figure and images when disabled even with selection',
+        async () => {
+          contentBrowserProxy.activeDistillationMethod =
+              contentBrowserProxy.distillationTypeReadability;
+          visualBrowserProxy.imagesEnabled = false;
+          contentBrowserProxy.hasValidSelectionVal = true;
+          contentBrowserProxy.startNodeId = captionTextId;
+          contentBrowserProxy.endNodeId = captionTextId;
+          contentController.setState(ContentType.HAS_CONTENT);
+
+          const img = document.createElement('img');
+          shadowRoot.appendChild(img);
+
+          contentController.updateImages(shadowRoot);
+          await microtasksFinished();
+
+          assertEquals('none', img.style.display);
+          assertEquals('none', figure.style.display);
+          assertTrue(receivedContentChange);
+        });
+
+    test('updates read aloud state when images are updated', async () => {
+      const containerElement = document.createElement('div');
+      containerElement.id = 'container';
+      shadowRoot.appendChild(containerElement);
+
+      const imageElement = document.createElement('img');
+      const captionElement = document.createElement('figcaption');
+      captionElement.textContent = 'Image caption';
+      figure.appendChild(imageElement);
+      figure.appendChild(captionElement);
+      containerElement.appendChild(figure);
+
+      visualBrowserProxy.imagesEnabled = true;
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      let savedReadAloudState = false;
+      let resetForNewContent = false;
+      let updateReadAloudStateCalled = false;
+      let containerPassedToUpdateReadAloudState = false;
+
+      speechController.hasSpeechBeenTriggered = () => true;
+      speechController.saveReadAloudState = () => {
+        savedReadAloudState = true;
+      };
+      speechController.resetForNewContent = () => {
+        resetForNewContent = true;
+      };
+      contentController.updateReadAloudState = (node: Node) => {
+        updateReadAloudStateCalled = true;
+        containerPassedToUpdateReadAloudState = (node === containerElement);
+      };
+
+      contentController.updateImages(shadowRoot);
+      await microtasksFinished();
+
+      assertTrue(savedReadAloudState);
+      assertTrue(resetForNewContent);
+      assertTrue(updateReadAloudStateCalled);
+      assertTrue(containerPassedToUpdateReadAloudState);
+    });
+
+    suite('figure with caption', () => {
+      const altText = 'No man is worth the aggravation';
+      const figureId = 2;
+      const imageId = 3;
+      const captionId = 4;
+      const captionTextId = 5;
+      const caption = 'That\'s ancient history';
+
+      setup(() => {
+        shadowRoot.replaceChildren();
+        contentBrowserProxy.rootId = figureId;
+        contentBrowserProxy.altText = altText;
+        contentBrowserProxy.htmlTagMap = {
+          [figureId]: 'figure',
+          [imageId]: 'img',
+          [captionId]: 'figcaption',
+        };
+        contentBrowserProxy.childrenMap = {
+          [figureId]: [imageId, captionId],
+          [captionId]: [captionTextId],
+        };
+        contentBrowserProxy.textContentMap = {[captionTextId]: caption};
+        const root = contentController.updateContent();
+        assertTrue(!!root);
+        shadowRoot.appendChild(root);
+      });
+
+      test('shows figures and captions when enabled', async () => {
+        const expectedHtml = '<figure><canvas alt="' + altText +
+            '" class="downloaded-image">' +
+            '</canvas><figcaption>' + caption + '</figcaption></figure>';
+        visualBrowserProxy.imagesEnabled = true;
+        contentController.updateImages(shadowRoot);
+        await microtasksFinished();
+
+        assertEquals(expectedHtml, shadowRoot.innerHTML);
+      });
+
+      test('hides figures and captions when disabled', async () => {
+        const expectedHtml = '<figure style="display:' +
+            ' none;"><canvas alt="' + altText + '" class="downloaded-image"' +
+            ' style="display: none;"></canvas><figcaption' +
+            '>' + caption + '</figcaption></figure>';
+        visualBrowserProxy.imagesEnabled = false;
+        contentController.updateImages(shadowRoot);
+        await microtasksFinished();
+
+        assertEquals(expectedHtml, shadowRoot.innerHTML);
+      });
+
+      test('onImagesVisibilityChanged sets empty when caption hidden', () => {
+        const container = document.createElement('div');
+        container.appendChild(shadowRoot.firstElementChild!);
+        shadowRoot.appendChild(container);
+
+        visualBrowserProxy.imagesEnabled = false;
+        contentController.onImagesVisibilityChanged(container, shadowRoot);
+
+        assertTrue(contentController.isEmpty());
+      });
+    });
+
+    suite('with readability', () => {
+      setup(() => {
+        shadowRoot.replaceChildren();
+        contentBrowserProxy.activeDistillationMethod =
+            contentBrowserProxy.distillationTypeReadability;
+      });
+
+      test('shows and hides images when toggled', async () => {
+        contentBrowserProxy.htmlContent = '<img src="foo.png">;';
+        const root = contentController.updateContent();
+        assertTrue(!!root);
+        shadowRoot.appendChild(root);
+
+        const img = shadowRoot.querySelector('img')!;
+        assertTrue(!!img);
+
+        visualBrowserProxy.imagesEnabled = true;
+        contentController.updateImages(shadowRoot);
+        await microtasksFinished();
+        assertEquals('', img.style.display);
+
+        visualBrowserProxy.imagesEnabled = false;
+        contentController.updateImages(shadowRoot);
+        await microtasksFinished();
+        assertEquals('none', img.style.display);
+      });
+
+      test('shows and hides figures and captions when toggled', async () => {
+        const caption = 'That\'s ancient history';
+        contentBrowserProxy.htmlContent =
+            '<figure><img src="foo.png"><figcaption>' + caption +
+            '</figcaption></figure>';
+        const root = contentController.updateContent();
+        assertTrue(!!root);
+        shadowRoot.appendChild(root);
+
+        const figure = shadowRoot.querySelector('figure')!;
+        const figcaption = shadowRoot.querySelector('figcaption')!;
+
+        visualBrowserProxy.imagesEnabled = true;
+        contentController.updateImages(shadowRoot);
+        await microtasksFinished();
+        assertEquals('', figure.style.display);
+        assertEquals(caption, figcaption.textContent);
+
+        visualBrowserProxy.imagesEnabled = false;
+        contentController.updateImages(shadowRoot);
+        await microtasksFinished();
+        assertEquals('none', figure.style.display);
+      });
+
+      test('onImagesVisibilityChanged sets empty when caption hidden', () => {
+        contentBrowserProxy.htmlContent =
+            '<figure><img src="foo.png"><figcaption>Caption</figcaption>' +
+            '</figure>';
+        const root = contentController.updateContent();
+        assertTrue(!!root);
+        const container = document.createElement('div');
+        container.appendChild(root);
+        shadowRoot.appendChild(container);
+
+        visualBrowserProxy.imagesEnabled = false;
+        contentController.onImagesVisibilityChanged(container, shadowRoot);
+
+        assertTrue(contentController.isEmpty());
+      });
+    });
+  });
+
+  suite('onRenderedTextBlocksAvailable', () => {
+    setup(() => {
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      contentBrowserProxy.isReadabilitySelectTextEnabledFlag = true;
+    });
+
+    test('extracts text blocks from container', () => {
+      const container = document.createElement('div');
+      const text1 = 'Hello ';
+      const text2 = 'world';
+      container.appendChild(document.createTextNode(text1));
+      const span = document.createElement('span');
+      span.appendChild(document.createTextNode(text2));
+      container.appendChild(span);
+      document.body.appendChild(container);
+
+      contentController.onRenderedTextBlocksAvailable(container);
+
+      assertEquals(
+          1, contentBrowserProxy.getCallCount('onRenderedTextBlocksAvailable'));
+      const sentBlocks = contentBrowserProxy.getArgs(
+                             'onRenderedTextBlocksAvailable')[0] as string[];
+      assertEquals(2, sentBlocks.length);
+      assertEquals(text1, sentBlocks[0]);
+      assertEquals(text2, sentBlocks[1]);
+    });
+
+    test('does nothing for screen2x', () => {
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeScreen2x;
+      const container = document.createElement('div');
+      container.appendChild(document.createTextNode('Hello'));
+      document.body.appendChild(container);
+
+      contentController.onRenderedTextBlocksAvailable(container);
+
+      assertEquals(
+          0, contentBrowserProxy.getCallCount('onRenderedTextBlocksAvailable'));
+    });
+
+    test('overwrites stored nodes on subsequent calls', () => {
+      const container1 = document.createElement('div');
+      container1.textContent = 'First call';
+      const container2 = document.createElement('div');
+      container2.textContent = 'Second call';
+
+      // First call
+      contentController.onRenderedTextBlocksAvailable(container1);
+      assertEquals(
+          1, contentBrowserProxy.getCallCount('onRenderedTextBlocksAvailable'));
+      let sentBlocks = contentBrowserProxy.getArgs(
+                           'onRenderedTextBlocksAvailable')[0] as string[];
+      assertEquals(1, sentBlocks.length);
+      assertEquals('First call', sentBlocks[0]);
+
+      // Second call - should replace the internal array
+      contentController.onRenderedTextBlocksAvailable(container2);
+      assertEquals(
+          2, contentBrowserProxy.getCallCount('onRenderedTextBlocksAvailable'));
+      sentBlocks = contentBrowserProxy.getArgs(
+                       'onRenderedTextBlocksAvailable')[1] as string[];
+      assertEquals(1, sentBlocks.length);
+      assertEquals('Second call', sentBlocks[0]);
+    });
+
+    test('sets empty when container has no visible text nodes', () => {
+      const container = document.createElement('div');
+      const hidden = document.createElement('figure');
+      hidden.style.display = 'none';
+      hidden.textContent = 'Hidden caption';
+      container.appendChild(hidden);
+      document.body.appendChild(container);
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      contentController.onRenderedTextBlocksAvailable(container);
+
+      assertTrue(contentController.isEmpty());
+    });
+  });
+
+  suite('updateAnchorsForReadability', () => {
+    let container: HTMLElement;
+    let anchor: HTMLAnchorElement;
+    const url = 'https://www.google.com/';
+    const axId = 100;
+
+    setup(() => {
+      container = document.createElement('div');
+      anchor = document.createElement('a');
+      anchor.href = url;
+      container.appendChild(anchor);
+
+      contentBrowserProxy.readabilityEnabled = true;
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      contentBrowserProxy.axTreeAnchorsVal = {};
+      contentController.setState(ContentType.HAS_CONTENT);
+    });
+
+    test('associates dom node when 1:1 match exists', () => {
+      contentBrowserProxy
+          .axTreeAnchorsVal = {[url]: [{axId: axId, name: 'text'}]};
+      contentController.updateAnchorsForReadability(container);
+
+      assertEquals(anchor, nodeStore.getDomNode(axId));
+    });
+
+    test('resolves ambiguity using HTML ID match (highest priority)', () => {
+      anchor.id = 'correct-id';
+      contentBrowserProxy.axTreeAnchorsVal = {
+        [url]: [
+          {axId: 200, htmlId: 'wrong-id', name: 'same text'},
+          {axId: axId, htmlId: 'correct-id', name: 'same text'},
+        ],
+      };
+      contentController.updateAnchorsForReadability(container);
+
+      assertEquals(anchor, nodeStore.getDomNode(axId));
+      assertFalse(!!nodeStore.getDomNode(200));
+    });
+
+    test('resolves ambiguity using text content match', () => {
+      anchor.textContent = 'Click Here';
+      contentBrowserProxy.axTreeAnchorsVal = {
+        [url]:
+            [{axId: 200, name: 'Read More'}, {axId: axId, name: 'Click Here'}],
+      };
+      contentController.updateAnchorsForReadability(container);
+
+      assertEquals(anchor, nodeStore.getDomNode(axId));
+    });
+
+    test('resolves ambiguity using surrounding text context', () => {
+      const textNode = document.createTextNode('Previous Text');
+      container.insertBefore(textNode, anchor);
+      anchor.textContent = 'Link';
+
+      contentBrowserProxy.axTreeAnchorsVal = {
+        [url]: [
+          {axId: 200, name: 'Link', textBefore: 'Wrong Context'},
+          {axId: axId, name: 'Link', textBefore: 'Previous Text'},
+        ],
+      };
+      contentController.updateAnchorsForReadability(container);
+
+      assertEquals(anchor, nodeStore.getDomNode(axId));
+    });
+
+    test('does not associate node when strictly ambiguous (tie score)', () => {
+      anchor.textContent = 'Ambiguous';
+      contentBrowserProxy.axTreeAnchorsVal = {
+        [url]:
+            [{axId: axId, name: 'Ambiguous'}, {axId: 101, name: 'Ambiguous'}],
+      };
+      contentController.updateAnchorsForReadability(container);
+
+      assertFalse(!!nodeStore.getDomNode(axId));
+      assertFalse(!!nodeStore.getDomNode(101));
+    });
+
+    test('matches multiple anchors correctly by consuming candidates', () => {
+      container.replaceChildren();
+      const anchor1 = document.createElement('a');
+      anchor1.href = url;
+      anchor1.textContent = 'First Link';
+      container.appendChild(anchor1);
+
+      const anchor2 = document.createElement('a');
+      anchor2.href = url;
+      anchor2.textContent = 'Second Link';
+      container.appendChild(anchor2);
+
+      contentBrowserProxy.axTreeAnchorsVal = {
+        [url]:
+            [{axId: 100, name: 'First Link'}, {axId: 200, name: 'Second Link'}],
+      };
+      contentController.updateAnchorsForReadability(container);
+
+      assertEquals(anchor1, nodeStore.getDomNode(100));
+      assertEquals(anchor2, nodeStore.getDomNode(200));
+    });
+
+    test('does not associate node when no match exists in map', () => {
+      contentBrowserProxy
+          .axTreeAnchorsVal = {['https://other.com/']: [{axId: axId}]};
+      contentController.updateAnchorsForReadability(container);
+
+      assertFalse(!!nodeStore.getDomNode(axId));
+    });
+
+    test('converts anchor to span when no matching URL is found', () => {
+      contentBrowserProxy.axTreeAnchorsVal = {};
+      anchor.textContent = 'Text with no URL';
+      contentController.updateAnchorsForReadability(container);
+      const spans = container.querySelectorAll('span');
+      const anchors = container.querySelectorAll('a');
+
+      assertFalse(!!nodeStore.getDomNode(axId));
+      assertTrue(!!spans[0]);
+      assertFalse('link' in spans[0].dataset);
+      assertEquals(1, spans.length);
+      assertEquals(0, anchors.length);
+      assertEquals('Text with no URL', spans[0].textContent);
+    });
+
+    test('converts anchor to span when href is empty', () => {
+      anchor.removeAttribute('href');
+      contentController.updateAnchorsForReadability(container);
+      const anchors = container.querySelectorAll('a');
+      const spans = container.querySelectorAll('span');
+
+      assertFalse(!!nodeStore.getDomNode(axId));
+      assertEquals(0, anchors.length);
+      assertEquals(1, spans.length);
+      assertFalse('link' in spans[0]!.dataset);
+    });
+
+    test(
+        'converts anchor to span when URL is not present in axTreeAnchors',
+        () => {
+          contentBrowserProxy.axTreeAnchorsVal = {
+            'https://www.wasteheadquarters.com/': [{axId: 999, name: 'waste'}],
+          };
+          contentController.updateAnchorsForReadability(container);
+          const anchors = container.querySelectorAll('a');
+          const spans = container.querySelectorAll('span');
+
+          assertFalse(!!nodeStore.getDomNode(axId));
+          assertEquals(0, anchors.length);
+          assertEquals(1, spans.length);
+          assertFalse('link' in spans[0]!.dataset);
+        });
+
+    test(
+        'unmatched anchor does not turn back into link when toggling links',
+        () => {
+          const host = document.createElement('div');
+          document.body.appendChild(host);
+          const shadowRoot = host.attachShadow({mode: 'open'});
+          shadowRoot.appendChild(container);
+          contentBrowserProxy.axTreeAnchorsVal = {};
+
+          contentController.updateAnchorsForReadability(shadowRoot);
+          assertEquals(0, shadowRoot.querySelectorAll('a').length);
+
+          visualBrowserProxy.linksEnabled = false;
+          contentController.updateLinks(shadowRoot);
+          visualBrowserProxy.linksEnabled = true;
+          contentController.updateLinks(shadowRoot);
+
+          assertEquals(0, shadowRoot.querySelectorAll('a').length);
+          assertEquals(1, shadowRoot.querySelectorAll('span').length);
+        });
+
+    test('does nothing if not in Readability mode', () => {
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeScreen2x;
+      contentBrowserProxy.axTreeAnchorsVal = {[url]: [{axId: axId}]};
+      contentController.updateAnchorsForReadability(container);
+
+      assertFalse(!!nodeStore.getDomNode(axId));
+    });
+
+    test('does nothing if Readability is not enabled', () => {
+      contentBrowserProxy.readabilityEnabled = false;
+      contentBrowserProxy.axTreeAnchorsVal = {[url]: [{axId: axId}]};
+      contentController.updateAnchorsForReadability(container);
+
+      assertFalse(!!nodeStore.getDomNode(axId));
+    });
+
+    test('logs link matches', () => {
+      container.replaceChildren();
+      const anchor1 = document.createElement('a');
+      anchor1.href = url;
+      anchor1.textContent = 'First Link';
+      container.appendChild(anchor1);
+
+      const anchor2 = document.createElement('a');
+      anchor2.href = url;
+      anchor2.textContent = 'Second Link';
+      container.appendChild(anchor2);
+
+      contentBrowserProxy.axTreeAnchorsVal = {
+        [url]:
+            [{axId: 100, name: 'First Link'}, {axId: 200, name: 'Second Link'}],
+      };
+
+      contentController.updateAnchorsForReadability(container);
+
+      // 4 status calls.
+      assertEquals(4, metrics.getCallCount('recordCount'));
+    });
+  });
+
+  suite('hidden images empty state', () => {
+    setup(() => {
+      contentBrowserProxy.rootId = 1;
+      contentBrowserProxy.htmlTagMap = {1: 'img'};
+      contentBrowserProxy.childrenMap = {1: []};
+      contentBrowserProxy.textContentMap = {1: ''};
+      contentBrowserProxy.hasValidSelectionVal = false;
+    });
+
+    test('Images enabled, images available, no text -> empty state', () => {
+      visualBrowserProxy.imagesEnabled = true;
+      contentController.updateContent();
+      assertTrue(contentController.isEmpty());
+    });
+
+    test('Images disabled with images and no text -> empty state', () => {
+      visualBrowserProxy.imagesEnabled = false;
+      contentController.updateContent();
+      assertTrue(contentController.isEmpty());
+    });
+
+    test(
+        'Images enabled, with images and no text, with selection -> has content',
+        () => {
+          visualBrowserProxy.imagesEnabled = true;
+          contentBrowserProxy.hasValidSelectionVal = true;
+          const root = contentController.updateContent();
+          assertFalse(contentController.isEmpty());
+          assertTrue(contentController.hasContent());
+          assertTrue(root instanceof HTMLCanvasElement);
+        });
+
+    test(
+        'Images disabled, with images and no text, with selection -> empty state',
+        () => {
+          visualBrowserProxy.imagesEnabled = false;
+          contentBrowserProxy.hasValidSelectionVal = true;
+          contentController.updateContent();
+          assertTrue(contentController.isEmpty());
+        });
+  });
+
+  suite('onRenderedTextMappingReady', () => {
+    let container: HTMLElement;
+    const axId1 = 101;
+    const axId2 = 102;
+
+    setup(() => {
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      contentBrowserProxy.isReadabilitySelectTextEnabledFlag = true;
+
+      container = document.createElement('div');
+      document.body.appendChild(container);
+    });
+
+    test('splits and maps a single node to multiple AX nodes', () => {
+      const text = 'Part1Part2Part3';
+      const textNode = document.createTextNode(text);
+      container.appendChild(textNode);
+
+      contentController.onRenderedTextBlocksAvailable(container);
+
+      contentBrowserProxy.axMapping = [
+        {axNodeId: axId1, start: 0, end: 5, axNodeOffset: 0},
+        {axNodeId: axId2, start: 5, end: 10, axNodeOffset: 100},
+      ];
+
+      contentController.onRenderedTextMappingReady();
+
+      assertEquals(3, container.childNodes.length);
+      const node1 = container.childNodes[0]!;
+      const node2 = container.childNodes[1]!;
+      const node3 = container.childNodes[2]!;
+
+      assertEquals(0, nodeStore.getAxNodeOffset(node1));
+      assertEquals(100, nodeStore.getAxNodeOffset(node2));
+
+      assertEquals('Part1', node1.textContent);
+      assertEquals('Part2', node2.textContent);
+      assertEquals('Part3', node3.textContent);
+
+      assertEquals(axId1, nodeStore.getAxId(node1));
+      assertEquals(axId2, nodeStore.getAxId(node2));
+      assertFalse(!!nodeStore.getAxId(node3));
+    });
+
+    test('handles gaps at the beginning of a block', () => {
+      const text = 'GapMapped';
+      const textNode = document.createTextNode(text);
+      container.appendChild(textNode);
+      contentController.onRenderedTextBlocksAvailable(container);
+
+      contentBrowserProxy.axMapping =
+          [{axNodeId: axId1, start: 3, end: 9, axNodeOffset: 17}];
+
+      contentController.onRenderedTextMappingReady();
+
+      const mappedNode = container.childNodes[1]!;
+      assertEquals(2, container.childNodes.length);
+      assertEquals('Gap', container.childNodes[0]!.textContent);
+      assertEquals('Mapped', mappedNode.textContent);
+      assertEquals(axId1, nodeStore.getAxId(mappedNode));
+      assertEquals(17, nodeStore.getAxNodeOffset(mappedNode));
+    });
+
+    test('maps multiple segments with different axNodeOffsets', () => {
+      const text = 'Segment1Segment2';
+      const textNode = document.createTextNode(text);
+      container.appendChild(textNode);
+      contentController.onRenderedTextBlocksAvailable(container);
+
+      contentBrowserProxy.axMapping = [
+        {axNodeId: axId1, start: 0, end: 8, axNodeOffset: 17},
+        {axNodeId: axId2, start: 8, end: 16, axNodeOffset: 0},
+      ];
+
+      contentController.onRenderedTextMappingReady();
+
+      assertEquals(2, container.childNodes.length);
+      const node1 = container.childNodes[0]!;
+      const node2 = container.childNodes[1]!;
+
+      assertEquals('Segment1', node1.textContent);
+      assertEquals(17, nodeStore.getAxNodeOffset(node1));
+
+      assertEquals('Segment2', node2.textContent);
+      assertEquals(0, nodeStore.getAxNodeOffset(node2));
+    });
+
+    test('maps text nodes to AX nodes', () => {
+      const text = 'Part1Part2Part3';
+      const textNode = document.createTextNode(text);
+      container.appendChild(textNode);
+      contentController.onRenderedTextBlocksAvailable(container);
+      contentBrowserProxy.axMapping = [
+        {axNodeId: axId1, start: 0, end: 5, axNodeOffset: 0},
+      ];
+
+      contentController.onRenderedTextMappingReady();
+
+      const node1 = container.childNodes[0]!;
+      assertEquals(axId1, nodeStore.getAxId(node1));
+    });
+
+
+  });
+
+  test('showEmpty event triggers setEmpty', () => {
+    contentController.setState(ContentType.HAS_CONTENT);
+    contentBrowserProxy.showEmpty.callListeners();
+    assertTrue(contentController.isEmpty());
+  });
+
+  test('onNodeWillBeDeleted event calls onNodeWillBeDeleted', () => {
+    const nodeId = 42;
+    const element = document.createElement('div');
+    nodeStore.setDomNode(element, nodeId);
+    assertTrue(!!nodeStore.getDomNode(nodeId));
+
+    contentBrowserProxy.onNodeWillBeDeleted.callListeners(nodeId);
+
+    assertFalse(!!nodeStore.getDomNode(nodeId));
+  });
+
+  test('onImageDownloaded event calls onImageDownloaded', () => {
+    const nodeId = 5;
+    const canvas = document.createElement('canvas');
+    nodeStore.setDomNode(canvas, nodeId);
+    contentBrowserProxy.imageBitmap = {
+      data: new Uint8ClampedArray([0, 0, 0, 255]),
+      width: 1,
+      height: 1,
+      scale: 1,
+    };
+
+    contentBrowserProxy.onImageDownloaded.callListeners(nodeId);
+
+    assertTrue(!!nodeStore.getDomNode(nodeId));
+  });
+
+  suite('updateContentForReadability', () => {
+    setup(() => {
+      contentBrowserProxy.readabilityEnabled = true;
+      contentBrowserProxy.activeDistillationMethod =
+          contentBrowserProxy.distillationTypeReadability;
+      visualBrowserProxy.linksEnabled = true;
+    });
+
+    test(
+        'distilled content with embedded media frame is sanitized',
+        async () => {
+          contentBrowserProxy.htmlContent = '<p>Normal text</p>' +
+              '<iframe data-video="//www.youtube.com/embed/test" ' +
+              'srcdoc="<script>evil()</script>"></iframe>';
+
+          const root = contentController.updateContent() as DocumentFragment;
+          await microtasksFinished();
+
+          assertTrue(!!root);
+          assertEquals(null, root.querySelector('iframe'));
+          assertEquals(null, root.querySelector('script'));
+          assertStringContains(root.textContent || '', 'Normal text');
+        });
+
+    test('strips style, meta, and template elements', async () => {
+      contentBrowserProxy.htmlContent =
+          '<style>body { display: none; }</style>' +
+          '<meta http-equiv="refresh" content="0;url=https://example.com">' +
+          '<template><p>Hidden</p></template>' +
+          '<p>Safe text <a href="javascript:void(0)">Link</a></p>';
+
+      const root = contentController.updateContent() as DocumentFragment;
+      await microtasksFinished();
+
+      assertTrue(!!root);
+      assertEquals(null, root.querySelector('style'));
+      assertEquals(null, root.querySelector('meta'));
+      assertEquals(null, root.querySelector('template'));
+      const link = root.querySelector('a');
+      assertTrue(!!link);
+      assertEquals('', link.getAttribute('href'));
+      assertStringContains(root.textContent || '', 'Safe text');
+    });
+  });
+
+  suite('footnote navigation', () => {
+    let root: ShadowRoot;
+    let container: HTMLElement;
+    let containerScroller: HTMLElement;
+
+    setup(() => {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      root = host.attachShadow({mode: 'open'});
+      containerScroller = document.createElement('div');
+      containerScroller.id = 'containerScroller';
+      container = document.createElement('div');
+      container.id = 'container';
+      containerScroller.appendChild(container);
+      root.appendChild(containerScroller);
+    });
+
+    test('buildSubtree_ sets element.id when getHtmlId is available', () => {
+      const divId = 10;
+      const textId = 11;
+      contentBrowserProxy.rootId = divId;
+      contentBrowserProxy.htmlTagMap = {[divId]: 'div'};
+      contentBrowserProxy.childrenMap = {[divId]: [textId]};
+      contentBrowserProxy.textContentMap = {[textId]: 'Some text content'};
+      contentBrowserProxy.htmlIdMap = {[divId]: 'footnote-target'};
+
+      const rendered = contentController.updateContent();
+      assertTrue(!!rendered);
+      container.appendChild(rendered);
+
+      const renderedDiv = container.querySelector('#footnote-target');
+      assertTrue(!!renderedDiv);
+      assertEquals('footnote-target', renderedDiv.id);
+    });
+
+    test(
+        'click handler intercepts same-page hash links and does not scroll immediately',
+        async () => {
+          const linkId = 10;
+          const textId = 11;
+          const targetId = 12;
+          const documentUrl = 'https://www.example.com/page.html';
+          const targetUrl = 'https://www.example.com/page.html#footnote-1';
+
+          contentBrowserProxy.rootId = 1;
+          contentBrowserProxy.childrenMap = {
+            1: [linkId, targetId],
+            [linkId]: [textId],
+          };
+          contentBrowserProxy.htmlTagMap = {
+            1: 'div',
+            [linkId]: 'a',
+            [targetId]: 'p',
+          };
+          contentBrowserProxy.textContentMap = {
+            [textId]: 'Footnote Link',
+            [targetId]: 'Footnote Target Content',
+          };
+          contentBrowserProxy.urlMap = {[linkId]: targetUrl};
+          contentBrowserProxy.htmlIdMap = {[targetId]: 'footnote-1'};
+          contentBrowserProxy.documentUrl = documentUrl;
+
+          const rendered = contentController.updateContent();
+          assertTrue(!!rendered);
+          container.appendChild(rendered);
+
+          const targetElement =
+              container.querySelector<HTMLElement>('#footnote-1');
+          assertTrue(!!targetElement);
+          let scrollIntoViewCalled = false;
+          let scrollOptions: ScrollIntoViewOptions|undefined;
+          targetElement.scrollIntoView = (options) => {
+            scrollIntoViewCalled = true;
+            scrollOptions = options as ScrollIntoViewOptions;
+          };
+
+          const linkElement = container.querySelector<HTMLAnchorElement>('a');
+          assertTrue(!!linkElement);
+          linkElement.click();
+
+          const linkClickedId =
+              await contentBrowserProxy.whenCalled('onLinkClicked');
+          assertEquals(linkId, linkClickedId);
+          assertFalse(scrollIntoViewCalled);
+
+          contentController.scrollToAnchor(targetUrl, root);
+          assertTrue(scrollIntoViewCalled);
+          assertTrue(!!scrollOptions);
+          assertEquals('smooth', scrollOptions.behavior);
+        });
+
+    test('click handler falls back to default for external links', async () => {
+      const linkId = 10;
+      const textId = 11;
+      const documentUrl = 'https://www.example.com/page.html';
+      const targetUrl = 'https://www.different-domain.com/page.html#footnote-1';
+
+      contentBrowserProxy.rootId = 1;
+      contentBrowserProxy.childrenMap = {1: [linkId], [linkId]: [textId]};
+      contentBrowserProxy.htmlTagMap = {1: 'div', [linkId]: 'a'};
+      contentBrowserProxy.textContentMap = {[textId]: 'External Link'};
+      contentBrowserProxy.urlMap = {[linkId]: targetUrl};
+      contentBrowserProxy.documentUrl = documentUrl;
+
+      const rendered = contentController.updateContent();
+      assertTrue(!!rendered);
+      container.appendChild(rendered);
+
+      // Setup a mock target in DOM that would scroll if it were same-document
+      const target = document.createElement('div');
+      target.id = 'footnote-1';
+      container.appendChild(target);
+      let scrollIntoViewCalled = false;
+      target.scrollIntoView = () => {
+        scrollIntoViewCalled = true;
+      };
+
+      // Find the link and click it
+      const linkElement = container.querySelector<HTMLAnchorElement>('a');
+      assertTrue(!!linkElement);
+      linkElement.click();
+
+      const linkClickedId =
+          await contentBrowserProxy.whenCalled('onLinkClicked');
+      assertEquals(linkId, linkClickedId);
+      assertFalse(scrollIntoViewCalled);
+    });
+
+    test(
+        'click handler triggers real navigation for mailto links', async () => {
+          const linkId = 10;
+          const textId = 11;
+          const documentUrl = 'https://www.example.com/page.html';
+          const targetUrl = 'mailto:test@example.com';
+
+          contentBrowserProxy.rootId = 1;
+          contentBrowserProxy.childrenMap = {1: [linkId], [linkId]: [textId]};
+          contentBrowserProxy.htmlTagMap = {1: 'div', [linkId]: 'a'};
+          contentBrowserProxy.textContentMap = {[textId]: 'Email Link'};
+          contentBrowserProxy.urlMap = {[linkId]: targetUrl};
+          contentBrowserProxy.documentUrl = documentUrl;
+
+          let scrollToCalled = false;
+          containerScroller.scrollTo = () => {
+            scrollToCalled = true;
+          };
+
+          const rendered = contentController.updateContent();
+          assertTrue(!!rendered);
+          container.appendChild(rendered);
+
+          const linkElement = container.querySelector<HTMLAnchorElement>('a');
+          assertTrue(!!linkElement);
+          linkElement.click();
+
+          const linkClickedId =
+              await contentBrowserProxy.whenCalled('onLinkClicked');
+          assertEquals(linkId, linkClickedId);
+          assertFalse(scrollToCalled, 'Should not scroll');
+        });
+
+    test(
+        'click handler falls back to default if target is missing',
+        async () => {
+          const linkId = 10;
+          const textId = 11;
+          const documentUrl = 'https://www.example.com/page.html';
+          const targetUrl =
+              'https://www.example.com/page.html#footnote-missing';
+
+          contentBrowserProxy.rootId = 1;
+          contentBrowserProxy.childrenMap = {1: [linkId], [linkId]: [textId]};
+          contentBrowserProxy.htmlTagMap = {1: 'div', [linkId]: 'a'};
+          contentBrowserProxy
+              .textContentMap = {[textId]: 'Missing Target Link'};
+          contentBrowserProxy.urlMap = {[linkId]: targetUrl};
+          contentBrowserProxy.documentUrl = documentUrl;
+
+          let scrollToCalled = false;
+          containerScroller.scrollTo = () => {
+            scrollToCalled = true;
+          };
+
+          const rendered = contentController.updateContent();
+          assertTrue(!!rendered);
+          container.appendChild(rendered);
+
+          const linkElement = container.querySelector<HTMLAnchorElement>('a');
+          assertTrue(!!linkElement);
+          linkElement.click();
+
+          const linkClickedId =
+              await contentBrowserProxy.whenCalled('onLinkClicked');
+          assertEquals(linkId, linkClickedId);
+          assertFalse(scrollToCalled);
+        });
+
+    suite('scrollToAnchor', () => {
+      test('scrolls to target', () => {
+        const targetId = 'footnote-1';
+        const target = document.createElement('div');
+        target.id = targetId;
+        container.appendChild(target);
+
+        let scrollIntoViewCalled = false;
+        let scrollOptions: ScrollIntoViewOptions|undefined;
+        target.scrollIntoView = (options) => {
+          scrollIntoViewCalled = true;
+          scrollOptions = options as ScrollIntoViewOptions;
+        };
+
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+        const result = contentController.scrollToAnchor(
+            'https://example.com/page.html#footnote-1', root);
+
+        assertTrue(result);
+        assertTrue(scrollIntoViewCalled);
+        assertEquals('smooth', scrollOptions?.behavior);
+      });
+
+      test('scrolls to top on empty hash', () => {
+        let scrollToCalled = false;
+        let scrollToOptions: ScrollToOptions|undefined;
+        containerScroller.scrollTo = (options) => {
+          scrollToCalled = true;
+          scrollToOptions = options as ScrollToOptions;
+        };
+
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+        const result = contentController.scrollToAnchor(
+            'https://example.com/page.html', root);
+
+        assertTrue(result);
+        assertTrue(scrollToCalled);
+        assertEquals(0, scrollToOptions?.top);
+        assertEquals('smooth', scrollToOptions?.behavior);
+      });
+
+      test('resolves relative links', () => {
+        const targetId = 'footnote-1';
+        const target = document.createElement('div');
+        target.id = targetId;
+        container.appendChild(target);
+
+        let scrollIntoViewCalled = false;
+        target.scrollIntoView = () => {
+          scrollIntoViewCalled = true;
+        };
+
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+
+        // Test hash only
+        let result = contentController.scrollToAnchor('#footnote-1', root);
+        assertTrue(result);
+        assertTrue(scrollIntoViewCalled);
+
+        // Reset and test relative path
+        scrollIntoViewCalled = false;
+        result =
+            contentController.scrollToAnchor('./page.html#footnote-1', root);
+        assertTrue(result);
+        assertTrue(scrollIntoViewCalled);
+      });
+
+      test('ignores different page URLs', () => {
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+        const result = contentController.scrollToAnchor(
+            'https://different.com/page.html#footnote-1', root);
+        assertFalse(result);
+      });
+
+      test('ignores different pathnames', () => {
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+        const result = contentController.scrollToAnchor(
+            'https://example.com/other.html#footnote-1', root);
+        assertFalse(result);
+      });
+
+      test('ignores different search parameters', () => {
+        contentBrowserProxy.documentUrl =
+            'https://example.com/page.html?query=1';
+        const result = contentController.scrollToAnchor(
+            'https://example.com/page.html?query=2#footnote-1', root);
+        assertFalse(result);
+      });
+
+      test('scrolls with identical search parameters', () => {
+        const targetId = 'footnote-1';
+        const target = document.createElement('div');
+        target.id = targetId;
+        container.appendChild(target);
+
+        let scrollIntoViewCalled = false;
+        target.scrollIntoView = () => {
+          scrollIntoViewCalled = true;
+        };
+
+        contentBrowserProxy.documentUrl =
+            'https://example.com/page.html?query=1';
+        const result = contentController.scrollToAnchor(
+            'https://example.com/page.html?query=1#footnote-1', root);
+
+        assertTrue(result);
+        assertTrue(scrollIntoViewCalled);
+      });
+
+      test('handles invalid URLs gracefully', () => {
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+        const result = contentController.scrollToAnchor('invalid://url', root);
+        assertFalse(result);
+      });
+
+      test('handles malformed URI percent-encoding gracefully', () => {
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+
+        // Test hash only with malformed percent-encoding
+        let result = contentController.scrollToAnchor('#foo%2', root);
+        assertFalse(result);
+
+        // Test relative path with malformed percent-encoding
+        result = contentController.scrollToAnchor('./page.html#foo%2', root);
+        assertFalse(result);
+      });
+
+      test('falls back to top on #top hash if element is missing', () => {
+        let scrollToCalled = false;
+        let scrollToOptions: ScrollToOptions|undefined;
+        containerScroller.scrollTo = (options) => {
+          scrollToCalled = true;
+          scrollToOptions = options as ScrollToOptions;
+        };
+
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+
+        // Test hash only
+        let result = contentController.scrollToAnchor('#top', root);
+        assertTrue(result);
+        assertTrue(scrollToCalled);
+        assertEquals(0, scrollToOptions?.top);
+        assertEquals('smooth', scrollToOptions?.behavior);
+
+        // Reset and test absolute URL
+        scrollToCalled = false;
+        result = contentController.scrollToAnchor(
+            'https://example.com/page.html#top', root);
+        assertTrue(result);
+        assertTrue(scrollToCalled);
+        assertEquals(0, scrollToOptions?.top);
+        assertEquals('smooth', scrollToOptions?.behavior);
+      });
+
+      test('scrolls to element on #top hash if element is present', () => {
+        const targetId = 'top';
+        const target = document.createElement('div');
+        target.id = targetId;
+        container.appendChild(target);
+
+        let scrollIntoViewCalled = false;
+        target.scrollIntoView = () => {
+          scrollIntoViewCalled = true;
+        };
+
+        contentBrowserProxy.documentUrl = 'https://example.com/page.html';
+        const result = contentController.scrollToAnchor('#top', root);
+        assertTrue(result);
+        assertTrue(scrollIntoViewCalled);
+      });
+    });
+  });
+});

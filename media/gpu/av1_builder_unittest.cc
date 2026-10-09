@@ -1,0 +1,1364 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "media/gpu/av1_builder.h"
+
+#include <new>
+
+#include "base/memory/ptr_util.h"
+#include "base/numerics/safe_conversions.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/libgav1/src/src/buffer_pool.h"
+#include "third_party/libgav1/src/src/decoder_state.h"
+#include "third_party/libgav1/src/src/obu_parser.h"
+
+namespace media {
+
+using ::testing::ElementsAreArray;
+
+class AV1BuilderTest : public ::testing::Test {
+ public:
+  AV1BuilderTest() {
+    buffer_pool_ = std::make_unique<libgav1::BufferPool>(
+        /*on_frame_buffer_size_changed=*/nullptr,
+        /*get_frame_buffer=*/nullptr,
+        /*release_frame_buffer=*/nullptr,
+        /*callback_private_data=*/nullptr);
+    av1_decoder_state_ = std::make_unique<libgav1::DecoderState>();
+  }
+
+  ~AV1BuilderTest() override = default;
+
+  AV1BitstreamBuilder::SequenceHeader MakeSequenceHeader() {
+    AV1BitstreamBuilder::SequenceHeader seq_hdr{};
+    seq_hdr.profile = 0;
+    seq_hdr.operating_points_cnt_minus_1 = 0;
+    seq_hdr.level.at(0) = 12;
+    seq_hdr.tier.at(0) = 0;
+    seq_hdr.frame_width_bits_minus_1 = 15;
+    seq_hdr.frame_height_bits_minus_1 = 15;
+    seq_hdr.width = 1280;
+    seq_hdr.height = 720;
+    seq_hdr.use_128x128_superblock = true;
+    seq_hdr.enable_filter_intra = true;
+    seq_hdr.enable_intra_edge_filter = true;
+    seq_hdr.enable_interintra_compound = true;
+    seq_hdr.enable_masked_compound = true;
+    seq_hdr.enable_warped_motion = true;
+    seq_hdr.enable_dual_filter = true;
+    seq_hdr.enable_order_hint = true;
+    seq_hdr.enable_jnt_comp = true;
+    seq_hdr.enable_ref_frame_mvs = true;
+    seq_hdr.order_hint_bits_minus_1 = 7;
+    seq_hdr.enable_superres = true;
+    seq_hdr.enable_cdef = true;
+    seq_hdr.enable_restoration = true;
+    return seq_hdr;
+  }
+
+  // A version that mimics the default settings used by AV1 delegate.
+  AV1BitstreamBuilder::SequenceHeader MakeDefaultSequenceHeader() {
+    AV1BitstreamBuilder::SequenceHeader seq_hdr{};
+
+    seq_hdr.profile = 0;
+    seq_hdr.level[0] = 12;
+    seq_hdr.tier[0] = 0;
+    seq_hdr.operating_points_cnt_minus_1 = 0;
+    seq_hdr.frame_width_bits_minus_1 = 15;
+    seq_hdr.frame_height_bits_minus_1 = 15;
+    seq_hdr.width = 1280;
+    seq_hdr.height = 720;
+    seq_hdr.order_hint_bits_minus_1 = 7;
+
+    seq_hdr.use_128x128_superblock = false;
+    seq_hdr.enable_filter_intra = false;
+    seq_hdr.enable_intra_edge_filter = false;
+    seq_hdr.enable_interintra_compound = false;
+    seq_hdr.enable_masked_compound = false;
+    seq_hdr.enable_warped_motion = false;
+    seq_hdr.enable_dual_filter = false;
+    seq_hdr.enable_order_hint = true;
+    seq_hdr.enable_jnt_comp = false;
+    seq_hdr.enable_ref_frame_mvs = false;
+    seq_hdr.enable_superres = false;
+    seq_hdr.enable_cdef = true;
+    seq_hdr.enable_restoration = false;
+
+    return seq_hdr;
+  }
+
+  // A 10 bit BT.2020 sequence header, i.e. what HDR encoding requires, with
+  // the given transfer function.
+  AV1BitstreamBuilder::SequenceHeader MakeHDRSequenceHeader(
+      Libgav1TransferCharacteristics transfer_characteristics) {
+    AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+    seq_hdr.bit_depth = 10;
+    seq_hdr.color_description_present_flag = true;
+    seq_hdr.color_primaries = kLibgav1ColorPrimaryBt2020;
+    seq_hdr.transfer_characteristics = transfer_characteristics;
+    seq_hdr.matrix_coefficients = kLibgav1MatrixCoefficientsBt2020Ncl;
+    seq_hdr.color_range = kLibgav1ColorRangeStudio;
+    seq_hdr.chroma_sample_position = kLibgav1ChromaSamplePositionColocated;
+    return seq_hdr;
+  }
+
+  AV1BitstreamBuilder::FrameHeader MakeFrameHeader(uint32_t frame_id) {
+    AV1BitstreamBuilder::FrameHeader pic_hdr{};
+    pic_hdr.frame_type = frame_id == 0 ? libgav1::FrameType::kFrameKey
+                                       : libgav1::FrameType::kFrameInter;
+    pic_hdr.error_resilient_mode = false;
+    pic_hdr.disable_cdf_update = false;
+    pic_hdr.disable_frame_end_update_cdf = false;
+    pic_hdr.base_qindex = 100;
+    pic_hdr.order_hint = frame_id;
+    pic_hdr.filter_level.at(0) = 1;
+    pic_hdr.filter_level.at(1) = 1;
+    pic_hdr.filter_level_u = 1;
+    pic_hdr.filter_level_v = 1;
+    pic_hdr.sharpness_level = 1;
+    pic_hdr.loop_filter_delta_enabled = false;
+    pic_hdr.primary_ref_frame = 0;
+    for (uint8_t& ref_idx : pic_hdr.ref_frame_idx) {
+      ref_idx = 0;
+    }
+    pic_hdr.refresh_frame_flags = 1;
+    for (uint32_t& ref_order_hint : pic_hdr.ref_order_hint) {
+      ref_order_hint = 0;
+    }
+    pic_hdr.cdef_bits = 3;
+    pic_hdr.cdef_damping_minus_3 = 2;
+    for (int i = 0; i < 8; i++) {
+      pic_hdr.cdef_y_pri_strength.at(i) = 0;
+      pic_hdr.cdef_y_sec_strength.at(i) = 0;
+      pic_hdr.cdef_uv_pri_strength.at(i) = 0;
+      pic_hdr.cdef_uv_sec_strength.at(i) = 0;
+    }
+    pic_hdr.reduced_tx_set = true;
+    pic_hdr.tx_mode = libgav1::TxMode::kTxModeSelect;
+    pic_hdr.segmentation_enabled = false;
+    pic_hdr.allow_screen_content_tools = false;
+    pic_hdr.allow_intrabc = false;
+
+    return pic_hdr;
+  }
+
+  // Packs a bare frame OBU followed by a dummy tile group, for the second and
+  // later frames of a sequence where the sequence header is already known to
+  // the parser.
+  std::vector<uint8_t> PackFrameOBU(
+      const AV1BitstreamBuilder::SequenceHeader& seq_hdr,
+      const AV1BitstreamBuilder::FrameHeader& pic_hdr) {
+    static const uint8_t kTileGroupObu[] = {0x00, 0x80};
+    AV1BitstreamBuilder packed;
+    packed.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+    AV1BitstreamBuilder frame_obu =
+        AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+    EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+    packed.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                              std::size(kTileGroupObu));
+    packed.AppendBitstreamBuffer(std::move(frame_obu));
+    for (const uint8_t byte : kTileGroupObu) {
+      packed.Write(byte, 8);
+    }
+    return std::move(packed).Flush();
+  }
+
+  // Packs a temporal unit made of a temporal delimiter, a sequence header OBU,
+  // `metadata_obus` and a frame OBU followed by a dummy tile group.
+  std::vector<uint8_t> PackTemporalUnit(
+      const AV1BitstreamBuilder::SequenceHeader& seq_hdr,
+      const AV1BitstreamBuilder::FrameHeader& pic_hdr,
+      std::vector<AV1BitstreamBuilder> metadata_obus = {}) {
+    AV1BitstreamBuilder packed_frame;
+    packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                                /*has_size=*/true);
+    packed_frame.WriteValueInLeb128(0);
+
+    packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+    AV1BitstreamBuilder seq_header_obu =
+        AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+    EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+    packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+    packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+    // Metadata OBUs precede the frame OBU they apply to.
+    for (AV1BitstreamBuilder& metadata_obu : metadata_obus) {
+      packed_frame.WriteOBUHeader(libgav1::kObuMetadata, /*has_size=*/true);
+      EXPECT_EQ(metadata_obu.OutstandingBits() % 8, 0ull);
+      packed_frame.WriteValueInLeb128(metadata_obu.OutstandingBits() / 8);
+      packed_frame.AppendBitstreamBuffer(std::move(metadata_obu));
+    }
+
+    packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+    AV1BitstreamBuilder frame_obu =
+        AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+    EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+    // Fake tile_group_obu with only dummy data.
+    static const uint8_t tile_group_obu[] = {0x00, 0x80};
+    packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                    std::size(tile_group_obu));
+    packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+    for (const uint8_t byte : tile_group_obu) {
+      packed_frame.Write(byte, 8);
+    }
+    return std::move(packed_frame).Flush();
+  }
+
+  std::unique_ptr<libgav1::BufferPool> buffer_pool_;
+  std::unique_ptr<libgav1::DecoderState> av1_decoder_state_;
+};
+
+TEST_F(AV1BuilderTest, AV1BitstreamBuilderOutstandingBits) {
+  const size_t kExpectedDataBits = 8;
+  AV1BitstreamBuilder packed_data;
+  packed_data.Write(0, 3);
+  packed_data.WriteBool(false);
+  packed_data.PutAlignBits();
+  EXPECT_EQ(packed_data.OutstandingBits(), kExpectedDataBits);
+}
+
+TEST_F(AV1BuilderTest, AV1BitstreamBuilderWriteOBUHeader) {
+  const std::vector<uint8_t> expected_packed_data = {0b00010010, 0b00000011,
+                                                     0b10100000};
+  AV1BitstreamBuilder packed_obu_header;
+  packed_obu_header.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                                   /*has_size=*/true);
+  packed_obu_header.WriteValueInLeb128(3);
+  packed_obu_header.WriteBool(true);
+  packed_obu_header.Write(1, 2);
+  EXPECT_EQ(std::move(packed_obu_header).Flush(), expected_packed_data);
+}
+
+TEST_F(AV1BuilderTest, AV1BitstreamBuilderWriteTemporalOBUHeader) {
+  const std::vector<uint8_t> expected_packed_data = {0b00010110, 0b01000000,
+                                                     0b00000011, 0b10100000};
+  AV1BitstreamBuilder packed_obu_header;
+  packed_obu_header.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                                   /*has_size=*/true,
+                                   /*extension_flag=*/true,
+                                   /*temporal_id=*/2);
+  packed_obu_header.WriteValueInLeb128(3);
+  packed_obu_header.WriteBool(true);
+  packed_obu_header.Write(1, 2);
+  EXPECT_EQ(std::move(packed_obu_header).Flush(), expected_packed_data);
+}
+
+TEST_F(AV1BuilderTest, AV1BitstreamBuilderAppendBitstreamBuffer) {
+  const std::vector<uint8_t> expected_packed_data = {0b11010100, 0b11000000};
+  AV1BitstreamBuilder append_data;
+  append_data.Write(9, 5);
+  append_data.PutTrailingBits();
+
+  AV1BitstreamBuilder packed_data;
+  packed_data.Write(6, 3);
+  packed_data.WriteBool(true);
+  packed_data.AppendBitstreamBuffer(std::move(append_data));
+  packed_data.PutAlignBits();
+  EXPECT_EQ(std::move(packed_data).Flush(), expected_packed_data);
+}
+
+TEST_F(AV1BuilderTest, BuildSequenceHeaderOBU) {
+  const std::vector<uint8_t> expected_packed_data = {
+      0b00000000, 0b00000000, 0b00000000, 0b01100011, 0b11111100,
+      0b00010011, 0b11111100, 0b00001011, 0b00111101, 0b11111111,
+      0b11001111, 0b11000000, 0b10100000};
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(MakeSequenceHeader());
+
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  EXPECT_EQ(std::move(seq_header_obu).Flush(), expected_packed_data);
+}
+
+TEST_F(AV1BuilderTest, BuildTemporalSequenceHeaderOBU) {
+  const std::vector<uint8_t> expected_packed_data = {
+      0b00000000, 0b00100001, 0b00000111, 0b01100000, 0b01000000, 0b11011000,
+      0b00010000, 0b00010110, 0b00111111, 0b11000001, 0b00111111, 0b11000000,
+      0b10110011, 0b11011111, 0b11111100, 0b11111100, 0b00001010};
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeSequenceHeader();
+  seq_hdr.operating_points_cnt_minus_1 = 2;  // Set scalability mode to L1T3.
+  for (uint32_t i = 0; i <= seq_hdr.operating_points_cnt_minus_1; i++) {
+    seq_hdr.level.at(i) = 12;
+    seq_hdr.tier.at(i) = 0;
+  }
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  EXPECT_EQ(std::move(seq_header_obu).Flush(), expected_packed_data);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBU) {
+  // MakeSequenceHeader() turns on superres and warped motion, so both frames
+  // carry a use_superres bit inside frame_size() (spec 5.9.8) and the inter
+  // frame additionally carries allow_warped_motion between skip_mode_params()
+  // and reduced_tx_set (spec 5.9.2). The key frame is therefore one bit longer
+  // than it used to be and the inter frame two, with the trailing align bits
+  // absorbing the difference.
+  const std::vector<uint8_t> expected_packed_keyframe = {
+      0b00010000, 0b00000000, 0b00100011, 0b00100000, 0b00000000, 0b01000001,
+      0b00000100, 0b00010010, 0b10110000, 0b00000000, 0b00000000, 0b00000000,
+      0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+      0b00000000, 0b00000000, 0b00000000, 0b00110000};
+  const std::vector<uint8_t> expected_packed_interframe = {
+      0b00110000, 0b00000001, 0b00000000, 0b00100000, 0b00000000, 0b00000000,
+      0b00000000, 0b00100011, 0b00100000, 0b00000000, 0b01000001, 0b00000100,
+      0b00010010, 0b10110000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+      0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+      0b00000000, 0b00000000, 0b00100100, 0b00000000};
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeSequenceHeader();
+  AV1BitstreamBuilder frame_obu_key =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, MakeFrameHeader(0));
+  AV1BitstreamBuilder frame_obu_inter =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, MakeFrameHeader(1));
+
+  EXPECT_EQ(frame_obu_key.OutstandingBits() % 8, 0ull);
+  EXPECT_EQ(frame_obu_inter.OutstandingBits() % 8, 0ull);
+  EXPECT_EQ(std::move(frame_obu_key).Flush(), expected_packed_keyframe);
+  EXPECT_EQ(std::move(frame_obu_inter).Flush(), expected_packed_interframe);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithSegmentation) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.primary_ref_frame = 7;
+  pic_hdr.segmentation_enabled = true;
+  pic_hdr.segmentation_update_map = true;
+  pic_hdr.segmentation_temporal_update = false;
+  pic_hdr.segmentation_update_data = true;
+  // Enable SEG_LVEL_ALT_Q, SEG_LVL_LF_Y_V for segment 0,
+  // and SEG_LVL_ATT_LF_Y_H for segment 1.
+  pic_hdr.feature_enabled[0][0] = true;
+  pic_hdr.feature_enabled[0][1] = true;
+  pic_hdr.feature_enabled[0][2] = false;
+  pic_hdr.feature_data[0][0] = -67;
+  pic_hdr.feature_data[0][1] = 5;
+  pic_hdr.feature_enabled[1][2] = true;
+  pic_hdr.feature_data[1][2] = -12;
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data:
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header = parser->frame_header();
+  EXPECT_TRUE(frame_header.segmentation.enabled);
+  EXPECT_TRUE(frame_header.segmentation.update_map);
+  EXPECT_FALSE(frame_header.segmentation.temporal_update);
+  EXPECT_TRUE(frame_header.segmentation.update_data);
+  EXPECT_TRUE(frame_header.segmentation.feature_enabled[0][0]);
+  EXPECT_TRUE(frame_header.segmentation.feature_enabled[0][1]);
+  EXPECT_FALSE(frame_header.segmentation.feature_enabled[0][2]);
+  EXPECT_FALSE(frame_header.segmentation.feature_enabled[1][0]);
+  EXPECT_FALSE(frame_header.segmentation.feature_enabled[1][1]);
+  EXPECT_TRUE(frame_header.segmentation.feature_enabled[1][2]);
+  EXPECT_EQ(frame_header.segmentation.feature_data[0][0],
+            pic_hdr.feature_data[0][0]);
+  EXPECT_EQ(frame_header.segmentation.feature_data[0][1],
+            pic_hdr.feature_data[0][1]);
+  EXPECT_EQ(frame_header.segmentation.feature_data[1][2],
+            pic_hdr.feature_data[1][2]);
+}
+
+TEST_F(AV1BuilderTest, BuildSeqHeaderWithColorConfigProfile0) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.color_description_present_flag = true;
+  seq_hdr.color_primaries = kLibgav1ColorPrimaryBt709;
+  seq_hdr.transfer_characteristics = kLibgav1TransferCharacteristicsBt709;
+  seq_hdr.matrix_coefficients = kLibgav1MatrixCoefficientsBt709;
+  seq_hdr.color_range = kLibgav1ColorRangeStudio;
+  seq_hdr.chroma_sample_position = kLibgav1ChromaSamplePositionUnknown;
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto sequence_header = parser->sequence_header();
+  EXPECT_EQ(sequence_header.color_config.color_primary,
+            kLibgav1ColorPrimaryBt709);
+  EXPECT_EQ(sequence_header.color_config.transfer_characteristics,
+            kLibgav1TransferCharacteristicsBt709);
+  EXPECT_EQ(sequence_header.color_config.matrix_coefficients,
+            kLibgav1MatrixCoefficientsBt709);
+  EXPECT_EQ(sequence_header.color_config.color_range, kLibgav1ColorRangeStudio);
+  EXPECT_EQ(sequence_header.color_config.chroma_sample_position,
+            kLibgav1ChromaSamplePositionUnknown);
+}
+
+TEST_F(AV1BuilderTest, BuildSeqHeaderWithColorConfigProfile1) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.profile = 1;
+  seq_hdr.color_description_present_flag = true;
+  seq_hdr.color_primaries = kLibgav1ColorPrimaryBt709;
+  seq_hdr.transfer_characteristics = kLibgav1TransferCharacteristicsBt709;
+  seq_hdr.matrix_coefficients = kLibgav1MatrixCoefficientsBt709;
+  seq_hdr.color_range = kLibgav1ColorRangeStudio;
+  seq_hdr.chroma_sample_position = kLibgav1ChromaSamplePositionUnknown;
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto sequence_header = parser->sequence_header();
+  EXPECT_EQ(sequence_header.profile, libgav1::kProfile1);
+  EXPECT_EQ(sequence_header.color_config.color_primary,
+            kLibgav1ColorPrimaryBt709);
+  EXPECT_EQ(sequence_header.color_config.transfer_characteristics,
+            kLibgav1TransferCharacteristicsBt709);
+  EXPECT_EQ(sequence_header.color_config.matrix_coefficients,
+            kLibgav1MatrixCoefficientsBt709);
+  EXPECT_EQ(sequence_header.color_config.color_range, kLibgav1ColorRangeStudio);
+  EXPECT_EQ(sequence_header.color_config.chroma_sample_position,
+            kLibgav1ChromaSamplePositionUnknown);
+}
+
+TEST_F(AV1BuilderTest, BuildSeqHeaderWithHDR10ColorConfig) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr =
+      MakeHDRSequenceHeader(kLibgav1TransferCharacteristicsSmpte2084);
+  std::vector<uint8_t> chunk = PackTemporalUnit(seq_hdr, MakeFrameHeader(0));
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  EXPECT_EQ(parser->ParseOneFrame(&current_frame), libgav1::kStatusOk);
+  const libgav1::ColorConfig& color_config =
+      parser->sequence_header().color_config;
+  EXPECT_EQ(color_config.bitdepth, 10);
+  EXPECT_EQ(color_config.color_primary, kLibgav1ColorPrimaryBt2020);
+  EXPECT_EQ(color_config.transfer_characteristics,
+            kLibgav1TransferCharacteristicsSmpte2084);
+  EXPECT_EQ(color_config.matrix_coefficients,
+            kLibgav1MatrixCoefficientsBt2020Ncl);
+  EXPECT_EQ(color_config.color_range, kLibgav1ColorRangeStudio);
+  // Profile 0 is always 4:2:0, so the chroma sample position is signalled.
+  EXPECT_EQ(color_config.subsampling_x, 1);
+  EXPECT_EQ(color_config.subsampling_y, 1);
+  EXPECT_EQ(color_config.chroma_sample_position,
+            kLibgav1ChromaSamplePositionColocated);
+}
+
+// HLG needs no metadata OBU: the sequence header carries all the signalling.
+TEST_F(AV1BuilderTest, BuildSeqHeaderWithHLGColorConfig) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr =
+      MakeHDRSequenceHeader(kLibgav1TransferCharacteristicsHlg);
+  std::vector<uint8_t> chunk = PackTemporalUnit(seq_hdr, MakeFrameHeader(0));
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  EXPECT_EQ(parser->ParseOneFrame(&current_frame), libgav1::kStatusOk);
+  const libgav1::ColorConfig& color_config =
+      parser->sequence_header().color_config;
+  EXPECT_EQ(color_config.bitdepth, 10);
+  EXPECT_EQ(color_config.color_primary, kLibgav1ColorPrimaryBt2020);
+  EXPECT_EQ(color_config.transfer_characteristics,
+            kLibgav1TransferCharacteristicsHlg);
+  EXPECT_EQ(color_config.matrix_coefficients,
+            kLibgav1MatrixCoefficientsBt2020Ncl);
+}
+
+// Profile 2 below 12 bit is 4:2:2, for which the chroma sample position must
+// not be written.
+TEST_F(AV1BuilderTest, BuildSeqHeaderWithColorConfigProfile2) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr =
+      MakeHDRSequenceHeader(kLibgav1TransferCharacteristicsSmpte2084);
+  seq_hdr.profile = libgav1::kProfile2;
+  std::vector<uint8_t> chunk = PackTemporalUnit(seq_hdr, MakeFrameHeader(0));
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  EXPECT_EQ(parser->ParseOneFrame(&current_frame), libgav1::kStatusOk);
+  EXPECT_EQ(parser->sequence_header().profile, libgav1::kProfile2);
+  const libgav1::ColorConfig& color_config =
+      parser->sequence_header().color_config;
+  EXPECT_EQ(color_config.bitdepth, 10);
+  EXPECT_EQ(color_config.subsampling_x, 1);
+  EXPECT_EQ(color_config.subsampling_y, 0);
+  EXPECT_EQ(color_config.chroma_sample_position,
+            kLibgav1ChromaSamplePositionUnknown);
+}
+
+TEST_F(AV1BuilderTest, BuildHDRMetadataOBUs) {
+  const Libgav1ObuMetadataHdrCll hdr_cll = {.max_cll = 1000, .max_fall = 400};
+  // BT.2020 primaries and the D65 white point as 0.16 fixed-point CIE 1931
+  // chromaticity coordinates, in R, G, B order.
+  const Libgav1ObuMetadataHdrMdcv hdr_mdcv = {
+      .primary_chromaticity_x = {46400, 11141, 8585},
+      .primary_chromaticity_y = {19137, 52233, 3014},
+      .white_point_chromaticity_x = 20493,
+      .white_point_chromaticity_y = 21561,
+      .luminance_max = 1000 << 8,  // 24.8 fixed point, 1000 cd/m^2.
+      .luminance_min = 82,         // 18.14 fixed point, ~0.005 cd/m^2.
+  };
+
+  std::vector<AV1BitstreamBuilder> metadata_obus;
+  metadata_obus.push_back(AV1BitstreamBuilder::BuildHDRCLLMetadataOBU(hdr_cll));
+  metadata_obus.push_back(
+      AV1BitstreamBuilder::BuildHDRMDCVMetadataOBU(hdr_mdcv));
+  std::vector<uint8_t> chunk = PackTemporalUnit(
+      MakeHDRSequenceHeader(kLibgav1TransferCharacteristicsSmpte2084),
+      MakeFrameHeader(0), std::move(metadata_obus));
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&current_frame), libgav1::kStatusOk);
+  ASSERT_NE(current_frame, nullptr);
+
+  ASSERT_TRUE(current_frame->hdr_cll_set());
+  EXPECT_EQ(current_frame->hdr_cll().max_cll, hdr_cll.max_cll);
+  EXPECT_EQ(current_frame->hdr_cll().max_fall, hdr_cll.max_fall);
+
+  ASSERT_TRUE(current_frame->hdr_mdcv_set());
+  const libgav1::ObuMetadataHdrMdcv parsed_mdcv = current_frame->hdr_mdcv();
+  EXPECT_THAT(parsed_mdcv.primary_chromaticity_x,
+              ElementsAreArray(hdr_mdcv.primary_chromaticity_x));
+  EXPECT_THAT(parsed_mdcv.primary_chromaticity_y,
+              ElementsAreArray(hdr_mdcv.primary_chromaticity_y));
+  EXPECT_EQ(parsed_mdcv.white_point_chromaticity_x,
+            hdr_mdcv.white_point_chromaticity_x);
+  EXPECT_EQ(parsed_mdcv.white_point_chromaticity_y,
+            hdr_mdcv.white_point_chromaticity_y);
+  EXPECT_EQ(parsed_mdcv.luminance_max, hdr_mdcv.luminance_max);
+  EXPECT_EQ(parsed_mdcv.luminance_min, hdr_mdcv.luminance_min);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithQuantizationParams) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.delta_q_present = false;
+  pic_hdr.delta_q_y_dc = -2;
+  pic_hdr.delta_q_u_dc = -1;
+  pic_hdr.delta_q_u_ac = 0;
+  pic_hdr.delta_q_v_dc = 4;
+  pic_hdr.delta_q_v_ac = -3;
+  pic_hdr.using_qmatrix = true;
+  pic_hdr.qm_y = 2;
+  pic_hdr.qm_u = 3;
+  pic_hdr.qm_v = 4;
+
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header = parser->frame_header();
+  EXPECT_EQ(frame_header.quantizer.base_index, 100);
+  EXPECT_EQ(frame_header.quantizer.delta_dc[0], pic_hdr.delta_q_y_dc);
+  EXPECT_EQ(frame_header.quantizer.delta_dc[1], pic_hdr.delta_q_u_dc);
+  EXPECT_EQ(frame_header.quantizer.delta_ac[1], pic_hdr.delta_q_u_ac);
+  EXPECT_EQ(frame_header.quantizer.delta_dc[2], pic_hdr.delta_q_v_dc);
+  EXPECT_EQ(frame_header.quantizer.delta_ac[2], pic_hdr.delta_q_v_ac);
+  EXPECT_TRUE(frame_header.quantizer.use_matrix);
+  EXPECT_EQ(frame_header.quantizer.matrix_level[0], pic_hdr.qm_y);
+  EXPECT_EQ(frame_header.quantizer.matrix_level[1], pic_hdr.qm_u);
+  EXPECT_EQ(frame_header.quantizer.matrix_level[2], pic_hdr.qm_v);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithLoopFilter) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.delta_q_present = true;
+  pic_hdr.loop_filter_delta_enabled = true;
+  pic_hdr.loop_filter_delta_update = true;
+  pic_hdr.update_ref_delta = true;
+  pic_hdr.loop_filter_ref_deltas = {1, -1, 2, -2, 3, -3, 4, -4};
+  pic_hdr.update_mode_delta = true;
+  pic_hdr.loop_filter_mode_deltas = {1, -1};
+  pic_hdr.delta_lf_present = true;
+  pic_hdr.delta_lf_res = 2;
+  pic_hdr.delta_lf_multi = true;
+
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Create a fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  // Write the tile_group_obu into packed_frame.
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header = parser->frame_header();
+  EXPECT_TRUE(frame_header.loop_filter.delta_enabled);
+  EXPECT_TRUE(frame_header.loop_filter.delta_update);
+  EXPECT_EQ(frame_header.loop_filter.ref_deltas,
+            pic_hdr.loop_filter_ref_deltas);
+  EXPECT_TRUE(frame_header.delta_lf.present);
+  EXPECT_EQ(frame_header.delta_lf.scale, pic_hdr.delta_lf_res);
+  EXPECT_TRUE(frame_header.delta_lf.multi);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithCDEF) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.enable_restoration = false;
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.cdef_damping_minus_3 = 2;
+  pic_hdr.cdef_bits = 3;
+  for (int i = 0; i < (1 << pic_hdr.cdef_bits); i++) {
+    pic_hdr.cdef_y_pri_strength[i] = i;
+    pic_hdr.cdef_y_sec_strength[i] = i;
+    pic_hdr.cdef_uv_pri_strength[i] = i;
+    pic_hdr.cdef_uv_sec_strength[i] = i;
+  }
+
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header = parser->frame_header();
+  EXPECT_EQ(frame_header.cdef.damping, pic_hdr.cdef_damping_minus_3 + 3);
+  EXPECT_EQ(frame_header.cdef.bits, pic_hdr.cdef_bits);
+  EXPECT_THAT(pic_hdr.cdef_y_pri_strength,
+              ElementsAreArray(frame_header.cdef.y_primary_strength));
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithTxMode) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.enable_restoration = false;
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.tx_mode = libgav1::TxMode::kTxModeLargest;
+
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header = parser->frame_header();
+  EXPECT_EQ(frame_header.tx_mode, libgav1::TxMode::kTxModeLargest);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithLoopRestoration) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.enable_restoration = true;
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.restoration_type = {
+      libgav1::LoopRestorationType::kLoopRestorationTypeWiener,
+      libgav1::LoopRestorationType::kLoopRestorationTypeSgrProj,
+      libgav1::LoopRestorationType::kLoopRestorationTypeSwitchable};
+  pic_hdr.lr_unit_shift = 1;  // Use 128x128 restoration units for Y-plane.
+  pic_hdr.lr_uv_shift = 1;    // Use 64x64 restoration units for UV-plane.
+
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header = parser->frame_header();
+  EXPECT_EQ(frame_header.loop_restoration.type[0],
+            libgav1::LoopRestorationType::kLoopRestorationTypeWiener);
+  EXPECT_EQ(frame_header.loop_restoration.unit_size_log2[0], 7);
+  EXPECT_EQ(frame_header.loop_restoration.type[1],
+            libgav1::LoopRestorationType::kLoopRestorationTypeSgrProj);
+  EXPECT_EQ(frame_header.loop_restoration.unit_size_log2[1], 6);
+  EXPECT_EQ(frame_header.loop_restoration.type[2],
+            libgav1::LoopRestorationType::kLoopRestorationTypeSwitchable);
+  EXPECT_EQ(frame_header.loop_restoration.unit_size_log2[2], 6);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithReferenceSelect) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.enable_restoration = false;
+  seq_hdr.enable_ref_frame_mvs = true;
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  AV1BitstreamBuilder packed_frame;
+  packed_frame.WriteOBUHeader(/*type=*/libgav1::kObuTemporalDelimiter,
+                              /*has_size=*/true);
+  packed_frame.WriteValueInLeb128(0);
+
+  packed_frame.WriteOBUHeader(libgav1::kObuSequenceHeader, /*has_size=*/true);
+  EXPECT_EQ(seq_header_obu.OutstandingBits() % 8, 0ull);
+  packed_frame.WriteValueInLeb128(seq_header_obu.OutstandingBits() / 8);
+  packed_frame.AppendBitstreamBuffer(std::move(seq_header_obu));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  packed_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed_frame.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                                  std::size(tile_group_obu));
+  packed_frame.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_frame.Write(byte, 8);
+  }
+  std::vector<uint8_t> chunk = std::move(packed_frame).Flush();
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  libgav1::StatusCode status = parser->ParseOneFrame(&current_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header = parser->frame_header();
+  auto sequence_header = parser->sequence_header();
+  av1_decoder_state_->UpdateReferenceFrames(
+      current_frame, base::strict_cast<int>(frame_header.refresh_frame_flags));
+  EXPECT_FALSE(frame_header.reference_mode_select);
+
+  AV1BitstreamBuilder packed_delta_frame;
+  AV1BitstreamBuilder::FrameHeader pic_hdr_delta = MakeFrameHeader(1);
+  pic_hdr_delta.reference_select = true;
+  pic_hdr_delta.refresh_frame_flags = 0b00000010;
+  packed_delta_frame.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu_delta =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr_delta);
+  EXPECT_EQ(frame_obu_delta.OutstandingBits() % 8, 0ull);
+
+  packed_delta_frame.WriteValueInLeb128(frame_obu_delta.OutstandingBits() / 8 +
+                                        std::size(tile_group_obu));
+  packed_delta_frame.AppendBitstreamBuffer(std::move(frame_obu_delta));
+  for (const uint8_t byte : tile_group_obu) {
+    packed_delta_frame.Write(byte, 8);
+  }
+  chunk = std::move(packed_delta_frame).Flush();
+  auto delta_parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  delta_parser->set_sequence_header(sequence_header);
+
+  libgav1::RefCountedBufferPtr current_delta_frame;
+  status = delta_parser->ParseOneFrame(&current_delta_frame);
+
+  EXPECT_EQ(status, libgav1::kStatusOk);
+  auto frame_header_delta = delta_parser->frame_header();
+  EXPECT_TRUE(frame_header_delta.reference_mode_select);
+}
+
+// Spec 5.9.22. skip_mode_present is coded whenever the reference structure
+// allows skip mode. This encoder never turns skip mode on, but the bit still
+// has to be written or every syntax element after it shifts by one, so the
+// check is on the values that follow it rather than on skip mode itself.
+//
+// Three frames are needed to get there: skipModeAllowed requires either a
+// backward reference or two forward references at different distances, and a
+// single delta frame off a key frame only ever sees one distinct order hint.
+TEST_F(AV1BuilderTest, BuildFrameOBUWritesSkipModePresentWhenAllowed) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.enable_restoration = false;
+  AV1BitstreamBuilder seq_header_obu =
+      AV1BitstreamBuilder::BuildSequenceHeaderOBU(seq_hdr);
+
+  // Fake tile_group_obu with only dummy data.
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  auto pack_frame = [&](const AV1BitstreamBuilder::FrameHeader& pic_hdr) {
+    AV1BitstreamBuilder packed;
+    packed.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+    AV1BitstreamBuilder frame_obu =
+        AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+    EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+    packed.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                              std::size(tile_group_obu));
+    packed.AppendBitstreamBuffer(std::move(frame_obu));
+    for (const uint8_t byte : tile_group_obu) {
+      packed.Write(byte, 8);
+    }
+    return std::move(packed).Flush();
+  };
+
+  // Frame 0: key frame at order hint 0. refresh_frame_flags is inferred to be
+  // all frames, so every slot ends up holding order hint 0.
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, MakeFrameHeader(0), /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  libgav1::RefCountedBufferPtr key_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&key_frame), libgav1::kStatusOk);
+  const auto sequence_header = parser->sequence_header();
+  av1_decoder_state_->UpdateReferenceFrames(
+      key_frame,
+      base::strict_cast<int>(parser->frame_header().refresh_frame_flags));
+
+  // Frame 1: inter frame at order hint 1, landing in slot 1. That gives the
+  // DPB two distinct order hints, 0 in slot 0 and 1 in slot 1.
+  AV1BitstreamBuilder::FrameHeader pic_hdr_1 = MakeFrameHeader(1);
+  pic_hdr_1.refresh_frame_flags = 0b00000010;
+  chunk = pack_frame(pic_hdr_1);
+  auto parser_1 = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  parser_1->set_sequence_header(sequence_header);
+  libgav1::RefCountedBufferPtr frame_1;
+  ASSERT_EQ(parser_1->ParseOneFrame(&frame_1), libgav1::kStatusOk);
+  av1_decoder_state_->UpdateReferenceFrames(
+      frame_1,
+      base::strict_cast<int>(parser_1->frame_header().refresh_frame_flags));
+
+  // Frame 2: inter frame at order hint 2 referencing both slots, with compound
+  // prediction on. Both references are in the past at different distances, so
+  // the second-forward branch of skipModeAllowed fires and the bit is present.
+  //
+  // ref_order_hint here has to match what the decoder holds in its DPB, since
+  // the builder evaluates skipModeAllowed from the frame header while the
+  // decoder evaluates it from decoded reference state. A caller that fills
+  // ref_order_hint with placeholders would diverge, so any delegate setting
+  // reference_select must populate it from the real DPB.
+  AV1BitstreamBuilder::FrameHeader pic_hdr_2 = MakeFrameHeader(2);
+  pic_hdr_2.refresh_frame_flags = 0b00000100;
+  pic_hdr_2.reference_select = true;
+  pic_hdr_2.ref_frame_idx = {0, 1, 1, 1, 1, 1, 1};
+  pic_hdr_2.ref_order_hint = {0, 1, 0, 0, 0, 0, 0, 0};
+  chunk = pack_frame(pic_hdr_2);
+  auto parser_2 = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  parser_2->set_sequence_header(sequence_header);
+  libgav1::RefCountedBufferPtr frame_2;
+  ASSERT_EQ(parser_2->ParseOneFrame(&frame_2), libgav1::kStatusOk);
+
+  const auto frame_header = parser_2->frame_header();
+  EXPECT_TRUE(frame_header.reference_mode_select);
+  EXPECT_FALSE(frame_header.skip_mode_present);
+  // The element written straight after skip_mode_present. If the bit were
+  // missing this would pick up allow_warped_motion's slot instead.
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+}
+
+// The golden byte comparison in BuildFrameOBU pins the output but cannot say
+// whether it is correct. MakeSequenceHeader() enables superres and warped
+// motion, the two features whose syntax elements used to be missing entirely,
+// so round trip that same configuration through the decoder.
+TEST_F(AV1BuilderTest, BuildFrameOBUWithSuperresAndWarpedMotion) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeSequenceHeader();
+  ASSERT_TRUE(seq_hdr.enable_superres);
+  ASSERT_TRUE(seq_hdr.enable_warped_motion);
+
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, MakeFrameHeader(0), /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  libgav1::RefCountedBufferPtr key_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&key_frame), libgav1::kStatusOk);
+  const auto sequence_header = parser->sequence_header();
+  const auto key_frame_header = parser->frame_header();
+  // use_superres is inside frame_size(), so a key frame exercises it too.
+  EXPECT_FALSE(key_frame_header.use_superres);
+  EXPECT_TRUE(key_frame_header.reduced_tx_set);
+  av1_decoder_state_->UpdateReferenceFrames(
+      key_frame, base::strict_cast<int>(key_frame_header.refresh_frame_flags));
+
+  // allow_warped_motion only exists on inter frames, so a delta frame is
+  // needed to cover it.
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(1);
+  pic_hdr.refresh_frame_flags = 0b00000010;
+  AV1BitstreamBuilder packed;
+  packed.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                            std::size(tile_group_obu));
+  packed.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed.Write(byte, 8);
+  }
+  chunk = std::move(packed).Flush();
+  auto delta_parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  delta_parser->set_sequence_header(sequence_header);
+  libgav1::RefCountedBufferPtr delta_frame;
+  ASSERT_EQ(delta_parser->ParseOneFrame(&delta_frame), libgav1::kStatusOk);
+
+  const auto frame_header = delta_parser->frame_header();
+  EXPECT_FALSE(frame_header.use_superres);
+  EXPECT_FALSE(frame_header.allow_warped_motion);
+  // Written straight after allow_warped_motion, so it only lands here if that
+  // bit was actually emitted.
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+  EXPECT_EQ(frame_header.tx_mode, libgav1::kTxModeSelect);
+}
+
+// Spec 5.9.2. FrameIsIntra covers intra only frames as well as key frames, so
+// they take the intra branch: no primary_ref_frame, no reference list, no
+// frame_reference_mode and no global motion. refresh_frame_flags is still
+// coded though, because only key and switch frames infer it.
+TEST_F(AV1BuilderTest, BuildFrameOBUIntraOnly) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, MakeFrameHeader(0), /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  libgav1::RefCountedBufferPtr key_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&key_frame), libgav1::kStatusOk);
+  const auto sequence_header = parser->sequence_header();
+  av1_decoder_state_->UpdateReferenceFrames(
+      key_frame,
+      base::strict_cast<int>(parser->frame_header().refresh_frame_flags));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(1);
+  pic_hdr.frame_type = libgav1::FrameType::kFrameIntraOnly;
+  // Conformance requires an intra only frame not to refresh every slot.
+  pic_hdr.refresh_frame_flags = 0b00000010;
+
+  AV1BitstreamBuilder packed;
+  packed.WriteOBUHeader(libgav1::kObuFrame, /*has_size=*/true);
+  AV1BitstreamBuilder frame_obu =
+      AV1BitstreamBuilder::BuildFrameHeaderOBU(seq_hdr, pic_hdr);
+  EXPECT_EQ(frame_obu.OutstandingBits() % 8, 0ull);
+  static const uint8_t tile_group_obu[] = {0x00, 0x80};
+  packed.WriteValueInLeb128(frame_obu.OutstandingBits() / 8 +
+                            std::size(tile_group_obu));
+  packed.AppendBitstreamBuffer(std::move(frame_obu));
+  for (const uint8_t byte : tile_group_obu) {
+    packed.Write(byte, 8);
+  }
+  chunk = std::move(packed).Flush();
+  auto intra_parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  intra_parser->set_sequence_header(sequence_header);
+  libgav1::RefCountedBufferPtr intra_frame;
+  ASSERT_EQ(intra_parser->ParseOneFrame(&intra_frame), libgav1::kStatusOk);
+
+  const auto frame_header = intra_parser->frame_header();
+  EXPECT_EQ(frame_header.frame_type, libgav1::kFrameIntraOnly);
+  EXPECT_EQ(frame_header.refresh_frame_flags, 0b00000010u);
+  EXPECT_EQ(frame_header.primary_reference_frame, 7 /*PRIMARY_REF_NONE*/);
+  EXPECT_FALSE(frame_header.reference_mode_select);
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+}
+
+TEST_F(AV1BuilderTest, BuildFrameOBUWithoutSeparateUvDeltaQ) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.separate_uv_delta_q = false;
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.delta_q_y_dc = -2;
+  pic_hdr.delta_q_u_dc = 5;
+  pic_hdr.delta_q_u_ac = -7;
+  // Never coded: the decoder infers DeltaQV* from DeltaQU*.
+  pic_hdr.delta_q_v_dc = 11;
+  pic_hdr.delta_q_v_ac = 13;
+  pic_hdr.using_qmatrix = true;
+  pic_hdr.qm_y = 2;
+  pic_hdr.qm_u = 3;
+  pic_hdr.qm_v = 4;  // Also not coded; inferred as qm_u.
+
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, pic_hdr, /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&current_frame), libgav1::kStatusOk);
+  const auto frame_header = parser->frame_header();
+  EXPECT_EQ(frame_header.quantizer.delta_dc[0], pic_hdr.delta_q_y_dc);
+  EXPECT_EQ(frame_header.quantizer.delta_dc[1], pic_hdr.delta_q_u_dc);
+  EXPECT_EQ(frame_header.quantizer.delta_ac[1], pic_hdr.delta_q_u_ac);
+  EXPECT_EQ(frame_header.quantizer.delta_dc[2], pic_hdr.delta_q_u_dc);
+  EXPECT_EQ(frame_header.quantizer.delta_ac[2], pic_hdr.delta_q_u_ac);
+  EXPECT_TRUE(frame_header.quantizer.use_matrix);
+  EXPECT_EQ(frame_header.quantizer.matrix_level[0], pic_hdr.qm_y);
+  EXPECT_EQ(frame_header.quantizer.matrix_level[1], pic_hdr.qm_u);
+  EXPECT_EQ(frame_header.quantizer.matrix_level[2], pic_hdr.qm_u);
+  // Written after quantization_params(), so it only lands here if the U deltas
+  // and the omitted V deltas were sized correctly.
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+}
+
+// Spec 5.9.11, 5.9.19, 5.9.20 and 5.9.21. A losslessly coded frame carries no
+// loop filter, CDEF, loop restoration or tx mode syntax at all.
+TEST_F(AV1BuilderTest, BuildFrameOBUCodedLossless) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  // A base qindex of 0 with no delta q is lossless. This is reachable from
+  // WebCodecs by asking for a quantizer of 0.
+  pic_hdr.base_qindex = 0;
+
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, pic_hdr, /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&current_frame), libgav1::kStatusOk);
+  const auto frame_header = parser->frame_header();
+  EXPECT_TRUE(frame_header.coded_lossless);
+  EXPECT_EQ(frame_header.tx_mode, libgav1::kTxModeOnly4x4);
+  // Written after the omitted blocks, so it only lands here if they really
+  // were omitted.
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+}
+
+// Spec 5.9.12. With separate_uv_delta_q == 0 the V deltas are never coded and
+// the decoder infers them from the U ones, so a caller's V values must not
+// influence CodedLossless. If they did, the encoder would decide the frame is
+// not lossless and emit loop filter, CDEF and tx mode syntax that the decoder
+// never reads.
+TEST_F(AV1BuilderTest, BuildFrameOBUCodedLosslessWithInferredVDeltaQ) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.separate_uv_delta_q = false;
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(0);
+  pic_hdr.base_qindex = 0;
+  // Never reaches the bitstream: the decoder infers DeltaQV* = DeltaQU* = 0
+  // and so sees a losslessly coded frame.
+  pic_hdr.delta_q_v_dc = 5;
+  pic_hdr.delta_q_v_ac = -3;
+
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, pic_hdr, /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+
+  libgav1::RefCountedBufferPtr current_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&current_frame), libgav1::kStatusOk);
+  const auto frame_header = parser->frame_header();
+  EXPECT_TRUE(frame_header.coded_lossless);
+  EXPECT_EQ(frame_header.tx_mode, libgav1::kTxModeOnly4x4);
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+}
+
+// Spec 5.9.2 and 5.9.5. A switch frame infers frame_size_override_flag to 1
+// instead of coding it, which also means frame_size() repeats the dimensions
+// explicitly. error_resilient_mode and refresh_frame_flags are inferred too.
+TEST_F(AV1BuilderTest, BuildFrameOBUSwitchFrame) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, MakeFrameHeader(0), /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  libgav1::RefCountedBufferPtr key_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&key_frame), libgav1::kStatusOk);
+  const auto sequence_header = parser->sequence_header();
+  av1_decoder_state_->UpdateReferenceFrames(
+      key_frame,
+      base::strict_cast<int>(parser->frame_header().refresh_frame_flags));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(1);
+  pic_hdr.frame_type = libgav1::FrameType::kFrameSwitch;
+  chunk = PackFrameOBU(seq_hdr, pic_hdr);
+  auto switch_parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  switch_parser->set_sequence_header(sequence_header);
+  libgav1::RefCountedBufferPtr switch_frame;
+  ASSERT_EQ(switch_parser->ParseOneFrame(&switch_frame), libgav1::kStatusOk);
+
+  const auto frame_header = switch_parser->frame_header();
+  EXPECT_EQ(frame_header.frame_type, libgav1::kFrameSwitch);
+  EXPECT_TRUE(frame_header.error_resilient_mode);
+  EXPECT_EQ(frame_header.refresh_frame_flags, 0xFFu);
+  EXPECT_EQ(frame_header.width, seq_hdr.width);
+  EXPECT_EQ(frame_header.height, seq_hdr.height);
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+}
+
+// Spec 5.9.2. use_ref_frame_mvs is only coded when error_resilient_mode is
+// clear, even if the sequence enables ref frame mvs. primary_ref_frame is
+// inferred to PRIMARY_REF_NONE for the same reason.
+TEST_F(AV1BuilderTest, BuildFrameOBUErrorResilientInterFrame) {
+  AV1BitstreamBuilder::SequenceHeader seq_hdr = MakeDefaultSequenceHeader();
+  seq_hdr.enable_ref_frame_mvs = true;
+
+  std::vector<uint8_t> chunk =
+      PackTemporalUnit(seq_hdr, MakeFrameHeader(0), /*metadata_obus=*/{});
+  auto parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  libgav1::RefCountedBufferPtr key_frame;
+  ASSERT_EQ(parser->ParseOneFrame(&key_frame), libgav1::kStatusOk);
+  const auto sequence_header = parser->sequence_header();
+  av1_decoder_state_->UpdateReferenceFrames(
+      key_frame,
+      base::strict_cast<int>(parser->frame_header().refresh_frame_flags));
+
+  AV1BitstreamBuilder::FrameHeader pic_hdr = MakeFrameHeader(1);
+  pic_hdr.error_resilient_mode = true;
+  pic_hdr.refresh_frame_flags = 0b00000010;
+  chunk = PackFrameOBU(seq_hdr, pic_hdr);
+  auto delta_parser = base::WrapUnique(new (std::nothrow) libgav1::ObuParser(
+      chunk.data(), chunk.size(), 0, buffer_pool_.get(),
+      av1_decoder_state_.get()));
+  delta_parser->set_sequence_header(sequence_header);
+  libgav1::RefCountedBufferPtr delta_frame;
+  ASSERT_EQ(delta_parser->ParseOneFrame(&delta_frame), libgav1::kStatusOk);
+
+  const auto frame_header = delta_parser->frame_header();
+  EXPECT_TRUE(frame_header.error_resilient_mode);
+  EXPECT_EQ(frame_header.primary_reference_frame, 7 /*PRIMARY_REF_NONE*/);
+  EXPECT_FALSE(frame_header.use_ref_frame_mvs);
+  // Lands correctly only if use_ref_frame_mvs was omitted.
+  EXPECT_TRUE(frame_header.reduced_tx_set);
+}
+
+// Spec 4.10.5. Padding a leb128 out to a fixed size is allowed, but the parse
+// loop stops at the first byte with the continuation bit clear, so only the
+// bytes before the last one may set it.
+TEST_F(AV1BuilderTest, WriteValueInLeb128FixedSizeTerminates) {
+  AV1BitstreamBuilder builder;
+  builder.WriteValueInLeb128(3, /*fixed_size=*/4);
+  const std::vector<uint8_t> packed = std::move(builder).Flush();
+
+  ASSERT_EQ(packed.size(), 4u);
+  EXPECT_EQ(packed[0], 0x83);
+  EXPECT_EQ(packed[1], 0x80);
+  EXPECT_EQ(packed[2], 0x80);
+  EXPECT_EQ(packed[3], 0x00);
+
+  // And the value survives the round trip described by that section.
+  uint32_t value = 0;
+  size_t i = 0;
+  for (; i < packed.size(); i++) {
+    value |= static_cast<uint32_t>(packed[i] & 0x7F) << (i * 7);
+    if (!(packed[i] & 0x80)) {
+      break;
+    }
+  }
+  EXPECT_EQ(value, 3u);
+  EXPECT_EQ(i, 3u) << "parser must stop on the last padded byte";
+}
+
+}  // namespace media

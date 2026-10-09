@@ -1,0 +1,16 @@
+Name: libdrm
+Short Name: libdrm
+URL: https://chromium.googlesource.com/chromiumos/third_party/libdrm
+Version: libdrm-2.4.134
+Update Mechanism: Autoroll
+License: MIT
+License File: MIT.txt
+Security Critical: yes
+Shipped: no
+
+Description:
+Userspace interface to kernel DRM services.
+
+Local Modifications:
+Added MIT.txt, a collation of the license headers (verbatim) within this dep's
+source and header files.

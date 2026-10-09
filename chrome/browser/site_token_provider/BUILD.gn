@@ -1,0 +1,116 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+source_set("site_token_provider") {
+  sources = [
+    "site_token_header_client.cc",
+    "site_token_header_client.h",
+    "site_token_provider_service_factory.cc",
+    "site_token_provider_service_factory.h",
+    "site_token_proxying_url_loader_factory.cc",
+    "site_token_proxying_url_loader_factory.h",
+    "site_token_url_loader_factory.cc",
+    "site_token_url_loader_factory.h",
+    "site_token_url_loader_header_client.cc",
+    "site_token_url_loader_header_client.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/profiles:profile",
+    "//components/site_token_provider",
+  ]
+
+  deps = [
+    "//chrome/browser/signin",
+    "//chrome/common",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/system",
+    "//net",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//url",
+  ]
+}
+
+source_set("test_support") {
+  testonly = true
+  visibility = [ ":*" ]
+  sources = [
+    "fake_trusted_url_loader_header_client.cc",
+    "fake_trusted_url_loader_header_client.h",
+  ]
+  deps = [
+    "//base",
+    "//mojo/public/cpp/bindings",
+    "//net",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//url",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "site_token_header_client_unittest.cc",
+    "site_token_provider_service_factory_unittest.cc",
+    "site_token_proxying_url_loader_factory_unittest.cc",
+    "site_token_url_loader_factory_unittest.cc",
+    "site_token_url_loader_header_client_unittest.cc",
+  ]
+  deps = [
+    ":site_token_provider",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser/profiles:profile",
+    "//chrome/common",
+    "//chrome/test:test_support",
+    "//chrome/test/base:chrome_render_view_host_test_harness",
+    "//components/site_token_provider",
+    "//content/test:test_support",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/system",
+    "//net",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//url",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  visibility = [ "//chrome/test:*" ]
+  sources = [ "site_token_browsertest.cc" ]
+  deps = [
+    ":site_token_provider",
+    ":test_support",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser:chrome_content_browser_client",
+    "//chrome/browser/profiles:profile",
+    "//chrome/test:test_support",
+    "//chrome/test/base:chrome_test_utils",
+    "//components/site_token_provider",
+    "//content/test:test_support",
+    "//net:test_support",
+    "//testing/gtest",
+    "//url",
+  ]
+  if (enable_extensions_core) {
+    deps += [
+      "//extensions/buildflags",
+      "//extensions/common",
+    ]
+  }
+}

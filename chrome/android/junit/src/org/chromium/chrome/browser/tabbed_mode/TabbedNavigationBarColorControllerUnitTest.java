@@ -1,0 +1,561 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tabbed_mode;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import android.content.Context;
+import android.graphics.Color;
+import android.os.Build;
+import android.view.ContextThemeWrapper;
+
+import androidx.annotation.ColorInt;
+import androidx.test.core.app.ApplicationProvider;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.annotation.Config;
+
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.base.supplier.SettableNullableObservableSupplier;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.fullscreen.FullscreenManager;
+import org.chromium.chrome.browser.layouts.LayoutManager;
+import org.chromium.chrome.browser.layouts.LayoutStateProvider.LayoutStateObserver;
+import org.chromium.chrome.browser.layouts.LayoutType;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeController;
+import org.chromium.chrome.browser.ui.edge_to_edge.NavigationBarColorProvider;
+import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.ui.edge_to_edge.EdgeToEdgeSystemBarColorHelper;
+import org.chromium.ui.util.ColorUtils;
+
+import java.util.HashSet;
+import java.util.List;
+
+@RunWith(BaseRobolectricTestRunner.class)
+@Config(sdk = BaseRobolectricTestRunner.MIN_SDK)
+public class TabbedNavigationBarColorControllerUnitTest {
+    public @Rule MockitoRule mockitoRule = MockitoJUnit.rule();
+
+    private static final int NAV_DIVIDER_COLOR = Color.LTGRAY;
+    private static final int NUM_UNIQUE_ANIMATION_COLORS = 5;
+
+    private TabbedNavigationBarColorController mNavColorController;
+    private Context mContext;
+    @Mock private TabModelSelector mTabModelSelector;
+    private SettableMonotonicObservableSupplier<LayoutManager> mLayoutManagerSupplier;
+    @Mock private LayoutManager mLayoutManager;
+    @Mock private FullscreenManager mFullscreenManager;
+    private SettableMonotonicObservableSupplier<EdgeToEdgeController>
+            mEdgeToEdgeControllerObservableSupplier;
+    private SettableMonotonicObservableSupplier<Integer> mOverviewColorSupplier;
+    @Mock private EdgeToEdgeController mEdgeToEdgeController;
+    @Mock private BottomAttachedUiObserver mBottomAttachedUiObserver;
+    @Mock private TabModel mTabModel;
+    @Mock private Tab mTab;
+    @Mock private NavigationBarColorProvider.Observer mObserver;
+    @Mock private EdgeToEdgeSystemBarColorHelper mEdgeToEdgeSystemBarColorHelper;
+
+    private final SettableMonotonicObservableSupplier<TabModel> mTabModelSupplier =
+            ObservableSuppliers.createMonotonic();
+    private final SettableNullableObservableSupplier<Tab> mTabSupplier =
+            ObservableSuppliers.createNullable();
+
+    @Before
+    public void setUp() {
+        SemanticColorUtils.setBottomSystemNavDividerColorForTesting(NAV_DIVIDER_COLOR);
+        mContext =
+                new ContextThemeWrapper(
+                        ApplicationProvider.getApplicationContext(),
+                        R.style.Theme_BrowserUI_DayNight);
+        mLayoutManagerSupplier = ObservableSuppliers.createMonotonic();
+        mEdgeToEdgeControllerObservableSupplier = ObservableSuppliers.createMonotonic();
+        mOverviewColorSupplier = ObservableSuppliers.createMonotonic();
+
+        mTabSupplier.set(mTab);
+        mTabModelSupplier.set(mTabModel);
+        when(mTabModelSelector.getCurrentTab()).thenReturn(mTab);
+        when(mTabModelSelector.getCurrentModel()).thenReturn(mTabModel);
+        when(mTabModelSelector.getCurrentTabSupplier()).thenReturn(mTabSupplier);
+        when(mTabModelSelector.getCurrentTabModelSupplier()).thenReturn(mTabModelSupplier);
+
+        mNavColorController =
+                new TabbedNavigationBarColorController(
+                        mContext,
+                        mTabModelSelector,
+                        mLayoutManagerSupplier,
+                        mFullscreenManager,
+                        mEdgeToEdgeControllerObservableSupplier,
+                        mOverviewColorSupplier,
+                        mEdgeToEdgeSystemBarColorHelper,
+                        mBottomAttachedUiObserver);
+        mLayoutManagerSupplier.set(mLayoutManager);
+        mEdgeToEdgeControllerObservableSupplier.set(mEdgeToEdgeController);
+        mNavColorController.addObserver(mObserver);
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        runColorUpdateAnimation();
+    }
+
+    @Test
+    public void testMatchBottomAttachedColor() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        mNavColorController.onBottomAttachedColorChanged(Color.RED, false, false);
+        runColorUpdateAnimation();
+        assertTrue(
+                "Should be using the bottom attached UI color.",
+                mNavColorController.getUseBottomAttachedUiColorForTesting());
+        runColorUpdateAnimation();
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.RED));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.RED));
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        mNavColorController.onBottomAttachedColorChanged(null, false, false);
+        runColorUpdateAnimation();
+        assertFalse(
+                "Should no longer be using the bottom attached UI color.",
+                mNavColorController.getUseBottomAttachedUiColorForTesting());
+
+        runColorUpdateAnimation();
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.BLUE));
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.R)
+    public void testMatchBottomAttachedColor_toEdge() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        when(mEdgeToEdgeController.isDrawingToEdge()).thenReturn(true);
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+        mNavColorController.onBottomAttachedColorChanged(Color.RED, false, false);
+        runColorUpdateAnimation();
+        assertTrue(
+                "Should be using the bottom attached UI color.",
+                mNavColorController.getUseBottomAttachedUiColorForTesting());
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.RED));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.RED));
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+        mNavColorController.onBottomAttachedColorChanged(null, false, false);
+        runColorUpdateAnimation();
+        assertFalse(
+                "Should no longer be using the bottom attached UI color.",
+                mNavColorController.getUseBottomAttachedUiColorForTesting());
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.BLUE));
+    }
+
+    @Test
+    public void testMatchBottomAttachedColor_forceShowDivider() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        mNavColorController.onBottomAttachedColorChanged(Color.RED, true, true);
+        runColorUpdateAnimation();
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.RED));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(NAV_DIVIDER_COLOR));
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.R)
+    public void testMatchBottomAttachedColor_forceShowDivider_toEdge() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        when(mEdgeToEdgeController.isDrawingToEdge()).thenReturn(true);
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+        mNavColorController.onBottomAttachedColorChanged(Color.RED, true, false);
+        runColorUpdateAnimation();
+        assertTrue(
+                "Should be using the bottom attached UI color.",
+                mNavColorController.getUseBottomAttachedUiColorForTesting());
+        verify(mEdgeToEdgeSystemBarColorHelper, atLeastOnce()).setNavigationBarColor(eq(Color.RED));
+        verify(mEdgeToEdgeSystemBarColorHelper, atLeastOnce())
+                .setNavigationBarDividerColor(eq(NAV_DIVIDER_COLOR));
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+        mNavColorController.onBottomAttachedColorChanged(null, false, false);
+        runColorUpdateAnimation();
+        assertFalse(
+                "Should no longer be using the bottom attached UI color.",
+                mNavColorController.getUseBottomAttachedUiColorForTesting());
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.BLUE));
+    }
+
+    @Test
+    public void testGetNavigationBarDividerColor() {
+        assertEquals(
+                "The nav bar divider color should be the bottom attached UI color.",
+                NAV_DIVIDER_COLOR,
+                mNavColorController.getNavigationBarDividerColor(false, true));
+        assertEquals(
+                "The nav bar divider color should match the tab background.",
+                mContext.getColor(R.color.bottom_system_nav_divider_color_light),
+                mNavColorController.getNavigationBarDividerColor(true, true));
+    }
+
+    @Test
+    public void testMatchTabBackgroundColor() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        when(mEdgeToEdgeController.getBottomInset()).thenReturn(100);
+        when(mEdgeToEdgeController.isDrawingToEdge()).thenReturn(false);
+
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        assertTrue(
+                "Should be using tab background color for the navigation bar color.",
+                mNavColorController.getUseActiveTabColorForTesting());
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.BLUE));
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.R)
+    public void testMatchTabBackgroundColor_toEdge() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        when(mEdgeToEdgeController.getBottomInset()).thenReturn(100);
+        when(mEdgeToEdgeController.isDrawingToEdge()).thenReturn(true);
+
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        assertTrue(
+                "Should be using tab background color for the navigation bar color.",
+                mNavColorController.getUseActiveTabColorForTesting());
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.BLUE));
+    }
+
+    @Test
+    public void testSetNavigationBarScrimFraction() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.LTGRAY);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        when(mEdgeToEdgeController.getBottomInset()).thenReturn(0);
+        when(mEdgeToEdgeController.isDrawingToEdge()).thenReturn(false);
+
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.LTGRAY));
+
+        @ColorInt int fullScrimColor = ColorUtils.applyAlphaFloat(Color.RED, .5f);
+        mNavColorController.setNavigationBarScrimColor(fullScrimColor);
+        @ColorInt
+        int expectedColorWithScrim = ColorUtils.overlayColor(Color.LTGRAY, fullScrimColor);
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(expectedColorWithScrim));
+
+        mNavColorController.setNavigationBarScrimColor(Color.TRANSPARENT);
+        verify(mEdgeToEdgeSystemBarColorHelper, times(2)).setNavigationBarColor(eq(Color.LTGRAY));
+    }
+
+    @Test
+    @Config(sdk = 30) // Min version needed for e2e everywhere
+    public void testNavBarColorAnimations() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+        // Verify that our starting nav bar color is blue.
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+        // Change nav bar color to red with animations enabled.
+        mNavColorController.onBottomAttachedColorChanged(Color.RED, false, false);
+        runColorUpdateAnimation();
+        // Capture all of the animation colors.
+        ArgumentCaptor<Integer> colorsArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(mEdgeToEdgeSystemBarColorHelper, atLeastOnce())
+                .setNavigationBarColor(colorsArgumentCaptor.capture());
+
+        verifyColorAnimationSteps(colorsArgumentCaptor.getAllValues());
+    }
+
+    @Test
+    @Config(sdk = 29)
+    public void testNavBarColorAnimations_Legacy() {
+        mNavColorController.setIsBottomChinEnabledForTesting(true);
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+        // Verify that our starting nav bar color is blue.
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+        // Change nav bar color to red with animations enabled.
+        mNavColorController.onBottomAttachedColorChanged(Color.RED, false, false);
+        runColorUpdateAnimation();
+        // Capture all of the animation colors.
+        ArgumentCaptor<Integer> colorsArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(mEdgeToEdgeSystemBarColorHelper, atLeastOnce())
+                .setNavigationBarColor(colorsArgumentCaptor.capture());
+
+        verifyColorAnimationSteps(colorsArgumentCaptor.getAllValues());
+    }
+
+    @Test
+    public void testHideNavBarDuringOmniboxSwipe() {
+        mNavColorController.setIsBottomChinEnabledForTesting(true);
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        ArgumentCaptor<LayoutStateObserver> argumentCaptor =
+                ArgumentCaptor.forClass(LayoutStateObserver.class);
+
+        // mLayoutManagerSupplier.set(mLayoutManager) in this file should trigger setLayoutManager.
+        verify(mLayoutManager).addObserver(argumentCaptor.capture());
+
+        LayoutStateObserver layoutStateObserver = argumentCaptor.getValue();
+
+        // Simulate omnibox swipe.
+        layoutStateObserver.onStartedShowing(LayoutType.TOOLBAR_SWIPE);
+        runColorUpdateAnimation();
+
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.TRANSPARENT));
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarDividerColor(eq(Color.TRANSPARENT));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.BOTTOM_CONTROLS_JANK_IMPROVEMENT)
+    public void testNavBarDuringOmniboxSwipe_withBottomAttachedUi() {
+        mNavColorController.setIsBottomChinEnabledForTesting(true);
+        mNavColorController.onBottomAttachedColorChanged(
+                Color.GRAY, /* forceShowDivider= */ false, /* disableAnimation= */ true);
+        runColorUpdateAnimation();
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        ArgumentCaptor<LayoutStateObserver> argumentCaptor =
+                ArgumentCaptor.forClass(LayoutStateObserver.class);
+        verify(mLayoutManager).addObserver(argumentCaptor.capture());
+        LayoutStateObserver layoutStateObserver = argumentCaptor.getValue();
+
+        // Simulate omnibox swipe.
+        layoutStateObserver.onStartedShowing(LayoutType.TOOLBAR_SWIPE);
+        runColorUpdateAnimation();
+
+        assertEquals(Color.GRAY, mNavColorController.getNavigationBarColor());
+        verifyNoInteractions(mEdgeToEdgeSystemBarColorHelper);
+
+        // Simulate swipe commit to browsing layout with a new tab color.
+        when(mTab.getBackgroundColor()).thenReturn(Color.RED);
+        layoutStateObserver.onFinishedShowing(LayoutType.BROWSING);
+
+        assertEquals(Color.GRAY, mNavColorController.getNavigationBarColor());
+        assertNull(mNavColorController.getNavbarColorTransitionAnimationForTesting());
+        verify(mEdgeToEdgeSystemBarColorHelper, never()).setNavigationBarColor(eq(Color.RED));
+    }
+
+    @Test
+    public void testOverviewColorEnabled() {
+        mNavColorController.enableOverviewMode();
+
+        mOverviewColorSupplier.set(Color.BLUE);
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+
+        mNavColorController.disableOverviewMode();
+    }
+
+    @Test
+    public void testOverviewModeDisabled_ignoresLateHubColorUpdates() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.LTGRAY);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mNavColorController.updateActiveTabForTesting();
+
+        mNavColorController.enableOverviewMode();
+        mOverviewColorSupplier.set(Color.BLUE);
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        // Late emissions from the fading-out Hub are ignored. The reset to the tab color is
+        // driven by LayoutStateObserver#onStartedHiding instead, see
+        // testLayoutStateObserver_onStartedHiding_swappedOrder.
+        mNavColorController.disableOverviewMode();
+        mOverviewColorSupplier.set(Color.RED);
+        verify(mEdgeToEdgeSystemBarColorHelper, never()).setNavigationBarColor(anyInt());
+    }
+
+    @Test
+    public void testLayoutStateObserver_onStartedShowing_swappedOrder() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.LTGRAY);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        mOverviewColorSupplier.set(Color.BLUE);
+
+        ArgumentCaptor<LayoutStateObserver> captor =
+                ArgumentCaptor.forClass(LayoutStateObserver.class);
+        verify(mLayoutManager).addObserver(captor.capture());
+        LayoutStateObserver observer = captor.getValue();
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        observer.onStartedShowing(LayoutType.HUB);
+
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+    }
+
+    @Test
+    public void testLayoutStateObserver_onStartedHiding_swappedOrder() {
+        when(mTab.getBackgroundColor()).thenReturn(Color.LTGRAY);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mNavColorController.updateActiveTabForTesting();
+
+        mNavColorController.enableOverviewMode();
+        mOverviewColorSupplier.set(Color.BLUE);
+        runColorUpdateAnimation();
+
+        ArgumentCaptor<LayoutStateObserver> captor =
+                ArgumentCaptor.forClass(LayoutStateObserver.class);
+        verify(mLayoutManager).addObserver(captor.capture());
+        LayoutStateObserver observer = captor.getValue();
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        observer.onStartedHiding(LayoutType.HUB);
+
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.LTGRAY));
+    }
+
+    @Test
+    public void testOverviewColorChangeWhileHubHiding_doesNotCancelColorTransition() {
+        mNavColorController.setIsBottomChinEnabledForTesting(true);
+        // Tab color is RED and Hub color is BLUE to match verifyColorAnimationSteps().
+        when(mTab.getBackgroundColor()).thenReturn(Color.RED);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+
+        ArgumentCaptor<LayoutStateObserver> captor =
+                ArgumentCaptor.forClass(LayoutStateObserver.class);
+        verify(mLayoutManager).addObserver(captor.capture());
+        LayoutStateObserver observer = captor.getValue();
+
+        // Enter the Hub and take on its color.
+        observer.onStartedShowing(LayoutType.HUB);
+        mOverviewColorSupplier.set(Color.BLUE);
+        runColorUpdateAnimation();
+        verify(mEdgeToEdgeSystemBarColorHelper, atLeastOnce())
+                .setNavigationBarColor(eq(Color.BLUE));
+
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        // Start hiding the Hub. This clears overview mode and starts animating back to the tab
+        // color.
+        observer.onStartedHiding(LayoutType.HUB);
+
+        // The Hub is still fading out and keeps pushing colors. These must be ignored; otherwise
+        // the transition started above is ended early and the color snaps to its final value.
+        mOverviewColorSupplier.set(Color.GREEN);
+        mOverviewColorSupplier.set(Color.TRANSPARENT);
+
+        assertTrue(
+                "The Hub -> browsing color transition should still be running.",
+                mNavColorController.getNavbarColorTransitionAnimationForTesting().isRunning());
+
+        runColorUpdateAnimation();
+
+        ArgumentCaptor<Integer> colorsArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(mEdgeToEdgeSystemBarColorHelper, atLeastOnce())
+                .setNavigationBarColor(colorsArgumentCaptor.capture());
+        verifyColorAnimationSteps(colorsArgumentCaptor.getAllValues());
+    }
+
+    private void runColorUpdateAnimation() {
+        // Run the color  transition animation so color is applied to the window.
+        RobolectricUtil.runAllBackgroundAndUi();
+    }
+
+    private void verifyColorAnimationSteps(List<Integer> capturedColors) {
+        assertTrue(
+                "There should be at least five unique animation colors: the start color, the end"
+                        + " color, and at least three in-between.",
+                new HashSet<>(capturedColors).size() >= NUM_UNIQUE_ANIMATION_COLORS);
+        assertEquals(
+                "The first animation color should be blue.",
+                Color.BLUE,
+                (int) capturedColors.get(0));
+        assertEquals(
+                "The last animation color should be red.",
+                Color.RED,
+                (int) capturedColors.get(capturedColors.size() - 1));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.BOTTOM_CONTROLS_JANK_IMPROVEMENT)
+    public void testUpdateNavigationBarColor_NoOpWhenUnchanged() {
+        mNavColorController.setIsBottomChinEnabledForTesting(true);
+        when(mTab.getBackgroundColor()).thenReturn(Color.BLUE);
+        when(mLayoutManager.getActiveLayoutType()).thenReturn(LayoutType.BROWSING);
+
+        mNavColorController.updateActiveTabForTesting();
+        runColorUpdateAnimation();
+        verify(mEdgeToEdgeSystemBarColorHelper).setNavigationBarColor(eq(Color.BLUE));
+
+        // Bottom-attached UI has the same color (Color.BLUE) as the active tab background.
+        mNavColorController.onBottomAttachedColorChanged(
+                Color.BLUE, /* forceShowDivider= */ false, /* disableAnimation= */ true);
+        Mockito.clearInvocations(mEdgeToEdgeSystemBarColorHelper);
+
+        // Scrolling off the bottom-attached UI transitions mBottomAttachedUiColor from Color.BLUE
+        // to null, which resolves to the same active tab color (Color.BLUE). No animation or
+        // redundant setNavigationBarColor call should occur.
+        mNavColorController.onBottomAttachedColorChanged(
+                /* color= */ null, /* forceShowDivider= */ false, /* disableAnimation= */ false);
+        var animation = mNavColorController.getNavbarColorTransitionAnimationForTesting();
+        assertFalse(animation != null && animation.isRunning());
+        verify(mEdgeToEdgeSystemBarColorHelper, Mockito.never())
+                .setNavigationBarColor(Mockito.anyInt());
+    }
+}

@@ -1,0 +1,1012 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+
+import type {AppElement, ContentController, LanguageToastElement, LineFocusController, SpeechController, VoiceLanguageController, VoiceNotificationManager} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {LineFocusMovement, LineFocusStyle, ReadAloudSettingsChange, ReadAnythingSettingsChange, ToolbarEvent} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {assertArrayEquals, assertEquals, assertFalse, assertLT, assertNotEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
+import {keyDownOn} from 'chrome-untrusted://webui-test/keyboard_mock_interactions.js';
+import {hasStyle, microtasksFinished, whenCheck} from 'chrome-untrusted://webui-test/test_util.js';
+
+import {createSpeechSynthesisVoice, emitEvent, setContent, setupAppTestEnvironment, setupBasicSpeech} from './common.js';
+import type {TestAudioBrowserProxy} from './test_audio_browser_proxy.js';
+import type {TestContentBrowserProxy} from './test_content_browser_proxy.js';
+import type {TestMetricsBrowserProxy} from './test_metrics_browser_proxy.js';
+import type {TestReadAloudModelBrowserProxy} from './test_read_aloud_browser_proxy.js';
+import type {TestSpeechBrowserProxy} from './test_speech_browser_proxy.js';
+import type {TestVisualBrowserProxy} from './test_visual_browser_proxy.js';
+
+suite('AppReceivesToolbarChanges', () => {
+  let app: AppElement;
+  let audioBrowserProxy: TestAudioBrowserProxy;
+  let contentBrowserProxy: TestContentBrowserProxy;
+  let contentController: ContentController;
+  let lineFocusController: LineFocusController;
+  let metrics: TestMetricsBrowserProxy;
+  let notificationManager: VoiceNotificationManager;
+  let readAloudModel: TestReadAloudModelBrowserProxy;
+  let speech: TestSpeechBrowserProxy;
+  let speechController: SpeechController;
+  let visualBrowserProxy: TestVisualBrowserProxy;
+  let voiceLanguageController: VoiceLanguageController;
+
+  function getLineFocusPadding(): number {
+    const val = app.style.getPropertyValue('--line-focus-padding');
+    return val ? parseInt(val) : 0;
+  }
+
+  function containerLetterSpacing(): number {
+    return +window.getComputedStyle(app.$.container)
+                .getPropertyValue('--letter-spacing')
+                .replace('em', '');
+  }
+
+  function containerLineSpacing(): number {
+    return +window.getComputedStyle(app.$.container)
+                .getPropertyValue('--line-height');
+  }
+
+  function containerFontSize(): number {
+    return +window.getComputedStyle(app.$.container)
+                .getPropertyValue('--font-size')
+                .replace('em', '');
+  }
+
+  function containerFont(): string {
+    return window.getComputedStyle(app.$.container)
+        .getPropertyValue('font-family');
+  }
+
+  function assertFontsEqual(actual: string, expected: string): void {
+    assertEquals(
+        expected.trim().toLowerCase().replaceAll('"', ''),
+        actual.trim().toLowerCase().replaceAll('"', ''));
+  }
+
+  function emitFont(fontName: string): void {
+    emitEvent(app, ToolbarEvent.FONT, {detail: {data: fontName}});
+  }
+
+  function emitFontSize(size: number): void {
+    visualBrowserProxy.fontSize = size;
+    emitEvent(app, ToolbarEvent.FONT_SIZE);
+  }
+
+  function emitLineSpacing(spacingEnumValue: number): void {
+    emitEvent(
+        app, ToolbarEvent.LINE_SPACING, {detail: {data: spacingEnumValue}});
+  }
+
+  function emitLetterSpacing(spacingEnumValue: number): void {
+    emitEvent(
+        app, ToolbarEvent.LETTER_SPACING, {detail: {data: spacingEnumValue}});
+  }
+
+  function emitColorTheme(colorEnumValue: number): void {
+    emitEvent(app, ToolbarEvent.THEME, {detail: {data: colorEnumValue}});
+  }
+
+  function emitRate(rate: number): void {
+    emitEvent(app, ToolbarEvent.RATE, {detail: {data: rate}});
+  }
+
+  function emitHighlight(granularity: number): void {
+    emitEvent(
+        app, ToolbarEvent.HIGHLIGHT_CHANGE, {detail: {data: granularity}});
+  }
+
+  function emitPlayPause(): Promise<void> {
+    emitEvent(app, ToolbarEvent.PLAY_PAUSE);
+    return microtasksFinished();
+  }
+
+  setup(async () => {
+    const result = await setupAppTestEnvironment();
+    app = result.app;
+    audioBrowserProxy = result.audioBrowserProxy;
+    contentBrowserProxy = result.contentBrowserProxy;
+    contentController = result.contentController;
+    lineFocusController = result.lineFocusController;
+    metrics = result.metrics;
+    notificationManager = result.notificationManager;
+    readAloudModel = result.readAloudModel;
+    speech = result.speech;
+    speechController = result.speechController;
+    visualBrowserProxy = result.visualBrowserProxy;
+    voiceLanguageController = result.voiceLanguageController;
+  });
+
+  test('on letter spacing change container letter spacing updated', () => {
+    for (let letterSpacingEnum = 0; letterSpacingEnum < 4;
+         letterSpacingEnum++) {
+      emitLetterSpacing(letterSpacingEnum);
+      assertEquals(letterSpacingEnum, containerLetterSpacing());
+    }
+  });
+
+  test('on line spacing change container line spacing updated', () => {
+    for (let lineSpacingEnum = 0; lineSpacingEnum < 4; lineSpacingEnum++) {
+      emitLineSpacing(lineSpacingEnum);
+      assertEquals(
+          visualBrowserProxy.getLineSpacingValue(lineSpacingEnum),
+          containerLineSpacing());
+    }
+  });
+
+  test('on font size change container font size updated', () => {
+    const fontSize1 = 12;
+    emitFontSize(fontSize1);
+    assertEquals(fontSize1, containerFontSize());
+
+    const fontSize2 = 16;
+    emitFontSize(fontSize2);
+    assertEquals(fontSize2, containerFontSize());
+
+    const fontSize3 = 9;
+    emitFontSize(fontSize3);
+    assertEquals(fontSize3, containerFontSize());
+  });
+
+  suite('on color theme change', () => {
+    test('color theme updates container colors', () => {
+      // Set background color css variables. In prod code this is done in a
+      // parent element.
+      app.style.setProperty(
+          '--color-read-anything-background-dark', 'DarkSlateGray');
+      app.style.setProperty(
+          '--color-read-anything-background-light', 'LightGray');
+      app.style.setProperty(
+          '--color-read-anything-background-yellow', 'yellow');
+      app.style.setProperty('--color-read-anything-background-blue', 'blue');
+      app.style.setProperty(
+          '--color-read-anything-background-high-contrast', 'HighContrast');
+      app.style.setProperty(
+          '--color-read-anything-background-low-contrast-light',
+          'LowContrastLight');
+      app.style.setProperty(
+          '--color-read-anything-background-low-contrast-dark',
+          'LowContrastDark');
+
+      emitColorTheme(visualBrowserProxy.darkTheme);
+      assertTrue(
+          hasStyle(app.$.container, '--background-color', 'DarkSlateGray'));
+
+      emitColorTheme(visualBrowserProxy.lightTheme);
+      assertTrue(hasStyle(app.$.container, '--background-color', 'LightGray'));
+
+      emitColorTheme(visualBrowserProxy.yellowTheme);
+      assertTrue(hasStyle(app.$.container, '--background-color', 'yellow'));
+
+      emitColorTheme(visualBrowserProxy.blueTheme);
+      assertTrue(hasStyle(app.$.container, '--background-color', 'blue'));
+
+      emitColorTheme(visualBrowserProxy.highContrastTheme);
+      assertTrue(
+          hasStyle(app.$.container, '--background-color', 'HighContrast'));
+
+      emitColorTheme(visualBrowserProxy.lowContrastLightTheme);
+      assertTrue(
+          hasStyle(app.$.container, '--background-color', 'LowContrastLight'));
+
+      emitColorTheme(visualBrowserProxy.lowContrastDarkTheme);
+      assertTrue(
+          hasStyle(app.$.container, '--background-color', 'LowContrastDark'));
+    });
+
+    test('default theme uses default colors', () => {
+      // Set background color css variables. In prod code this is done in a
+      // parent element.
+      app.style.setProperty('--color-sys-base-container-elevated', 'grey');
+      emitColorTheme(visualBrowserProxy.defaultTheme);
+
+      assertTrue(hasStyle(app.$.container, '--background-color', 'grey'));
+    });
+  });
+
+  test('on font change font updates container font', () => {
+    const font1 = 'Andika';
+    emitFont(font1);
+    assertFontsEqual(containerFont(), font1);
+
+    const font2 = 'Comic Neue';
+    emitFont(font2);
+    assertFontsEqual(containerFont(), font2);
+  });
+
+  test(
+      'connected callback adds line focus mouse listener in toolbar',
+      async () => {
+        emitEvent(
+            app, ToolbarEvent.LINE_FOCUS_MOVEMENT,
+            {detail: {data: LineFocusMovement.CURSOR}});
+        emitEvent(
+            app, ToolbarEvent.LINE_FOCUS_STYLE,
+            {detail: {data: LineFocusStyle.UNDERLINE}});
+        await microtasksFinished();
+        let mouseMoveInToolbar = false;
+        let mouseMove = false;
+        lineFocusController.onMouseMove = () => {
+          mouseMove = true;
+        };
+        lineFocusController.onMouseMoveInToolbar = () => {
+          mouseMoveInToolbar = true;
+        };
+
+        app.$.toolbar.dispatchEvent(new MouseEvent('mousemove', {clientY: 10}));
+
+        assertTrue(mouseMoveInToolbar);
+        assertFalse(mouseMove);
+      });
+
+  test('line focus shortcut updates padding', async () => {
+    // Start with static line focus on.
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_MOVEMENT,
+        {detail: {data: LineFocusMovement.STATIC}});
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.UNDERLINE}});
+    await microtasksFinished();
+    assertEquals(0, getLineFocusPadding());
+    // Ensure there's content so that padding can be added.
+    app.updateContent();
+    await whenCheck(app, () => getLineFocusPadding() !== 0);
+    assertLT(0, getLineFocusPadding());
+
+    // Toggling off should remove padding.
+    keyDownOn(app, 0, ['alt'], 'l');
+    await microtasksFinished();
+    assertEquals(0, getLineFocusPadding());
+
+    // Toggling on should add padding.
+    keyDownOn(app, 0, ['alt'], 'l');
+    await microtasksFinished();
+    assertLT(0, getLineFocusPadding());
+  });
+
+  test('line focus style change updates line focus', async () => {
+    app.updateContent();
+    await microtasksFinished();
+    const lineFocus = app.$.lineFocus;
+    assertTrue(!!lineFocus);
+
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    await microtasksFinished();
+
+    const expectedData = LineFocusStyle.UNDERLINE;
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE, {detail: {data: expectedData}});
+    await microtasksFinished();
+    assertEquals('block', window.getComputedStyle(lineFocus).display);
+    assertEquals(expectedData, lineFocusController.getCurrentLineFocusStyle());
+
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: false}});
+    await microtasksFinished();
+    assertEquals('none', window.getComputedStyle(lineFocus).display);
+    assertFalse(lineFocusController.isEnabled());
+  });
+
+  test('line focus style change updates padding', async () => {
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_MOVEMENT,
+        {detail: {data: LineFocusMovement.STATIC}});
+    // The app needs content so it has a non-zero height.
+    app.updateContent();
+    await microtasksFinished();
+
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.UNDERLINE}});
+    await whenCheck(
+        app, () => window.getComputedStyle(app.$.container).paddingTop !== '');
+    const padding =
+        +window.getComputedStyle(app.$.container).paddingTop.replace('px', '');
+    assertLT(0, padding);
+
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: false}});
+    await microtasksFinished();
+    assertEquals('0px', window.getComputedStyle(app.$.container).paddingTop);
+  });
+
+  test('line focus movement change updates line focus', () => {
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_MOVEMENT,
+        {detail: {data: LineFocusMovement.CURSOR}});
+    assertEquals(
+        LineFocusMovement.CURSOR,
+        lineFocusController.getCurrentLineFocusMovement());
+
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_MOVEMENT,
+        {detail: {data: LineFocusMovement.STATIC}});
+    assertEquals(
+        LineFocusMovement.STATIC,
+        lineFocusController.getCurrentLineFocusMovement());
+  });
+
+  test('line focus movement change updates padding', async () => {
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.UNDERLINE}});
+    // The app needs content so it has a non-zero height.
+    app.updateContent();
+
+    let expectedData = LineFocusMovement.CURSOR;
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_MOVEMENT, {detail: {data: expectedData}});
+    await microtasksFinished();
+    assertEquals('', app.$.container.style.paddingTop);
+
+    expectedData = LineFocusMovement.STATIC;
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_MOVEMENT, {detail: {data: expectedData}});
+    await microtasksFinished();
+    const padding =
+        +window.getComputedStyle(app.$.container).paddingTop.replace('px', '');
+    assertLT(0, padding);
+  });
+
+  test('line focus classes update line focus padding', async () => {
+    app.updateContent();
+    await microtasksFinished();
+    const lineFocus = app.$.lineFocus;
+    assertTrue(!!lineFocus);
+
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    await microtasksFinished();
+
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.UNDERLINE}});
+    await microtasksFinished();
+    assertTrue(lineFocus.classList.contains('line-mode'));
+    assertEquals('8px', window.getComputedStyle(lineFocus).left);
+    assertEquals('8px', window.getComputedStyle(lineFocus).right);
+
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.SMALL_WINDOW}});
+    await microtasksFinished();
+    assertTrue(lineFocus.classList.contains('window-mode'));
+    assertEquals('0px', window.getComputedStyle(lineFocus).left);
+    assertEquals('0px', window.getComputedStyle(lineFocus).right);
+  });
+
+  test('immersive view updates line focus padding', async () => {
+    app.isImmersiveMode = () => true;
+    app.updateContent();
+    await microtasksFinished();
+    const lineFocus = app.$.lineFocus;
+    assertTrue(!!lineFocus);
+
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    await microtasksFinished();
+
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.UNDERLINE}});
+    await microtasksFinished();
+    assertTrue(lineFocus.classList.contains('line-mode'));
+    assertEquals('8px', window.getComputedStyle(lineFocus).left);
+    assertEquals('14px', window.getComputedStyle(lineFocus).right);
+
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.SMALL_WINDOW}});
+    await microtasksFinished();
+    assertTrue(lineFocus.classList.contains('window-mode'));
+    assertEquals('0px', window.getComputedStyle(lineFocus).left);
+    assertEquals('0px', window.getComputedStyle(lineFocus).right);
+  });
+
+  test(
+      'line focus movement change does nothing with line focus off',
+      async () => {
+        emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: false}});
+        // The app needs content so it has a non-zero height.
+        app.updateContent();
+
+        let expectedData = LineFocusMovement.CURSOR;
+        emitEvent(
+            app, ToolbarEvent.LINE_FOCUS_MOVEMENT,
+            {detail: {data: expectedData}});
+        await microtasksFinished();
+        assertEquals('', app.$.container.style.paddingTop);
+
+        expectedData = LineFocusMovement.STATIC;
+        emitEvent(
+            app, ToolbarEvent.LINE_FOCUS_MOVEMENT,
+            {detail: {data: expectedData}});
+        await microtasksFinished();
+        assertEquals('', app.$.container.style.paddingTop);
+      });
+
+  suite('with line focus disabled', () => {
+    setup(async () => {
+      const result = await setupAppTestEnvironment({lineFocusEnabled: false});
+      app = result.app;
+      visualBrowserProxy = result.visualBrowserProxy;
+    });
+
+    test('line focus change does nothing', async () => {
+      const lineFocus = app.$.lineFocus;
+      assertTrue(!!lineFocus);
+
+      emitEvent(
+          app, ToolbarEvent.LINE_FOCUS_STYLE,
+          {detail: {data: LineFocusStyle.UNDERLINE}});
+      await microtasksFinished();
+      assertEquals(
+          '',
+          window.getComputedStyle(lineFocus).getPropertyValue(
+              '--line-focus-display'));
+    });
+  });
+
+  test('font size change updates line focus line height', async () => {
+    app.updateContent();
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.UNDERLINE}});
+    await microtasksFinished();
+    const startingHeight = app.style.getPropertyValue('--line-focus-height');
+
+    visualBrowserProxy.fontSize = 4;
+    emitEvent(app, ToolbarEvent.FONT_SIZE);
+    await microtasksFinished();
+
+    const newHeight = app.style.getPropertyValue('--line-focus-height');
+    assertEquals('8px', newHeight);
+    assertNotEquals(startingHeight, newHeight);
+  });
+
+  test(
+      'font size change does not change line focus window height', async () => {
+        emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+        emitEvent(
+            app, ToolbarEvent.LINE_FOCUS_STYLE,
+            {detail: {data: LineFocusStyle.SMALL_WINDOW}});
+        await microtasksFinished();
+        const startingHeight =
+            app.style.getPropertyValue('--line-focus-height');
+
+        visualBrowserProxy.fontSize = 4;
+        emitEvent(app, ToolbarEvent.FONT_SIZE);
+        await microtasksFinished();
+
+        const newHeight = app.style.getPropertyValue('--line-focus-height');
+        assertEquals(startingHeight, newHeight);
+      });
+
+  test('line focus is not shown on empty page', async () => {
+    // Enable line focus and set style on an empty page.
+    emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+    emitEvent(
+        app, ToolbarEvent.LINE_FOCUS_STYLE,
+        {detail: {data: LineFocusStyle.UNDERLINE}});
+    await microtasksFinished();
+
+    // Verify line focus element is hidden and line focus display style is
+    // none.
+    assertTrue(app.$.lineFocus.hasAttribute('hidden'));
+    assertEquals('none', app.style.getPropertyValue('--line-focus-display'));
+  });
+
+  test(
+      'toggling line focus on empty page does not set dark toolbar icon color',
+      async () => {
+        // Set line focus style to window mode while line focus is disabled.
+        emitEvent(
+            app, ToolbarEvent.LINE_FOCUS_STYLE,
+            {detail: {data: LineFocusStyle.SMALL_WINDOW}});
+        await microtasksFinished();
+
+        // Enable line focus while page is empty.
+        emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+        await microtasksFinished();
+
+        assertNotEquals(
+            'var(--color-read-anything-toolbar-icon-dark)',
+            app.style.getPropertyValue('--toolbar-icon-color'));
+      });
+
+  test(
+      'line focus style applied to toolbar icon color when content' +
+          ' becomes available',
+      async () => {
+        // Enable line focus and set to window mode while page is empty.
+        emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
+        emitEvent(
+            app, ToolbarEvent.LINE_FOCUS_STYLE,
+            {detail: {data: LineFocusStyle.SMALL_WINDOW}});
+        await microtasksFinished();
+
+        assertNotEquals(
+            'var(--color-read-anything-toolbar-icon-dark)',
+            app.style.getPropertyValue('--toolbar-icon-color'));
+
+        // Draw content on the page so content state becomes HAS_CONTENT.
+        app.updateContent();
+        await microtasksFinished();
+
+        assertEquals(
+            'var(--color-read-anything-toolbar-icon-dark)',
+            app.style.getPropertyValue('--toolbar-icon-color'));
+      });
+
+  suite('on language toggle', () => {
+    function emitLanguageToggle(lang: string) {
+      emitEvent(app, ToolbarEvent.LANGUAGE_TOGGLE, {detail: {language: lang}});
+    }
+
+    test('enabled languages are added', () => {
+      const firstLanguage = 'en-us';
+      emitLanguageToggle(firstLanguage);
+      assertTrue(voiceLanguageController.isLangEnabled(firstLanguage));
+      assertTrue(audioBrowserProxy.getLanguagesEnabledInPref().includes(
+          firstLanguage));
+
+      const secondLanguage = 'fr';
+      emitLanguageToggle(secondLanguage);
+      assertTrue(voiceLanguageController.isLangEnabled(secondLanguage));
+      assertTrue(audioBrowserProxy.getLanguagesEnabledInPref().includes(
+          secondLanguage));
+    });
+
+    test('disabled languages are removed', () => {
+      const firstLanguage = 'en-us';
+      emitLanguageToggle(firstLanguage);
+      assertTrue(voiceLanguageController.isLangEnabled(firstLanguage));
+      assertTrue(audioBrowserProxy.getLanguagesEnabledInPref().includes(
+          firstLanguage));
+
+      emitLanguageToggle(firstLanguage);
+      assertFalse(voiceLanguageController.isLangEnabled(firstLanguage));
+      assertFalse(audioBrowserProxy.getLanguagesEnabledInPref().includes(
+          firstLanguage));
+    });
+  });
+
+  test('on speech rate change speech rate updated', async () => {
+    setupBasicSpeech(speech);
+    readAloudModel.setInitialized(true);
+    const node = setContent('we mean no harm', readAloudModel);
+    app.updateContent();
+    app.$.container.appendChild(node);
+    await emitPlayPause();
+
+    emitRate(2);
+    assertEquals(2, speech.getCallCount('speak'));
+
+    emitRate(0.5);
+    assertEquals(3, speech.getCallCount('speak'));
+
+    emitRate(4);
+    assertEquals(4, speech.getCallCount('speak'));
+
+    const speechRates =
+        speech.getArgs('speak').map(utterance => utterance.rate);
+
+    // The 4x speech rate is capped on non-ChromeOS
+
+    // <if expr="not is_chromeos">
+    assertArrayEquals([1, 2, 0.5, 2], speechRates);
+    // </if>
+
+    // <if expr="is_chromeos">
+    assertArrayEquals([1, 2, 0.5, 4], speechRates);
+    // </if>
+  });
+
+  test('on voice selected, current voice updated', () => {
+    const voice = createSpeechSynthesisVoice({lang: 'es-us', name: 'Poodle'});
+    emitEvent(app, ToolbarEvent.VOICE, {detail: {selectedVoice: voice}});
+    assertEquals(voice, voiceLanguageController.getCurrentVoice());
+  });
+
+  suite('play/pause', () => {
+    setup(() => {
+      readAloudModel.setInitialized(true);
+      const node = setContent('We come in peace', readAloudModel);
+      app.$.container.appendChild(node);
+    });
+
+    test('on first click starts speech', async () => {
+      await emitPlayPause();
+      assertTrue(speechController.isSpeechActive());
+      assertTrue(speechController.isSpeechTreeInitialized());
+      assertTrue(speechController.hasSpeechBeenTriggered());
+    });
+
+    test('on second click stops speech', async () => {
+      await emitPlayPause();
+      await emitPlayPause();
+
+      assertFalse(speechController.isSpeechActive());
+      assertTrue(speechController.isSpeechTreeInitialized());
+      assertTrue(speechController.hasSpeechBeenTriggered());
+    });
+
+    suite('on keyboard k pressed', () => {
+      let kPress: KeyboardEvent;
+
+      setup(() => {
+        kPress = new KeyboardEvent('keydown', {key: 'k'});
+      });
+
+      test('first press plays', async () => {
+        document.dispatchEvent(kPress);
+        await microtasksFinished();
+
+        assertTrue(speechController.isSpeechActive());
+        assertEquals(0, metrics.getCallCount('recordSpeechStopSource'));
+      });
+
+      test('second press pauses', async () => {
+        document.dispatchEvent(kPress);
+        document.dispatchEvent(kPress);
+        await microtasksFinished();
+
+        assertFalse(speechController.isSpeechActive());
+        assertEquals(
+            audioBrowserProxy.keyboardShortcutStopSource,
+            await metrics.whenCalled('recordSpeechStopSource'));
+      });
+
+      test('other key presses do not play', async () => {
+        const fPress = new KeyboardEvent('keydown', {key: 'f'});
+        document.dispatchEvent(fPress);
+        await microtasksFinished();
+
+        assertFalse(speechController.isSpeechActive());
+        assertEquals(0, metrics.getCallCount('recordSpeechStopSource'));
+      });
+    });
+  });
+
+  suite('with highlight granularity menu', () => {
+    function highlightColor(): string {
+      return window.getComputedStyle(app.$.container)
+          .getPropertyValue('--current-highlight-bg-color');
+    }
+
+    setup(() => {
+      app.updateContent();
+    });
+
+    test('new theme uses colored highlight with highlights on', () => {
+      emitHighlight(audioBrowserProxy.wordHighlighting);
+      emitColorTheme(visualBrowserProxy.blueTheme);
+      assertNotEquals('transparent', highlightColor());
+    });
+
+    test('new theme uses transparent highlight with highlights off', () => {
+      emitHighlight(audioBrowserProxy.noHighlighting);
+      emitColorTheme(visualBrowserProxy.yellowTheme);
+      assertEquals('transparent', highlightColor());
+    });
+  });
+
+  suite('on granularity change', () => {
+    setup(() => {
+      setupBasicSpeech(speech);
+      readAloudModel.setInitialized(true);
+      const node = setContent('we mean no harm', readAloudModel);
+      app.updateContent();
+      app.$.container.appendChild(node);
+      return emitPlayPause();
+    });
+
+    test('next highlights text', () => {
+      emitEvent(app, ToolbarEvent.NEXT_GRANULARITY);
+      const currentHighlight =
+          app.$.container.querySelector('.current-read-highlight');
+      assertTrue(!!currentHighlight!.textContent);
+    });
+
+    test('previous highlights text', () => {
+      emitEvent(app, ToolbarEvent.PREVIOUS_GRANULARITY);
+      const currentHighlight =
+          app.$.container.querySelector('.current-read-highlight');
+      assertTrue(!!currentHighlight!.textContent);
+    });
+  });
+
+  test('onPinStateReceived updates toolbar isReadAnythingPinned', async () => {
+    app.$.toolbar.isReadAnythingPinned = false;
+
+    visualBrowserProxy.onPinStateReceived.callListeners(true);
+    await microtasksFinished();
+    assertTrue(app.$.toolbar.isReadAnythingPinned);
+
+    visualBrowserProxy.onPinStateReceived.callListeners(false);
+    await microtasksFinished();
+    assertFalse(app.$.toolbar.isReadAnythingPinned);
+  });
+
+  test('languageChanged updates page language on toolbar', async () => {
+    audioBrowserProxy.baseLanguageForSpeech = 'fr';
+
+    audioBrowserProxy.languageChanged.callListeners();
+    await microtasksFinished();
+
+    assertEquals('fr', app.$.toolbar.pageLanguage);
+  });
+
+  test('restoreSettingsFromPrefs updates styles', async () => {
+    visualBrowserProxy.letterSpacing = 1;  // wide
+    visualBrowserProxy.lineSpacing = 2;    // very loose
+    visualBrowserProxy.fontName = 'Serif';
+
+    visualBrowserProxy.restoreSettingsFromPrefs.callListeners();
+    await microtasksFinished();
+
+    assertEquals(
+        visualBrowserProxy.getLetterSpacingValue(1), containerLetterSpacing());
+    assertEquals(
+        visualBrowserProxy.getLineSpacingValue(2), containerLineSpacing());
+    assertFontsEqual(containerFont(), 'Serif');
+  });
+
+  test('restoreSettingsFromPrefs updates toolbar settings', async () => {
+    visualBrowserProxy.letterSpacing = 1;
+    visualBrowserProxy.lineSpacing = 2;
+    visualBrowserProxy.fontName = 'Serif';
+    visualBrowserProxy.colorTheme = visualBrowserProxy.darkTheme;
+    audioBrowserProxy.speechRate = 1.5;
+    audioBrowserProxy.highlightGranularity = audioBrowserProxy.wordHighlighting;
+
+    visualBrowserProxy.restoreSettingsFromPrefs.callListeners();
+    await microtasksFinished();
+
+    const toolbar = app.$.toolbar;
+    assertEquals(1, toolbar.letterSpacing);
+    assertEquals(2, toolbar.lineSpacing);
+    assertEquals('Serif', toolbar.font);
+    assertEquals(visualBrowserProxy.darkTheme, toolbar.theme);
+    assertEquals(1.5, toolbar.speechRate);
+    assertEquals(
+        audioBrowserProxy.wordHighlighting, toolbar.highlightGranularity);
+  });
+
+  suite('on links toggle', () => {
+    const linkId = 44;
+    const textId = 45;
+    const linkText = 'Try to keep it hidden';
+    const url = 'www.mountainview.gov';
+
+    setup(() => {
+      contentBrowserProxy.rootId = linkId;
+      contentBrowserProxy.htmlTagMap = {[linkId]: 'a'};
+      contentBrowserProxy.textContentMap = {[textId]: linkText};
+      contentBrowserProxy.childrenMap = {[linkId]: [textId]};
+      contentBrowserProxy.urlMap = {[linkId]: url};
+    });
+
+    test('shows links when enabled', async () => {
+      const expectedHtml = '<a href="' + url + '">' + linkText + '</a>';
+      app.updateContent();
+      await microtasksFinished();
+      assertTrue(contentController.hasContent());
+
+      visualBrowserProxy.linksEnabled = true;
+      emitEvent(app, ToolbarEvent.LINKS);
+      await microtasksFinished();
+
+      assertEquals(
+          expectedHtml, app.$.container.innerHTML, app.$.container.innerHTML);
+    });
+
+    test('hides links when disabled', async () => {
+      const expectedHtml =
+          '<span data-link="' + url + '">' + linkText + '</span>';
+      app.updateContent();
+      await microtasksFinished();
+      assertTrue(contentController.hasContent());
+
+      visualBrowserProxy.linksEnabled = false;
+      emitEvent(app, ToolbarEvent.LINKS);
+      await microtasksFinished();
+
+      assertEquals(
+          expectedHtml, app.$.container.innerHTML, app.$.container.innerHTML);
+    });
+
+    test('updates toolbar settingsPrefs', async () => {
+      visualBrowserProxy.linksEnabled = false;
+      emitEvent(app, ToolbarEvent.LINKS);
+      await microtasksFinished();
+      assertFalse(app.$.toolbar.settingsPrefs.linksEnabled);
+
+      visualBrowserProxy.linksEnabled = true;
+      emitEvent(app, ToolbarEvent.LINKS);
+      await microtasksFinished();
+      assertTrue(app.$.toolbar.settingsPrefs.linksEnabled);
+    });
+  });
+
+  suite('on image toggle', () => {
+    const altText = 'No man is worth the aggravation';
+    const textNodeContent = 'Some text';
+
+    setup(() => {
+      contentBrowserProxy.rootId = 1;
+      contentBrowserProxy.htmlTagMap = {1: 'div', 2: 'img'};
+      contentBrowserProxy.altText = altText;
+      contentBrowserProxy.childrenMap = {1: [2, 3]};
+      contentBrowserProxy.textContentMap = {3: textNodeContent};
+    });
+
+    test('shows images when enabled', async () => {
+      app.updateContent();
+      await microtasksFinished();
+      assertTrue(contentController.hasContent());
+
+      visualBrowserProxy.imagesEnabled = true;
+      const expectedHtmlWithImage = '<div><canvas alt="' + altText +
+          '" class="downloaded-image"></canvas>' + textNodeContent + '</div>';
+      emitEvent(app, ToolbarEvent.IMAGES);
+      await microtasksFinished();
+
+      assertEquals(expectedHtmlWithImage, app.$.container.innerHTML);
+    });
+
+    test('hides images when disabled', async () => {
+      const expectedHtml = '<div><canvas alt="' + altText +
+          '" class="downloaded-image" style="display: none;"></canvas>' +
+          textNodeContent + '</div>';
+      app.updateContent();
+      await microtasksFinished();
+      assertTrue(contentController.hasContent());
+
+      visualBrowserProxy.imagesEnabled = false;
+      emitEvent(app, ToolbarEvent.IMAGES);
+      await microtasksFinished();
+
+      assertEquals(expectedHtml, app.$.container.innerHTML);
+    });
+
+    test('updates toolbar settingsPrefs', async () => {
+      visualBrowserProxy.imagesEnabled = false;
+      emitEvent(app, ToolbarEvent.IMAGES);
+      await microtasksFinished();
+      assertFalse(app.$.toolbar.settingsPrefs.imagesEnabled);
+
+      visualBrowserProxy.imagesEnabled = true;
+      emitEvent(app, ToolbarEvent.IMAGES);
+      await microtasksFinished();
+      assertTrue(app.$.toolbar.settingsPrefs.imagesEnabled);
+    });
+  });
+
+  suite('language toast', () => {
+    let toast: LanguageToastElement;
+
+    setup(() => {
+      toast = app.$.languageToast;
+    });
+
+    test('shows error toasts', async () => {
+      notificationManager.onNoEngineConnection();
+      await microtasksFinished();
+      assertTrue(toast.$.toast.open);
+    });
+
+    test('does not shows error toast with language menu open', async () => {
+      emitEvent(app, ToolbarEvent.LANGUAGE_MENU_OPEN);
+
+      notificationManager.onNoEngineConnection();
+      await microtasksFinished();
+
+      assertFalse(toast.$.toast.open);
+    });
+
+    test('shows error toast after language menu is closed', async () => {
+      emitEvent(app, ToolbarEvent.LANGUAGE_MENU_OPEN);
+      emitEvent(app, ToolbarEvent.LANGUAGE_MENU_CLOSE);
+
+      notificationManager.onNoEngineConnection();
+      await microtasksFinished();
+
+      assertTrue(toast.$.toast.open);
+    });
+  });
+
+  suite('settings events write prefs, log, and update toolbar', () => {
+    test('theme', async () => {
+      emitColorTheme(visualBrowserProxy.darkTheme);
+      await microtasksFinished();
+
+      assertEquals(
+          visualBrowserProxy.darkTheme,
+          await visualBrowserProxy.whenCalled('onThemeChange'));
+      assertEquals(
+          ReadAnythingSettingsChange.THEME_CHANGE,
+          await metrics.whenCalled('recordTextSettingsChange'));
+      assertEquals(visualBrowserProxy.darkTheme, app.$.toolbar.theme);
+    });
+
+    test('line spacing', async () => {
+      emitLineSpacing(2);
+      await microtasksFinished();
+
+      assertEquals(
+          2, await visualBrowserProxy.whenCalled('onLineSpacingChange'));
+      assertEquals(
+          ReadAnythingSettingsChange.LINE_HEIGHT_CHANGE,
+          await metrics.whenCalled('recordTextSettingsChange'));
+      assertEquals(2, app.$.toolbar.lineSpacing);
+    });
+
+    test('letter spacing', async () => {
+      emitLetterSpacing(2);
+      await microtasksFinished();
+
+      assertEquals(
+          2, await visualBrowserProxy.whenCalled('onLetterSpacingChange'));
+      assertEquals(
+          ReadAnythingSettingsChange.LETTER_SPACING_CHANGE,
+          await metrics.whenCalled('recordTextSettingsChange'));
+      assertEquals(2, app.$.toolbar.letterSpacing);
+    });
+
+    test('font', async () => {
+      emitFont('Andika');
+      await microtasksFinished();
+
+      assertEquals(
+          'Andika', await visualBrowserProxy.whenCalled('onFontChange'));
+      assertEquals(
+          ReadAnythingSettingsChange.FONT_CHANGE,
+          await metrics.whenCalled('recordTextSettingsChange'));
+      assertEquals('Andika', app.$.toolbar.font);
+    });
+
+    test('speech rate', async () => {
+      emitRate(1.5);
+      await microtasksFinished();
+
+      assertEquals(
+          1.5, await audioBrowserProxy.whenCalled('onSpeechRateChange'));
+      assertEquals(
+          ReadAloudSettingsChange.VOICE_SPEED_CHANGE,
+          await metrics.whenCalled('recordSpeechSettingsChange'));
+      // Voice speed is logged by its index in the rate menu.
+      assertEquals(4, await metrics.whenCalled('recordVoiceSpeed'));
+      assertEquals(1.5, app.$.toolbar.speechRate);
+
+      emitRate(0.8);
+      await microtasksFinished();
+      assertEquals(0.8, app.$.toolbar.speechRate);
+    });
+
+    test('highlight granularity', async () => {
+      emitHighlight(audioBrowserProxy.wordHighlighting);
+      await microtasksFinished();
+
+      assertEquals(
+          audioBrowserProxy.wordHighlighting,
+          await audioBrowserProxy.whenCalled('onHighlightGranularityChanged'));
+      assertEquals(
+          ReadAloudSettingsChange.HIGHLIGHT_CHANGE,
+          await metrics.whenCalled('recordSpeechSettingsChange'));
+      assertEquals(
+          audioBrowserProxy.wordHighlighting,
+          await metrics.whenCalled('recordHighlightGranularity'));
+      assertEquals(
+          audioBrowserProxy.wordHighlighting,
+          app.$.toolbar.highlightGranularity);
+
+      emitHighlight(audioBrowserProxy.noHighlighting);
+      await microtasksFinished();
+      assertEquals(
+          audioBrowserProxy.noHighlighting, app.$.toolbar.highlightGranularity);
+    });
+  });
+});

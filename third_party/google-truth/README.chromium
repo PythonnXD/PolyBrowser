@@ -1,0 +1,17 @@
+Name: Fluent assertions for Java
+Short Name: google-truth
+URL: https://github.com/google/truth
+Version: N/A
+Revision: 5ab1cb80bf2013d824167a68d4041a67e32a2d3c
+Update Mechanism: Autoroll
+License: Apache-2.0
+License File: LICENSE
+Security Critical: no
+Shipped: no
+License Android Compatible: yes
+
+Description:
+The Google Truth library is used for asserts in java tests.  It is used in
+tests such as the conformance tests for the feed library.
+
+Local Modifications: None

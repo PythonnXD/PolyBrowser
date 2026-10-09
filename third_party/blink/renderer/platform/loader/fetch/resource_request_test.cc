@@ -1,0 +1,88 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/loader/fetch/resource_request.h"
+
+#include <memory>
+
+#include "base/test/scoped_feature_list.h"
+#include "net/base/load_flags.h"
+#include "services/network/public/cpp/features.h"
+#include "services/network/public/cpp/permissions_policy/permissions_policy.h"
+#include "services/network/public/cpp/permissions_policy/permissions_policy_declaration.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
+#include "services/network/public/mojom/referrer_policy.mojom-shared.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/platform/web_url_request.h"
+#include "third_party/blink/renderer/platform/exported/wrapped_resource_request.h"
+#include "third_party/blink/renderer/platform/network/encoded_form_data.h"
+#include "third_party/blink/renderer/platform/weborigin/kurl.h"
+#include "third_party/blink/renderer/platform/weborigin/referrer.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
+#include "url/origin.h"
+
+namespace blink {
+
+TEST(ResourceRequestTest, SetHasUserGesture) {
+  ResourceRequest original;
+  EXPECT_FALSE(original.HasUserGesture());
+  original.SetHasUserGesture(true);
+  EXPECT_TRUE(original.HasUserGesture());
+  original.SetHasUserGesture(false);
+  EXPECT_TRUE(original.HasUserGesture());
+}
+
+TEST(ResourceRequestTest, SetIsAdResource) {
+  ResourceRequest original;
+  EXPECT_FALSE(original.IsAdResource());
+  original.SetIsAdResource();
+  EXPECT_TRUE(original.IsAdResource());
+
+  // Should persist across redirects.
+  std::unique_ptr<ResourceRequest> redirect_request =
+      original.CreateRedirectRequest(
+          KURL("https://example.test/redirect"), original.HttpMethod(),
+          original.SiteForCookies(), original.ReferrerString(),
+          original.GetReferrerPolicy(), original.GetSkipServiceWorker());
+  EXPECT_TRUE(redirect_request->IsAdResource());
+}
+
+TEST(ResourceRequestTest, UpgradeIfInsecureAcrossRedirects) {
+  ResourceRequest original;
+  EXPECT_FALSE(original.UpgradeIfInsecure());
+  original.SetUpgradeIfInsecure(true);
+  EXPECT_TRUE(original.UpgradeIfInsecure());
+
+  // Should persist across redirects.
+  std::unique_ptr<ResourceRequest> redirect_request =
+      original.CreateRedirectRequest(
+          KURL("https://example.test/redirect"), original.HttpMethod(),
+          original.SiteForCookies(), original.ReferrerString(),
+          original.GetReferrerPolicy(), original.GetSkipServiceWorker());
+  EXPECT_TRUE(redirect_request->UpgradeIfInsecure());
+}
+
+TEST(ResourceRequestTest, RequiresLoadIgnoreLimits) {
+  ResourceRequest original;
+  EXPECT_FALSE(original.RequiresLoadIgnoreLimits());
+  EXPECT_FALSE(WrappedResourceRequest(original).GetLoadFlagsForWebUrlRequest() &
+               net::LOAD_IGNORE_LIMITS);
+
+  original.SetRequiresLoadIgnoreLimits(true);
+  EXPECT_TRUE(original.RequiresLoadIgnoreLimits());
+  EXPECT_TRUE(WrappedResourceRequest(original).GetLoadFlagsForWebUrlRequest() &
+              net::LOAD_IGNORE_LIMITS);
+
+  // Should be preserved across redirects.
+  std::unique_ptr<ResourceRequest> redirect = original.CreateRedirectRequest(
+      KURL("https://example.test/redirect"), original.HttpMethod(),
+      original.SiteForCookies(), original.ReferrerString(),
+      original.GetReferrerPolicy(), original.GetSkipServiceWorker());
+  EXPECT_TRUE(redirect->RequiresLoadIgnoreLimits());
+  EXPECT_TRUE(WrappedResourceRequest(*redirect).GetLoadFlagsForWebUrlRequest() &
+              net::LOAD_IGNORE_LIMITS);
+}
+
+}  // namespace blink

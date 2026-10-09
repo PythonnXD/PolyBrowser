@@ -1,0 +1,159 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ash/hats/hats_config.h"
+
+#include "ash/constants/ash_features.h"
+#include "ash/constants/ash_pref_names.h"
+#include "base/time/time.h"
+
+namespace ash {
+
+namespace {
+constexpr int kMinDaysThreshold = 0;  // HaTS Onboarding Experience is immediate
+}  // namespace
+
+HatsConfig::HatsConfig(const base::Feature& feature,
+                       const base::TimeDelta& new_device_threshold,
+                       const char* const is_selected_pref_name,
+                       const char* const cycle_end_timestamp_pref_name)
+    : feature(feature),
+      new_device_threshold(new_device_threshold),
+      is_selected_pref_name(is_selected_pref_name),
+      cycle_end_timestamp_pref_name(cycle_end_timestamp_pref_name),
+      survey_last_interaction_timestamp_pref_name(nullptr),
+      threshold_time(base::TimeDelta()),
+      prioritized(false) {
+  CHECK(new_device_threshold.InDaysFloored() >= kMinDaysThreshold,
+        base::NotFatalUntil::M161);
+}
+
+HatsConfig::HatsConfig(
+    const base::Feature& feature,
+    const base::TimeDelta& new_device_threshold,
+    const char* const is_selected_pref_name,
+    const char* const cycle_end_timestamp_pref_name,
+    const char* const survey_last_interaction_timestamp_pref_name,
+    const base::TimeDelta& threshold_time)
+    : feature(feature),
+      new_device_threshold(new_device_threshold),
+      is_selected_pref_name(is_selected_pref_name),
+      cycle_end_timestamp_pref_name(cycle_end_timestamp_pref_name),
+      survey_last_interaction_timestamp_pref_name(
+          survey_last_interaction_timestamp_pref_name),
+      threshold_time(threshold_time),
+      prioritized(true) {
+  CHECK(new_device_threshold.InDaysFloored() >= kMinDaysThreshold,
+        base::NotFatalUntil::M161);
+}
+
+// General Survey -- shown after login
+const HatsConfig kHatsGeneralSurvey = {
+    ash::features::kHappinessTrackingSystem,   // feature
+    base::Days(7),                             // new_device_threshold
+    ash::prefs::kHatsDeviceIsSelected,         // is_selected_pref_name
+    ash::prefs::kHatsSurveyCycleEndTimestamp,  // cycle_end_timestamp_pref_name
+};
+
+// Stability Survey -- shown after login, along with the General Survey
+const HatsConfig kHatsStabilitySurvey = {
+    ash::features::kHappinessTrackingSystemStability,  // feature
+    base::Days(7),                                     // new_device_threshold
+    ash::prefs::kHatsStabilityDeviceIsSelected,        // is_selected_pref_name
+    ash::prefs::
+        kHatsStabilitySurveyCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// Performance Survey -- shown after login, along with the General Survey
+const HatsConfig kHatsPerformanceSurvey = {
+    ash::features::kHappinessTrackingSystemPerformance,  // feature
+    base::Days(7),                                       // new_device_threshold
+    ash::prefs::kHatsPerformanceDeviceIsSelected,  // is_selected_pref_name
+    ash::prefs::
+        kHatsPerformanceSurveyCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// Audio Survey -- shown after a user closed an audio stream living for more
+// than 3 minutes
+const HatsConfig kHatsAudioSurvey = {
+    ash::features::kHappinessTrackingSystemAudio,  // feature
+    base::Days(90),                                // new_device_threshold
+    ash::prefs::kHatsAudioDeviceIsSelected,        // is_selected_pref_name
+    ash::prefs::kHatsAudioSurveyCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// Bluetooth Audio Survey -- shown after the user closed an audio stream
+// sent to a Bluetooth device after listening for more than one minute.
+const HatsConfig kHatsBluetoothAudioSurvey = {
+    ash::features::kHappinessTrackingSystemBluetoothAudio,  // feature
+    base::Days(90),                                   // new_device_threshold
+    ash::prefs::kHatsBluetoothAudioDeviceIsSelected,  // is_selected_pref_name
+    ash::prefs::
+        kHatsBluetoothAudioSurveyCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// Camera App Survey -- shown after an user captured a photo/video or left the
+// app with session > 15 seconds.
+const HatsConfig kHatsCameraAppSurvey = {
+    ash::features::kHappinessTrackingSystemCameraApp,  // feature
+    base::Days(90),                                    // new_device_threshold
+    ash::prefs::kHatsCameraAppDeviceIsSelected,        // is_selected_pref_name
+    ash::prefs::
+        kHatsCameraAppSurveyCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// General Camera Survey -- shown after camera is closed after being open for
+// at least 3 minutes by using any app (e.g. Chrome or Android app).
+const HatsConfig kHatsGeneralCameraSurvey = {
+    ash::features::kHappinessTrackingGeneralCamera,  // feature
+    base::Days(90),                                  // new_device_threshold
+    ash::prefs::kHatsGeneralCameraIsSelected,        // is_selected_pref_name
+    ash::prefs::
+        kHatsGeneralCameraSurveyCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// Prioritized General Camera Survey -- shown after camera is closed after being
+// open for at least 15 seconds by using any app (e.g. Chrome or Android app).
+const HatsConfig kHatsGeneralCameraPrioritizedSurvey = {
+    // feature
+    ash::features::kHappinessTrackingGeneralCameraPrioritized,
+    // new_device_threshold
+    base::Days(7),
+    // is_selected_pref_name
+    ash::prefs::kHatsGeneralCameraPrioritizedIsSelected,
+    // cycle_end_timestamp_pref_name
+    ash::prefs::kHatsGeneralCameraPrioritizedSurveyCycleEndTs,
+    // survey_last_interaction_timestamp_pref_name
+    ash::prefs::kHatsGeneralCameraPrioritizedLastInteractionTimestamp,
+    // threshold_time
+    base::Days(120),
+};
+
+// Battery life experience survey -- shown after login.
+const HatsConfig kHatsBatteryLifeSurvey = {
+    ash::features::kHappinessTrackingSystemBatteryLife,  // feature
+    base::Days(7),                                       // new_device_threshold
+    ash::prefs::kHatsBatteryLifeIsSelected,  // is_selected_pref_name
+    ash::prefs::kHatsBatteryLifeCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// Peripherals experience survey -- shown after login.
+const HatsConfig kHatsPeripheralsSurvey = {
+    ash::features::kHappinessTrackingSystemPeripherals,  // feature
+    base::Days(7),                                       // new_device_threshold
+    ash::prefs::kHatsPeripheralsIsSelected,  // is_selected_pref_name
+    ash::prefs::kHatsPeripheralsCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+// Slow and laggy deep dive survey. -- Shown after login.
+const HatsConfig kHatsSlowAndLaggyDeepDive = {
+    ash::features::kHappinessTrackingSystemSlowAndLaggyDeepDive,  // feature
+    base::Days(7),
+    ash::prefs::
+        kHatsSlowAndLaggyDeepDiveSurveyIsSelected,  // is_selected_pref_name
+    ash::prefs::
+        kHatsSlowAndLaggyDeepDiveSurveyCycleEndTs,  // cycle_end_timestamp_pref_name
+};
+
+}  // namespace ash

@@ -1,0 +1,129 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ash/wallpaper_handlers/wallpaper_fetcher_delegate.h"
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "base/check.h"
+#include "base/check_deref.h"
+#include "base/types/pass_key.h"
+#include "chrome/browser/ash/wallpaper_handlers/google_photos_wallpaper_handlers.h"
+#include "chrome/browser/ash/wallpaper_handlers/wallpaper_handlers.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chromeos/ash/components/signin/identity_manager_provider.h"
+#include "components/account_id/account_id.h"
+#include "components/signin/public/base/consent_level.h"
+#include "components/signin/public/identity_manager/access_token_fetcher.h"
+#include "components/signin/public/identity_manager/access_token_info.h"
+#include "components/signin/public/identity_manager/primary_account_access_token_fetcher.h"
+#include "google_apis/gaia/gaia_constants.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "third_party/abseil-cpp/absl/memory/memory.h"
+
+namespace wallpaper_handlers {
+
+WallpaperFetcherDelegateImpl::WallpaperFetcherDelegateImpl(
+    const ApplicationLocaleStorage* application_locale_storage,
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory)
+    : application_locale_storage_(CHECK_DEREF(application_locale_storage)),
+      shared_url_loader_factory_(std::move(shared_url_loader_factory)) {
+  CHECK(shared_url_loader_factory_);
+}
+
+WallpaperFetcherDelegateImpl::~WallpaperFetcherDelegateImpl() = default;
+
+std::unique_ptr<BackdropCollectionInfoFetcher>
+WallpaperFetcherDelegateImpl::CreateBackdropCollectionInfoFetcher() const {
+  return std::make_unique<BackdropCollectionInfoFetcherImpl>(
+      base::PassKey<WallpaperFetcherDelegateImpl>(),
+      &application_locale_storage_.get(), shared_url_loader_factory_);
+}
+
+std::unique_ptr<BackdropImageInfoFetcher>
+WallpaperFetcherDelegateImpl::CreateBackdropImageInfoFetcher(
+    const std::string& collection_id) const {
+  return std::make_unique<BackdropImageInfoFetcherImpl>(
+      base::PassKey<WallpaperFetcherDelegateImpl>(),
+      &application_locale_storage_.get(), shared_url_loader_factory_,
+      collection_id);
+}
+
+std::unique_ptr<BackdropSurpriseMeImageFetcher>
+WallpaperFetcherDelegateImpl::CreateBackdropSurpriseMeImageFetcher(
+    const std::string& collection_id) const {
+  return std::make_unique<BackdropSurpriseMeImageFetcherImpl>(
+      base::PassKey<WallpaperFetcherDelegateImpl>(),
+      &application_locale_storage_.get(), shared_url_loader_factory_,
+      collection_id, /*resume_token=*/"");
+}
+
+std::unique_ptr<GooglePhotosAlbumsFetcher>
+WallpaperFetcherDelegateImpl::CreateGooglePhotosAlbumsFetcher(
+    Profile* profile,
+    const AccountId& account_id) const {
+  // Use `WrapUnique` to access the protected constructor.
+  return absl::WrapUnique(new GooglePhotosAlbumsFetcher(profile, account_id));
+}
+
+std::unique_ptr<GooglePhotosSharedAlbumsFetcher>
+WallpaperFetcherDelegateImpl::CreateGooglePhotosSharedAlbumsFetcher(
+    Profile* profile,
+    const AccountId& account_id) const {
+  // Use `WrapUnique` to access the protected constructor.
+  return absl::WrapUnique(
+      new GooglePhotosSharedAlbumsFetcher(profile, account_id));
+}
+
+std::unique_ptr<GooglePhotosEnabledFetcher>
+WallpaperFetcherDelegateImpl::CreateGooglePhotosEnabledFetcher(
+    Profile* profile,
+    const AccountId& account_id) const {
+  // Use `WrapUnique` to access the protected constructor.
+  return absl::WrapUnique(new GooglePhotosEnabledFetcher(profile, account_id));
+}
+
+std::unique_ptr<GooglePhotosPhotosFetcher>
+WallpaperFetcherDelegateImpl::CreateGooglePhotosPhotosFetcher(
+    Profile* profile,
+    const AccountId& account_id) const {
+  // Use `WrapUnique` to access the protected constructor.
+  return absl::WrapUnique(new GooglePhotosPhotosFetcher(profile, account_id));
+}
+
+void WallpaperFetcherDelegateImpl::FetchGooglePhotosAccessToken(
+    const AccountId& account_id,
+    ash::WallpaperControllerClient::FetchGooglePhotosAccessTokenCallback
+        callback) const {
+  auto fetcher = std::make_unique<signin::PrimaryAccountAccessTokenFetcher>(
+      signin::OAuthConsumerId::kWallpaperFetcherDelegate,
+      ash::IdentityManagerProvider::Get().Find(account_id),
+      signin::PrimaryAccountAccessTokenFetcher::Mode::kImmediate,
+      signin::ConsentLevel::kSignin);
+  auto* fetcher_ptr = fetcher.get();
+  fetcher_ptr->Start(base::BindOnce(
+      [](
+          // Fetcher is moved into lambda to keep it alive until network
+          // request completes.
+          std::unique_ptr<signin::PrimaryAccountAccessTokenFetcher>,
+          ash::WallpaperControllerClient::FetchGooglePhotosAccessTokenCallback
+              callback,
+          GoogleServiceAuthError error,
+          signin::AccessTokenInfo access_token_info) {
+        if (error.state() != GoogleServiceAuthError::NONE) {
+          LOG(ERROR)
+              << "Failed to fetch auth token to download Google Photos photo:"
+              << error.error_message();
+          std::move(callback).Run(std::nullopt);
+          return;
+        }
+        std::move(callback).Run(access_token_info.token);
+      },
+      std::move(fetcher), std::move(callback)));
+}
+
+}  // namespace wallpaper_handlers

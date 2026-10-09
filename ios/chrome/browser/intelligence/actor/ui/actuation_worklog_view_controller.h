@@ -1,0 +1,56 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_UI_ACTUATION_WORKLOG_VIEW_CONTROLLER_H_
+#define IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_UI_ACTUATION_WORKLOG_VIEW_CONTROLLER_H_
+
+#import <UIKit/UIKit.h>
+
+#import "ios/chrome/browser/intelligence/actor/ui/actuation_worklog_consumer.h"
+#import "ios/chrome/browser/intelligence/actor/ui/actuation_worklog_view_data.h"
+
+@class ActuationWorklogViewController;
+@protocol ActuationWorklogMutator;
+
+// Delegate protocol for ActuationWorklogViewController events.
+@protocol ActuationWorklogViewControllerDelegate <NSObject>
+
+// Called when the worklog view controller's fitting height changes.
+- (void)worklogViewController:(ActuationWorklogViewController*)viewController
+              didChangeHeight:(CGFloat)height;
+
+@end
+
+// View controller displaying the actuation worklog in the Helios sheet.
+@interface ActuationWorklogViewController
+    : UIViewController <ActuationWorklogConsumer>
+
+// The delegate for this view controller.
+@property(nonatomic, weak) id<ActuationWorklogViewControllerDelegate> delegate;
+
+// Mutator for dispatching user actions.
+@property(nonatomic, weak) id<ActuationWorklogMutator> mutator;
+
+// How the worklog is presented. Defaults to
+// `ActuationWorklogDisplayModeCompact`.
+@property(nonatomic, assign) ActuationWorklogDisplayMode displayMode;
+
+// Returns the fitting height of the worklog when presented in `mode`,
+// regardless of the currently active `displayMode`.
+- (CGFloat)heightForDisplayMode:(ActuationWorklogDisplayMode)mode;
+
+// Calculates the current fitting height and reports it to `delegate`. Use this
+// when `delegate` may have ignored a previous report.
+- (void)notifyHeightDidChange;
+
+// Designated initializer.
+- (instancetype)init NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)initWithNibName:(NSString*)nibNameOrNil
+                         bundle:(NSBundle*)nibBundleOrNil NS_UNAVAILABLE;
+- (instancetype)initWithCoder:(NSCoder*)coder NS_UNAVAILABLE;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_UI_ACTUATION_WORKLOG_VIEW_CONTROLLER_H_

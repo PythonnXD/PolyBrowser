@@ -1,0 +1,23 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://www.w3.org/TR/css-pseudo-4/#CSSPseudoElement-interface
+
+[
+    RuntimeEnabled=CSSPseudoElementInterface,
+    Exposed=Window
+]
+interface CSSPseudoElement {
+    readonly attribute CSSOMString type;
+    readonly attribute Element element;
+    readonly attribute (Element or CSSPseudoElement) parent;
+    [RuntimeEnabled=CSSPseudoElementSelectorText] readonly attribute CSSOMString selectorText;
+    CSSPseudoElement? pseudo(CSSOMString type);
+    [RuntimeEnabled=SequentialFocusPrimitives] undefined focus(optional FocusOptions options = {});
+    [RuntimeEnabled=SequentialFocusPrimitives] Focusable? nextFocusable();
+    [RuntimeEnabled=SequentialFocusPrimitives] Focusable? previousFocusable();
+};
+
+[RuntimeEnabled=GeometryUtilsForCSSPseudoElement]
+CSSPseudoElement includes GeometryUtils;

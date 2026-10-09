@@ -1,0 +1,876 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome://resources/cr_components/searchbox/searchbox_input.js';
+
+import {createSearchMatchForTesting, SearchboxBrowserProxy} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import type {SearchboxInputElement} from 'chrome://resources/cr_components/searchbox/searchbox_input.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import {KeywordType, UrlDeemphasisMode} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import {assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+import {assertIconMaskImageUrl, createClipboardEvent, createUrlMatch} from './searchbox_test_utils.js';
+import {TestSearchboxBrowserProxy} from './test_searchbox_browser_proxy.js';
+
+async function createInput(properties: Partial<SearchboxInputElement> = {}):
+    Promise<SearchboxInputElement> {
+  document.body.innerHTML = window.trustedTypes!.emptyHTML;
+  const input = document.createElement('cr-searchbox-input');
+  Object.assign(input, {placeholderText: 'Search'}, properties);
+  document.body.appendChild(input);
+  await input.updateComplete;
+  return input;
+}
+
+suite('SearchboxInputTest', () => {
+  let input: SearchboxInputElement;
+  let testProxy: TestSearchboxBrowserProxy;
+
+  setup(() => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    testProxy = new TestSearchboxBrowserProxy();
+    SearchboxBrowserProxy.setInstance(testProxy);
+  });
+
+  test('default loupe icon', async () => {
+    loadTimeData.resetForTesting({
+      isLensSearchbox: false,
+      isTopChromeSearchbox: false,
+    });
+    input = await createInput(
+        {searchboxIcon: 'search.svg', placeholderText: 'Search'});
+    assertIconMaskImageUrl(input.$.icon, 'search.svg');
+    assertEquals('true', input.$.icon.getAttribute('aria-hidden'));
+  });
+
+  test('Lens searchbox icon has aria-hidden', async () => {
+    loadTimeData.resetForTesting({
+      isLensSearchbox: true,
+      isTopChromeSearchbox: false,
+    });
+    input = await createInput({
+      searchboxIcon:
+          '//resources/cr_components/searchbox/icons/google_g_gradient.svg',
+      placeholderText: 'Search',
+    });
+    assertEquals('true', input.$.icon.getAttribute('aria-hidden'));
+    assertEquals('true', input.$.icon.$.container.getAttribute('aria-hidden'));
+  });
+
+  test('Copying or cutting empty input fails', async () => {
+    input = await createInput();
+    input.inputElement.value = '';
+
+    const copyEvent = createClipboardEvent('copy');
+    input.inputElement.dispatchEvent(copyEvent);
+    assertFalse(copyEvent.defaultPrevented);
+
+    const cutEvent = createClipboardEvent('cut');
+    input.inputElement.dispatchEvent(cutEvent);
+    assertFalse(cutEvent.defaultPrevented);
+  });
+
+  test('Copying or cutting search match fails', async () => {
+    input = await createInput();
+    input.setInput({text: 'hello ', inline: 'world'});
+    input.selectedMatch = createSearchMatchForTesting({
+      allowedToBeDefaultMatch: true,
+      inlineAutocompletion: 'world',
+    });
+    input.inputHasMatches = true;
+
+    assertEquals('hello world', input.inputElement.value);
+
+    // Select the entire input.
+    input.setSelectionRange(0, input.inputElement.value.length);
+
+    const copyEvent = createClipboardEvent('copy');
+    input.inputElement.dispatchEvent(copyEvent);
+    assertFalse(copyEvent.defaultPrevented);
+
+    const cutEvent = createClipboardEvent('cut');
+    input.inputElement.dispatchEvent(cutEvent);
+    assertFalse(cutEvent.defaultPrevented);
+  });
+
+  test('Copying or cutting URL match succeeds', async () => {
+    input = await createInput();
+    input.setInput({text: 'hello', inline: 'world.com'});
+    input.selectedMatch = createUrlMatch({
+      allowedToBeDefaultMatch: true,
+      inlineAutocompletion: 'world.com',
+    });
+    input.inputHasMatches = true;
+
+    assertEquals('helloworld.com', input.inputElement.value);
+
+    const copyEvent = createClipboardEvent('copy');
+    input.inputElement.dispatchEvent(copyEvent);
+    assertFalse(copyEvent.defaultPrevented);
+
+    const cutEvent = createClipboardEvent('cut');
+    input.inputElement.dispatchEvent(cutEvent);
+    assertFalse(cutEvent.defaultPrevented);
+
+    // Select the entire input.
+    input.setSelectionRange(0, input.inputElement.value.length);
+
+    let textUpdatedEventCount = 0;
+    input.addEventListener('searchbox-input-text-updated', () => {
+      textUpdatedEventCount++;
+    });
+
+    input.inputElement.dispatchEvent(copyEvent);
+    assertTrue(copyEvent.defaultPrevented);
+    assertEquals(
+        'https://helloworld.com/',
+        copyEvent.clipboardData!.getData('text/plain'));
+    assertEquals(0, textUpdatedEventCount);
+
+    input.inputElement.dispatchEvent(cutEvent);
+    assertTrue(cutEvent.defaultPrevented);
+    assertEquals(
+        'https://helloworld.com/',
+        cutEvent.clipboardData!.getData('text/plain'));
+
+    // Cut should update the text to empty.
+    assertEquals(1, textUpdatedEventCount);
+    assertEquals('', input.inputElement.value);
+  });
+
+  test('Tabbing or clicking fires event', async () => {
+    input = await createInput();
+    input.inputElement.value = 'hello';
+
+    let eventCount = 0;
+    let eventValue = '';
+    input.addEventListener('input-focus-changed', (e: Event) => {
+      eventCount++;
+      eventValue = (e as CustomEvent<{value: string}>).detail.value;
+    });
+
+    const mousedownEvent = new MouseEvent('mousedown', {button: 0});
+    input.inputElement.dispatchEvent(mousedownEvent);
+    assertEquals(
+        1, eventCount, 'Expected one event to be fired after mousedown');
+    assertEquals('hello', eventValue);
+
+    const mousedownEventRightClick = new MouseEvent('mousedown', {button: 1});
+    input.inputElement.dispatchEvent(mousedownEventRightClick);
+    assertEquals(
+        1, eventCount, 'Expected one event to be fired after right-click');
+
+    const keyupEvent = new KeyboardEvent('keyup', {key: 'Tab'});
+    input.inputElement.dispatchEvent(keyupEvent);
+    assertEquals(2, eventCount);
+    assertEquals('hello', eventValue);
+
+    const keyupEventOther = new KeyboardEvent('keyup', {key: 'Enter'});
+    input.inputElement.dispatchEvent(keyupEventOther);
+    assertEquals(2, eventCount);
+  });
+
+  test('input text appears on page call from browser', async () => {
+    input = await createInput();
+    assertEquals(input.inputElement.value, '');
+
+    let textUpdatedEventCount = 0;
+    input.addEventListener('searchbox-input-text-updated', () => {
+      textUpdatedEventCount++;
+    });
+
+    testProxy.callbackRouterRemote.setInputText('Hello');
+    await microtasksFinished();
+
+    assertEquals(input.inputElement.value, 'Hello');
+    assertEquals(0, textUpdatedEventCount);
+  });
+
+  test('Pasting file fires event', async () => {
+    input = await createInput({allowFilePaste: true});
+
+    let eventCount = 0;
+    let eventFiles: FileList|null = null;
+    input.addEventListener('searchbox-input-files-pasted', (e: Event) => {
+      eventCount++;
+      eventFiles = (e as CustomEvent<{files: FileList}>).detail.files;
+    });
+
+    const file = new File([''], 'test.png', {type: 'image/png'});
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    const pasteEvent = new ClipboardEvent('paste', {
+      clipboardData: dataTransfer,
+      cancelable: true,
+    });
+
+    input.inputElement.dispatchEvent(pasteEvent);
+    assertTrue(pasteEvent.defaultPrevented);
+    assertEquals(1, eventCount);
+    assertTrue(!!eventFiles);
+    assertEquals(1, (eventFiles as unknown as FileList).length);
+    assertEquals('test.png', (eventFiles as unknown as FileList)[0]!.name);
+  });
+
+  test('Typing over inline autocompletion', async () => {
+    loadTimeData.overrideValues({
+      reportMetrics: false,
+    });
+    input = await createInput();
+    input.setInput({text: 'hel', inline: 'lo'});
+
+    let textUpdatedEventCount = 0;
+    let textUpdatedValue = '';
+    input.addEventListener('searchbox-input-text-updated', (e: Event) => {
+      textUpdatedEventCount++;
+      textUpdatedValue = (e as CustomEvent<{value: string}>).detail.value;
+    });
+
+    // Press 'l' which is the next char in inline autocompletion 'lo'.
+    const keydownEvent = new KeyboardEvent('keydown', {
+      key: 'l',
+      cancelable: true,
+    });
+    input.inputElement.dispatchEvent(keydownEvent);
+
+    assertTrue(keydownEvent.defaultPrevented);
+    assertEquals(1, textUpdatedEventCount);
+    assertEquals('hell', textUpdatedValue);
+    assertEquals('hello', input.inputElement.value);
+
+    // The selection should now highlight 'o'.
+    assertEquals(4, input.inputElement.selectionStart);
+    assertEquals(5, input.inputElement.selectionEnd);
+  });
+
+  test('allows empty string placeholder without fallback', async () => {
+    // Set `placeholderText` to empty string.
+    input = await createInput({placeholderText: ''});
+    assertEquals('', input.inputElement.placeholder);
+
+    // Update `placeholderText` dynamically.
+    input.placeholderText = 'Updated Search';
+    await input.updateComplete;
+    assertEquals('Updated Search', input.inputElement.placeholder);
+
+    // Reset `placeholderText` to empty string'', to suppress it again.
+    input.placeholderText = '';
+    await input.updateComplete;
+    assertEquals('', input.inputElement.placeholder);
+  });
+
+  test('Fires searchbox-input-pasted event on paste', async () => {
+    input = await createInput();
+
+    let pasteEventCount = 0;
+    input.addEventListener('searchbox-input-pasted', () => {
+      pasteEventCount++;
+    });
+
+    const pasteEvent = createClipboardEvent('paste');
+    input.inputElement.dispatchEvent(pasteEvent);
+    await microtasksFinished();
+
+    assertEquals(1, pasteEventCount);
+  });
+
+  test('Keyword mode displays generic keyword search loupe', async () => {
+    loadTimeData.resetForTesting({
+      isLensSearchbox: false,
+      isTopChromeSearchbox: false,
+    });
+    input = await createInput({
+      searchboxIcon: 'google_g.svg',
+    });
+
+    // Enter keyword mode.
+    input.inputKeywordModel = {
+      type: KeywordType.kInKeyword,
+      keyword: '@bookmarks',
+      displayText: 'Search Bookmarks',
+      iconPath: '',
+      placeholder: '',
+    };
+    // Even if a URL match with a destination URL is selected, keyword mode
+    // should use the generic search loupe rather than the match's favicon.
+    input.selectedMatch = createUrlMatch({
+      destinationUrl: 'https://youtube.com/',
+    });
+    await input.updateComplete;
+    await input.$.icon.updateComplete;
+
+    assertTrue(input.$.icon.inKeywordMode);
+    assertEquals(
+        '//resources/cr_components/searchbox/icons/search_cr23.svg',
+        input.$.icon.defaultIcon);
+    assertIconMaskImageUrl(
+        input.$.icon,
+        '//resources/cr_components/searchbox/icons/search_cr23.svg');
+    assertFalse(isVisible(input.$.icon.$.faviconImage));
+  });
+
+  test('Keyword mode displays custom keyword icon if set', async () => {
+    loadTimeData.resetForTesting({
+      isLensSearchbox: false,
+      isTopChromeSearchbox: false,
+    });
+    input = await createInput({
+      searchboxIcon: 'google_g.svg',
+    });
+
+    // Enter keyword mode with custom icon path (e.g. @gemini).
+    input.inputKeywordModel = {
+      type: KeywordType.kInKeyword,
+      keyword: '@gemini',
+      displayText: 'Gemini',
+      iconPath: '//resources/cr_components/searchbox/icons/spark.svg',
+      placeholder: '',
+    };
+    await input.updateComplete;
+    await input.$.icon.updateComplete;
+
+    assertTrue(input.$.icon.inKeywordMode);
+    assertEquals(
+        '//resources/cr_components/searchbox/icons/spark.svg',
+        input.$.icon.defaultIcon);
+    assertIconMaskImageUrl(
+        input.$.icon, '//resources/cr_components/searchbox/icons/spark.svg');
+    assertFalse(isVisible(input.$.icon.$.faviconImage));
+  });
+
+  test('Exiting keyword mode restores default icon', async () => {
+    loadTimeData.resetForTesting({
+      isLensSearchbox: false,
+      isTopChromeSearchbox: false,
+    });
+    input = await createInput({
+      searchboxIcon: 'google_g.svg',
+    });
+
+    input.inputKeywordModel = {
+      type: KeywordType.kInKeyword,
+      keyword: '@bookmarks',
+      displayText: 'Search Bookmarks',
+      iconPath: '',
+      placeholder: '',
+    };
+    await input.updateComplete;
+    await input.$.icon.updateComplete;
+    assertTrue(input.$.icon.inKeywordMode);
+    assertIconMaskImageUrl(
+        input.$.icon,
+        '//resources/cr_components/searchbox/icons/search_cr23.svg');
+
+    // Exit keyword mode.
+    input.inputKeywordModel = null;
+    await input.updateComplete;
+    await input.$.icon.updateComplete;
+
+    assertFalse(input.$.icon.inKeywordMode);
+    assertEquals('google_g.svg', input.$.icon.defaultIcon);
+  });
+
+  test('Keyword mode displays keyword placeholder', async () => {
+    input = await createInput({placeholderText: 'Default Search'});
+    assertEquals('Default Search', input.inputElement.placeholder);
+    assertFalse(input.hasAttribute('in-keyword-mode'));
+
+    // Enter keyword mode with placeholder.
+    input.inputKeywordModel = {
+      type: KeywordType.kInKeyword,
+      keyword: '@bookmarks',
+      displayText: 'Search Bookmarks',
+      iconPath: '',
+      placeholder: 'Search Bookmarks',
+    };
+    await input.updateComplete;
+
+    assertTrue(input.hasAttribute('in-keyword-mode'));
+    assertEquals('Search Bookmarks', input.inputElement.placeholder);
+
+    // Enter keyword mode with empty placeholder -> placeholder becomes empty
+    // string.
+    input.inputKeywordModel = {
+      type: KeywordType.kInKeyword,
+      keyword: '@bookmarks',
+      displayText: 'Search Bookmarks',
+      iconPath: '',
+      placeholder: '',
+    };
+    await input.updateComplete;
+
+    assertTrue(input.hasAttribute('in-keyword-mode'));
+    assertEquals('', input.inputElement.placeholder);
+
+    // Exit keyword mode restores default placeholder.
+    input.inputKeywordModel = null;
+    await input.updateComplete;
+
+    assertFalse(input.hasAttribute('in-keyword-mode'));
+    assertEquals('Default Search', input.inputElement.placeholder);
+  });
+
+  test(
+      'singleLineOnInlineAutocomplete and force-single-line with show-ellipsis',
+      async () => {
+        input = await createInput({
+          multiLineEnabled: true,
+          singleLineOnInlineAutocomplete: true,
+        });
+        input.focus();
+        assertTrue(input.singleLineOnInlineAutocomplete);
+        assertFalse(input.isMultiline());
+        assertFalse(input.hasAttribute('force-single-line'));
+        assertFalse(input.hasAttribute('show-ellipsis'));
+
+        Object.defineProperty(input.inputElement, 'clientWidth', {
+          get: () => 200,
+          configurable: true,
+        });
+        let mockScrollWidth = 300;
+        Object.defineProperty(input.inputElement, 'scrollWidth', {
+          get: () => mockScrollWidth,
+          configurable: true,
+        });
+
+        input.setInput({text: 'm', inline: 'essages.google.com'});
+        await input.updateComplete;
+
+        assertTrue(input.hasAttribute('force-single-line'));
+        assertTrue(input.hasAttribute('show-ellipsis'));
+        assertEquals('messages.google.com', input.inputElement.value);
+        assertEquals(
+            'clip', window.getComputedStyle(input.inputElement).textOverflow);
+        const ellipsisIndicator =
+            input.shadowRoot.querySelector<HTMLElement>('#ellipsisIndicator');
+        assertTrue(!!ellipsisIndicator);
+        assertEquals(
+            'block', window.getComputedStyle(ellipsisIndicator).display);
+
+        // Moving caret into the middle of text clears inline autocomplete and
+        // force-single-line mode.
+        input.setSelectionRange(5, 5);
+        document.dispatchEvent(new Event('selectionchange'));
+        await input.updateComplete;
+        assertFalse(input.hasAttribute('force-single-line'));
+        assertFalse(input.hasAttribute('show-ellipsis'));
+        assertEquals(
+            'clip', window.getComputedStyle(input.inputElement).textOverflow);
+        assertEquals(
+            'none', window.getComputedStyle(ellipsisIndicator).display);
+
+        // Setting inline autocomplete again.
+        input.setInput({text: 'm', inline: 'essages.google.com'});
+        await input.updateComplete;
+        assertTrue(input.hasAttribute('force-single-line'));
+        assertTrue(input.hasAttribute('show-ellipsis'));
+
+        // Moving caret to the end clears inline autocomplete and
+        // force-single-line mode.
+        input.setSelectionRange(
+            input.inputElement.value.length, input.inputElement.value.length);
+        document.dispatchEvent(new Event('selectionchange'));
+        await input.updateComplete;
+        assertFalse(input.hasAttribute('force-single-line'));
+        assertFalse(input.hasAttribute('show-ellipsis'));
+        assertEquals(
+            'clip', window.getComputedStyle(input.inputElement).textOverflow);
+
+        // Short inline autocomplete that fits within width (non-overflowing).
+        mockScrollWidth = 100;
+        input.setInput({text: 'm', inline: 'ail'});
+        await input.updateComplete;
+        assertTrue(input.hasAttribute('force-single-line'));
+        assertFalse(input.hasAttribute('show-ellipsis'));
+        assertEquals(
+            'ellipsis',
+            window.getComputedStyle(input.inputElement).textOverflow);
+        assertEquals(
+            'none', window.getComputedStyle(ellipsisIndicator).display);
+
+        input.setInput({text: 'm', inline: ''});
+        await input.updateComplete;
+
+        assertFalse(input.hasAttribute('force-single-line'));
+        assertFalse(input.hasAttribute('show-ellipsis'));
+        assertEquals(
+            'clip', window.getComputedStyle(input.inputElement).textOverflow);
+      });
+
+  test(
+      'isMatchPreview forces single line when user input is single line',
+      async () => {
+        input = await createInput({
+          multiLineEnabled: true,
+          singleLineOnInlineAutocomplete: true,
+        });
+        input.focus();
+
+        input.setInput({text: 'user query', inline: ''});
+        await input.updateComplete;
+        assertFalse(input.hasAttribute('force-single-line'));
+
+        // Simulating selecting a long suggestion match.
+        input.setInput({
+          text: 'user query that has a very long suggestion match',
+          inline: '',
+          isMatchPreview: true,
+        });
+        await input.updateComplete;
+
+        assertTrue(input.hasAttribute('force-single-line'));
+        assertFalse(input.hasAttribute('has-inline-selection'));
+        assertFalse(input.isMultiline());
+
+        // Navigating back to unselected user text.
+        input.setInput({
+          text: 'user query',
+          inline: '',
+          isMatchPreview: false,
+        });
+        await input.updateComplete;
+        assertFalse(input.hasAttribute('force-single-line'));
+
+        // Previewing match again.
+        input.setInput({
+          text: 'user query that has a very long suggestion match',
+          inline: '',
+          isMatchPreview: true,
+        });
+        await input.updateComplete;
+        assertTrue(input.hasAttribute('force-single-line'));
+
+        // Clicking in to edit the preview clears force-single-line.
+        input.setSelectionRange(5, 5);
+        document.dispatchEvent(new Event('selectionchange'));
+        await input.updateComplete;
+        assertFalse(input.hasAttribute('force-single-line'));
+      });
+
+  test(
+      'isMatchPreview does not force single line when user input was multiline',
+      async () => {
+        input = await createInput({
+          multiLineEnabled: true,
+          singleLineOnInlineAutocomplete: true,
+        });
+        input.focus();
+
+        input.setInput({text: 'first line\nsecond line', inline: ''});
+        await input.updateComplete;
+        assertFalse(input.hasAttribute('force-single-line'));
+
+        input.setInput({
+          text: 'some suggestion match',
+          inline: '',
+          isMatchPreview: true,
+        });
+        await input.updateComplete;
+
+        assertFalse(input.hasAttribute('force-single-line'));
+        Object.defineProperty(input.inputElement, 'scrollHeight', {
+          get: () => 64,
+          configurable: true,
+        });
+        assertTrue(input.isMultiline());
+      });
+
+  test('Emphasizes URL components in mirror element', async () => {
+    input = await createInput({urlEmphasisEnabled: true});
+    input.setInput({text: 'https://www.google.com/search?q=test', inline: ''});
+    input.urlEmphasis = {
+      textIsUrl: true,
+      deemphasisMode: UrlDeemphasisMode.kAllButHost,
+      schemeRange: {start: 0, end: 0},
+      hostRange: {start: 8, end: 22},
+      schemeStrikeThrough: false,
+      schemeDangerous: false,
+    };
+    await input.updateComplete;
+
+    const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+    assertTrue(!!mirror);
+    assertEquals('ltr', mirror.dir);
+    assertEquals('ltr', input.inputElement.dir);
+    const spans = mirror.querySelectorAll('span');
+    assertEquals(3, spans.length);
+
+    assertEquals('https://', spans[0]!.textContent);
+    assertTrue(spans[0]!.classList.contains('dimmed'));
+
+    assertEquals('www.google.com', spans[1]!.textContent);
+    assertFalse(spans[1]!.classList.contains('dimmed'));
+
+    assertEquals('/search?q=test', spans[2]!.textContent);
+    assertTrue(spans[2]!.classList.contains('dimmed'));
+  });
+
+
+  test(
+      'Emphasizes scheme with security dangerous and strikethrough styling',
+      async () => {
+        input = await createInput({urlEmphasisEnabled: true});
+        input.setInput({text: 'https://expired.badssl.com/', inline: ''});
+        input.urlEmphasis = {
+          textIsUrl: true,
+          deemphasisMode: UrlDeemphasisMode.kAllButHost,
+          schemeRange: {start: 0, end: 5},
+          hostRange: {start: 8, end: 26},
+          schemeStrikeThrough: true,
+          schemeDangerous: true,
+        };
+        await input.updateComplete;
+
+        const mirror = input.shadowRoot.querySelector('#mirror');
+        assertTrue(!!mirror);
+        const spans = mirror.querySelectorAll('span');
+        assertEquals(4, spans.length);
+
+        assertEquals('https', spans[0]!.textContent);
+        assertTrue(spans[0]!.classList.contains('dangerous'));
+        assertTrue(spans[0]!.classList.contains('strikethrough'));
+        assertFalse(spans[0]!.classList.contains('dimmed'));
+
+        assertEquals('://', spans[1]!.textContent);
+        assertTrue(spans[1]!.classList.contains('dimmed'));
+        assertFalse(spans[1]!.classList.contains('dangerous'));
+        assertFalse(spans[1]!.classList.contains('strikethrough'));
+
+        assertEquals('expired.badssl.com', spans[2]!.textContent);
+        assertFalse(spans[2]!.classList.contains('dimmed'));
+        assertEquals('/', spans[3]!.textContent);
+        assertTrue(spans[3]!.classList.contains('dimmed'));
+      });
+
+  test(
+      'Does not deemphasize user input in progress for search queries',
+      async () => {
+        input = await createInput({urlEmphasisEnabled: true});
+        input.setInput({text: 'search query text', inline: ''});
+        input.urlEmphasis = {
+          textIsUrl: false,
+          deemphasisMode: UrlDeemphasisMode.kNothing,
+          schemeRange: {start: 0, end: 0},
+          hostRange: {start: 0, end: 0},
+          schemeStrikeThrough: false,
+          schemeDangerous: false,
+        };
+        await input.updateComplete;
+
+        const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+        assertTrue(!!mirror);
+        assertEquals('auto', mirror.dir);
+        assertEquals('auto', input.inputElement.dir);
+        const spans = mirror.querySelectorAll('span');
+        assertEquals(1, spans.length);
+
+        assertEquals('search query text', spans[0]!.textContent);
+        assertFalse(spans[0]!.classList.contains('dimmed'));
+      });
+
+  test('Emphasizes data URL scheme in mirror element', async () => {
+    input = await createInput({urlEmphasisEnabled: true});
+    input.setInput({text: 'data:text/html,hello', inline: ''});
+    input.urlEmphasis = {
+      textIsUrl: true,
+      deemphasisMode: UrlDeemphasisMode.kAllButScheme,
+      schemeRange: {start: 0, end: 4},
+      hostRange: {start: 0, end: 0},
+      schemeStrikeThrough: false,
+      schemeDangerous: false,
+    };
+    await input.updateComplete;
+
+    const mirror = input.shadowRoot.querySelector('#mirror');
+    assertTrue(!!mirror);
+    const spans = mirror.querySelectorAll('span');
+    assertEquals(2, spans.length);
+
+    assertEquals('data', spans[0]!.textContent);
+    assertFalse(spans[0]!.classList.contains('dimmed'));
+
+    assertEquals(':text/html,hello', spans[1]!.textContent);
+    assertTrue(spans[1]!.classList.contains('dimmed'));
+  });
+
+  test(
+      'Styles only the inner scheme of view-source: URLs in mirror element',
+      async () => {
+        input = await createInput({urlEmphasisEnabled: true});
+        input.setInput(
+            {text: 'view-source:https://example.com/path', inline: ''});
+        input.urlEmphasis = {
+          textIsUrl: true,
+          deemphasisMode: UrlDeemphasisMode.kAllButHost,
+          schemeRange: {start: 12, end: 17},
+          hostRange: {start: 20, end: 31},
+          schemeStrikeThrough: true,
+          schemeDangerous: false,
+        };
+        await input.updateComplete;
+
+        const mirror = input.shadowRoot.querySelector('#mirror');
+        assertTrue(!!mirror);
+        const spans = mirror.querySelectorAll('span');
+        assertEquals(5, spans.length);
+
+        // The "view-source:" prefix is not part of the scheme range, so it
+        // gets the base (dimmed) style and no security styling.
+        assertEquals('view-source:', spans[0]!.textContent);
+        assertTrue(spans[0]!.classList.contains('dimmed'));
+        assertFalse(spans[0]!.classList.contains('strikethrough'));
+
+        assertEquals('https', spans[1]!.textContent);
+        assertFalse(spans[1]!.classList.contains('dimmed'));
+        assertTrue(spans[1]!.classList.contains('strikethrough'));
+
+        assertEquals('://', spans[2]!.textContent);
+        assertTrue(spans[2]!.classList.contains('dimmed'));
+
+        assertEquals('example.com', spans[3]!.textContent);
+        assertFalse(spans[3]!.classList.contains('dimmed'));
+
+        assertEquals('/path', spans[4]!.textContent);
+        assertTrue(spans[4]!.classList.contains('dimmed'));
+      });
+
+  test(
+      'Emphasizes only the inner data: scheme of view-source: URLs',
+      async () => {
+        input = await createInput({urlEmphasisEnabled: true});
+        input.setInput({text: 'view-source:data:text/html,hi', inline: ''});
+        input.urlEmphasis = {
+          textIsUrl: true,
+          deemphasisMode: UrlDeemphasisMode.kAllButScheme,
+          schemeRange: {start: 12, end: 16},
+          hostRange: null,
+          schemeStrikeThrough: false,
+          schemeDangerous: false,
+        };
+        await input.updateComplete;
+
+        const mirror = input.shadowRoot.querySelector('#mirror');
+        assertTrue(!!mirror);
+        const spans = mirror.querySelectorAll('span');
+        assertEquals(3, spans.length);
+
+        assertEquals('view-source:', spans[0]!.textContent);
+        assertTrue(spans[0]!.classList.contains('dimmed'));
+
+        assertEquals('data', spans[1]!.textContent);
+        assertFalse(spans[1]!.classList.contains('dimmed'));
+
+        assertEquals(':text/html,hi', spans[2]!.textContent);
+        assertTrue(spans[2]!.classList.contains('dimmed'));
+      });
+
+  test('Clears mirror element contents when input is empty', async () => {
+    input = await createInput({urlEmphasisEnabled: true});
+    input.setInput({text: 'https://example.com', inline: ''});
+    input.urlEmphasis = {
+      textIsUrl: true,
+      deemphasisMode: UrlDeemphasisMode.kAllButHost,
+      schemeRange: {start: 0, end: 5},
+      hostRange: {start: 8, end: 19},
+      schemeStrikeThrough: false,
+      schemeDangerous: false,
+    };
+    await input.updateComplete;
+
+    input.setInput({text: '', inline: ''});
+    await input.updateComplete;
+
+    const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+    assertTrue(!!mirror);
+    const spans = mirror.querySelectorAll('span');
+    assertEquals(0, spans.length);
+    assertEquals('', mirror.textContent);
+    assertEquals('', mirror.dir);
+    assertEquals('', input.inputElement.dir);
+  });
+
+  test(
+      'Renders non-URL text as undimmed single span matching Views Omnibox',
+      async () => {
+        input = await createInput({urlEmphasisEnabled: true});
+        input.setInput({text: 'exampleexampleexample', inline: ''});
+        input.urlEmphasis = null;
+        await input.updateComplete;
+
+        const mirror = input.shadowRoot.querySelector('#mirror');
+        assertTrue(!!mirror);
+        const spans = mirror.querySelectorAll('span');
+        assertEquals(1, spans.length);
+
+        assertEquals('exampleexampleexample', spans[0]!.textContent);
+        assertFalse(spans[0]!.classList.contains('dimmed'));
+      });
+
+  test('Mirror preserves whitespace like the underlying input', async () => {
+    input = await createInput({urlEmphasisEnabled: true});
+    const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+    assertTrue(!!mirror);
+
+    // The mirror must preserve whitespace and never wrap, matching how the
+    // <input> renders its value.
+    const mirrorStyle = window.getComputedStyle(mirror);
+    assertEquals(
+        'preserve', mirrorStyle.getPropertyValue('white-space-collapse'));
+    assertEquals('nowrap', mirrorStyle.getPropertyValue('text-wrap-mode'));
+
+    // Leading and consecutive spaces must take up space in the mirror (as they
+    // do in the <input>) so the visible text stays aligned with the caret.
+    input.setInput({text: 'foo bar', inline: ''});
+    await input.updateComplete;
+    const singleSpaced = mirror.querySelector('span');
+    assertTrue(!!singleSpaced);
+    const singleSpacedWidth = singleSpaced.getBoundingClientRect().width;
+
+    input.setInput({text: '  foo    bar', inline: ''});
+    await input.updateComplete;
+    const multiSpaced = mirror.querySelector('span');
+    assertTrue(!!multiSpaced);
+    assertEquals('  foo    bar', multiSpaced.textContent);
+    assertTrue(multiSpaced.getBoundingClientRect().width > singleSpacedWidth);
+  });
+
+  test('Clears urlEmphasis on setInput when value changes', async () => {
+    input = await createInput({urlEmphasisEnabled: true});
+    input.urlEmphasis = {
+      textIsUrl: true,
+      deemphasisMode: UrlDeemphasisMode.kAllButHost,
+      schemeRange: {start: 0, end: 8},
+      hostRange: {start: 8, end: 18},
+      schemeStrikeThrough: false,
+      schemeDangerous: false,
+    };
+    await input.updateComplete;
+
+    input.setInput({text: 'https://newurl.com', inline: ''});
+    assertEquals(null, input.urlEmphasis);
+  });
+
+  test(
+      'Does not clear urlEmphasis on setInput if value does not change',
+      async () => {
+        input = await createInput({urlEmphasisEnabled: true});
+        input.setInput({text: 'https://newurl.com', inline: ''});
+        await input.updateComplete;
+
+        input.urlEmphasis = {
+          textIsUrl: true,
+          deemphasisMode: UrlDeemphasisMode.kAllButHost,
+          schemeRange: {start: 0, end: 8},
+          hostRange: {start: 8, end: 18},
+          schemeStrikeThrough: false,
+          schemeDangerous: false,
+        };
+        await input.updateComplete;
+
+        // Calling setInput() with identical full value.
+        input.setInput({text: 'https://newurl.com', inline: ''});
+        assertNotEquals(null, input.urlEmphasis);
+      });
+});

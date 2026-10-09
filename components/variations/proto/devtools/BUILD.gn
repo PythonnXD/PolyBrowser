@@ -1,0 +1,40 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//third_party/node/node.gni")
+
+# This target generates the ClientVariations proto parser for Dev Tools.
+node("client_variations_js") {
+  script = "update_client_variations.py"
+
+  # The generated TS proto file
+  proto_ts_file =
+      "$root_gen_dir/tsproto/components/variations/proto/client_variations.ts"
+
+  inputs = [
+    "//third_party/node/node_modules/@rollup/wasm-node/dist/bin/rollup",
+    "//third_party/node/node_modules/@rollup/wasm-node/dist/wasm-node/bindings_wasm_bg.wasm",
+    "//third_party/node/node_modules/terser/bin/terser",
+    "client_variations_uncompiled.ts",
+    "rollup_plugin.mjs",
+    proto_ts_file,
+  ]
+
+  outputs = [ "$target_gen_dir/client_variations.js" ]
+
+  deps = [ "..:client_variations_proto_gen" ]
+
+  args = [
+    "--parser-ts",
+    rebase_path("client_variations_uncompiled.ts", root_build_dir),
+    "--proto-ts",
+    rebase_path(proto_ts_file, root_build_dir),
+    "--out-js",
+    rebase_path(outputs[0], root_build_dir),
+  ]
+}
+
+group("devtools") {
+  public_deps = [ ":client_variations_js" ]
+}

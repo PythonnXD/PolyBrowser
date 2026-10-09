@@ -1,0 +1,60 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// This file is generated from:
+{%- for path in source_json_files %}
+//   {{ path }}
+{%- endfor %}
+
+#include "{{ out_file_path.split('gen/')[1] | replace('.cc', '.h') }}"
+
+#include <algorithm>
+
+namespace file_types_data {
+
+namespace {
+
+struct ExtensionToMime {
+  std::string_view extension;
+  std::string_view mime;
+};
+
+// Sorted by extension for binary search.
+constexpr ExtensionToMime kExtensionToMime[] = {
+{%- for extension, mime in extension_mime_pairs %}
+  {"{{ extension }}", "{{ mime }}"},
+{%- endfor %}
+};
+static_assert(std::ranges::is_sorted(kExtensionToMime, {},
+                                     &ExtensionToMime::extension));
+
+// Sorted for binary search.
+constexpr std::string_view kDocumentMimeTypes[] = {
+{%- for mime in document_mime_types %}
+  "{{ mime }}",
+{%- endfor %}
+};
+static_assert(std::ranges::is_sorted(kDocumentMimeTypes));
+
+}  // namespace
+
+std::optional<std::string_view> GetMimeTypeForExtension(
+    std::string_view extension) {
+  const auto* it = std::ranges::lower_bound(kExtensionToMime, extension, {},
+                                            &ExtensionToMime::extension);
+  if (it == std::ranges::end(kExtensionToMime) || it->extension != extension) {
+    return std::nullopt;
+  }
+  return it->mime;
+}
+
+base::span<const std::string_view> GetDocumentMimeTypes() {
+  return kDocumentMimeTypes;
+}
+
+bool IsDocumentMimeType(std::string_view mime_type) {
+  return std::ranges::binary_search(kDocumentMimeTypes, mime_type);
+}
+
+}  // namespace file_types_data

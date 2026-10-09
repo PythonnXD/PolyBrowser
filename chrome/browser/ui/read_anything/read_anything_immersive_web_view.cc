@@ -1,0 +1,95 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/read_anything/read_anything_immersive_web_view.h"
+
+#include <utility>
+
+#include "chrome/browser/ui/read_anything/read_anything_controller.h"
+#include "chrome/browser/ui/read_anything/read_anything_enums.h"
+#include "components/find_in_page/find_tab_helper.h"
+#include "components/input/native_web_keyboard_event.h"
+#include "content/public/browser/context_menu_params.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+
+ReadAnythingImmersiveWebView::ReadAnythingImmersiveWebView(
+    base::OnceClosure on_show_ui_callback,
+    std::unique_ptr<WebUIContentsWrapperT<ReadAnythingUntrustedUI>>
+        contents_wrapper)
+    : on_show_ui_callback_(std::move(on_show_ui_callback)),
+      contents_wrapper_(std::move(contents_wrapper)) {
+  SetWebContents(contents_wrapper_->web_contents());
+  contents_wrapper_->SetHost(weak_factory_.GetWeakPtr());
+}
+
+ReadAnythingImmersiveWebView::~ReadAnythingImmersiveWebView() = default;
+
+bool ReadAnythingImmersiveWebView::HandleContextMenu(
+    content::RenderFrameHost& render_frame_host,
+    const content::ContextMenuParams& params) {
+  return false;
+}
+
+// content::WebContentsDelegate:
+// This is called when the WebContents wants to open a link in a new tab,
+// such as with the "Search Google for" context menu option. We forward the
+// request to the main browser window to handle the navigation.
+content::WebContents* ReadAnythingImmersiveWebView::OpenURLFromTab(
+    content::WebContents* source,
+    const content::OpenURLParams& params,
+    base::OnceCallback<void(content::NavigationHandle&)>
+        navigation_handle_callback) {
+  auto* glue = ReadAnythingControllerGlue::FromWebContents(web_contents());
+  if (glue && glue->controller()) {
+    return glue->controller()->OpenURLFromTab(
+        source, params, std::move(navigation_handle_callback));
+  }
+  return nullptr;
+}
+
+bool ReadAnythingImmersiveWebView::HandleKeyboardEvent(
+    content::WebContents* source,
+    const input::NativeWebKeyboardEvent& event) {
+  auto* glue = ReadAnythingControllerGlue::FromWebContents(web_contents());
+  if (glue && glue->controller() &&
+      glue->controller()->HandleEscapeKey(event)) {
+    return true;
+  }
+  // Call the unhandled keyboard event handler to allow for default handling
+  // and propagation.
+  return unhandled_keyboard_event_handler_.HandleKeyboardEvent(
+      event, GetFocusManager());
+}
+
+std::unique_ptr<WebUIContentsWrapperT<ReadAnythingUntrustedUI>>
+ReadAnythingImmersiveWebView::TakeContentsWrapper() {
+  SetWebContents(nullptr);  // This is necessary to reset the web contents.
+  contents_wrapper_->SetHost(nullptr);
+  SetVisible(false);
+  return std::move(contents_wrapper_);
+}
+
+// WebUIContentsWrapper::Host:
+// Called by the WebUI on its embedder (this class) when the WebUI is ready to
+// be shown.
+void ReadAnythingImmersiveWebView::ShowUI() {
+  // Call SetVisible before running on_show_ui_callback_, in case the callback
+  // relies on the visibility of the view.
+  SetVisible(true);
+  if (on_show_ui_callback_) {
+    std::move(on_show_ui_callback_).Run();
+  }
+}
+
+// Called by the WebUI on its embedder (this class) when the WebUI is ready to
+// be closed.
+void ReadAnythingImmersiveWebView::CloseUI() {
+  // This currently does not do anything and is never called because the
+  // ReadAnythingController is currently the one that owns the WebUI by the time
+  // it is closed.
+}
+
+BEGIN_METADATA(ReadAnythingImmersiveWebView)
+END_METADATA

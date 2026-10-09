@@ -1,0 +1,67 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("model") {
+  sources = [
+    "ttc_backend.h",
+    "ttc_conversation.h",
+    "ttc_conversation.mm",
+    "ttc_conversation_delegate.h",
+    "ttc_error_codes.h",
+    "ttc_error_codes.mm",
+    "ttc_keyed_service.h",
+    "ttc_keyed_service.mm",
+    "ttc_keyed_service_factory.h",
+    "ttc_keyed_service_factory.mm",
+    "ttc_session_controller.h",
+    "ttc_session_controller.mm",
+    "ttc_session_controller_observer.h",
+    "ttc_states.h",
+    "ttc_websocket_backend+Testing.h",
+    "ttc_websocket_backend.h",
+    "ttc_websocket_backend.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//ios/chrome/browser/ai_prototyping/ttc/model/audio",
+    "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/model/profile:profile_keyed_service_factory",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/public/provider/chrome/browser/intelligence:intelligence_api",
+    "//url",
+  ]
+  frameworks = [
+    "Foundation.framework",
+    "UIKit.framework",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "ttc_conversation_unittest.mm",
+    "ttc_keyed_service_unittest.mm",
+    "ttc_session_controller_unittest.mm",
+    "ttc_websocket_backend_unittest.mm",
+  ]
+  deps = [
+    ":model",
+    "//base",
+    "//base/test:test_support",
+    "//components/keyed_service/core",
+    "//ios/chrome/browser/ai_prototyping/ttc/model/audio",
+    "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/test/providers/intelligence",
+    "//ios/public/provider/chrome/browser/intelligence:intelligence_api",
+    "//ios/web/public/test",
+    "//testing/gtest",
+    "//third_party/ocmock",
+  ]
+  frameworks = [
+    "Foundation.framework",
+    "UIKit.framework",
+  ]
+}
