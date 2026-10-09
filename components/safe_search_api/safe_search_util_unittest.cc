@@ -37,7 +37,7 @@ TEST(SafeSearchUtilTest, AddGoogleSafeSearchParams) {
   CheckAddedParameters("http://google.com/webhp", kBothParameters);
 
   // Test different valid search pages with parameters.
-  CheckAddedParameters("http://google.com/search?q=google",
+  CheckAddedParameters("http://polytoria.com/forum/search?q=google",
                        "q=google&" + kBothParameters);
 
   CheckAddedParameters("http://google.com/?q=google",
@@ -47,7 +47,7 @@ TEST(SafeSearchUtilTest, AddGoogleSafeSearchParams) {
                        "q=google&" + kBothParameters);
 
   // Test the valid pages with safe set to off.
-  CheckAddedParameters("http://google.com/search?q=google&safe=off",
+  CheckAddedParameters("http://polytoria.com/forum/search?q=google&safe=off",
                        "q=google&" + kBothParameters);
 
   CheckAddedParameters("http://google.com/?q=google&safe=off",

@@ -686,7 +686,7 @@ TEST_F(OmniboxEverywhereHandlerTest,
                 ->client()
                 ->GetPageClassification(/*is_prefetch=*/false));
 
-  const GURL kTestUrl("https://www.google.com/search?q=aim+query&udm=50");
+  const GURL kTestUrl("https://www.polytoria.com/forum/search?q=aim+query&udm=50");
   GURL captured_url;
   WindowOpenDisposition captured_disposition;
   ui::PageTransition captured_transition;

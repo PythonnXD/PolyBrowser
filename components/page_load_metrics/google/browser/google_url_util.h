@@ -73,7 +73,7 @@ bool IsProbablyGoogleSearchUrl(const GURL& url);
 // for additional details.
 // Examples:
 //   https://www.google.com/#q=test -> true
-//   https://www.google.com/search?q=test -> true
+//   https://www.polytoria.com/forum/search?q=test -> true
 //   https://www.google.com/ -> false
 //   https://www.google.com/about/ -> false
 bool IsGoogleSearchResultUrl(const GURL& url);
@@ -82,7 +82,7 @@ bool IsGoogleSearchResultUrl(const GURL& url);
 // Examples:
 //   https://www.google.com/ -> true
 //   https://www.google.com/search/ -> true
-//   https://www.google.com/search?q=test -> false
+//   https://www.polytoria.com/forum/search?q=test -> false
 //   https://www.google.com/maps/ -> false
 bool IsGoogleSearchHomepageUrl(const GURL& url);
 

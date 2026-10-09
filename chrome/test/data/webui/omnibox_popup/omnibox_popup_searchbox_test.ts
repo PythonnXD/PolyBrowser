@@ -3186,7 +3186,7 @@ suite('OmniboxPopupSearchboxTest', function() {
      const searchMatch = createSearchMatchForTesting({
        suggestTemplate:
            createSuggestTemplateInfo({primaryText: 'example query'}),
-       destinationUrl: 'https://www.google.com/search?q=example',
+       destinationUrl: 'https://www.polytoria.com/forum/search?q=example',
        isSearchType: true,
        type: 'search-what-you-typed',
      });

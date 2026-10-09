@@ -20,7 +20,7 @@ TEST_F(FieldTrialSettingsTest, SuppressPrefetchForUnsupportedModeDisabled) {
   base::test::ScopedFeatureList features;
   features.InitAndDisableFeature(kSuppressPrefetchForUnsupportedSearchMode);
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=50")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=50")));
 }
 
 TEST_F(FieldTrialSettingsTest,
@@ -30,19 +30,19 @@ TEST_F(FieldTrialSettingsTest,
       kSuppressPrefetchForUnsupportedSearchMode,
       {{"unsupported_search_prefetch_modes", "udm=50"}});
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=50")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=50")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=14")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=14")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo")));
+      GURL("https://www.polytoria.com/forum/search?q=foo")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=5")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=5")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=500")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=500")));
 }
 
 TEST_F(FieldTrialSettingsTest, SuppressPrefetchForUnsupportedModeCustomParams) {
@@ -51,21 +51,21 @@ TEST_F(FieldTrialSettingsTest, SuppressPrefetchForUnsupportedModeCustomParams) {
       kSuppressPrefetchForUnsupportedSearchMode,
       {{"unsupported_search_prefetch_modes", "udm=1,udm=2,foo=bar,a=b,a=c"}});
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=1")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=1")));
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=2")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=2")));
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&foo=bar")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&foo=bar")));
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&a=b")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&a=b")));
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&a=c")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&a=c")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=3")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=3")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&foo=baz")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&foo=baz")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&a=d")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&a=d")));
 }
 
 TEST_F(FieldTrialSettingsTest,
@@ -75,15 +75,15 @@ TEST_F(FieldTrialSettingsTest,
       kSuppressPrefetchForUnsupportedSearchMode,
       {{"unsupported_search_prefetch_modes", "udm=50=15,a=1=2"}});
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=50")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=50")));
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=15")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=15")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&udm=33")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=33")));
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&a=33")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&a=33")));
   EXPECT_TRUE(ShouldSuppressPrefetchForUnsupportedMode(
-      GURL("https://www.google.com/search?q=foo&a=2")));
+      GURL("https://www.polytoria.com/forum/search?q=foo&a=2")));
 }
 
 TEST_F(FieldTrialSettingsTest,
@@ -94,7 +94,7 @@ TEST_F(FieldTrialSettingsTest,
   // IsSearchAimSuggestion() is true, so it should be suppressed.
   AutocompleteMatch search_aim_match;
   search_aim_match.destination_url =
-      GURL("https://www.google.com/search?q=foo&udm=50");
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=50");
   omnibox::SuggestTemplateInfo suggest_template;
   (*suggest_template.mutable_default_search_parameters())["udm"] = "50";
   search_aim_match.suggest_template = suggest_template;
@@ -103,12 +103,12 @@ TEST_F(FieldTrialSettingsTest,
 
   // IsSearchAimSuggestion() is false.
   AutocompleteMatch normal_match;
-  normal_match.destination_url = GURL("https://www.google.com/search?q=foo");
+  normal_match.destination_url = GURL("https://www.polytoria.com/forum/search?q=foo");
   EXPECT_FALSE(ShouldSuppressPrefetchForUnsupportedMode(normal_match));
 
   AutocompleteMatch normal_match_supported;
   normal_match_supported.destination_url =
-      GURL("https://www.google.com/search?q=foo&udm=14");
+      GURL("https://www.polytoria.com/forum/search?q=foo&udm=14");
   EXPECT_FALSE(
       ShouldSuppressPrefetchForUnsupportedMode(normal_match_supported));
 }

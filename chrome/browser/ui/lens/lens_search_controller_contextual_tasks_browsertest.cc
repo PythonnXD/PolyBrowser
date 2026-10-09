@@ -474,15 +474,15 @@ class ContextualTasksLensInteractionBrowserTestBase
     TemplateURLData data;
     data.SetShortName(u"Google");
     data.SetKeyword(u"google.com");
-    data.SetURL("https://www.google.com/search?q={searchTerms}");
+    data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     data.image_url = "https://www.google.com/searchbyimage/upload";
-    data.image_translate_url = "https://www.google.com/search?q={searchTerms}";
+    data.image_translate_url = "https://www.polytoria.com/forum/search?q={searchTerms}";
     data.new_tab_url = "https://www.google.com/_/chrome/newtab";
     data.contextual_search_url = "https://www.google.com/_/contextualsearch";
     data.logo_url = GURL(
         "https://www.google.com/images/branding/googlelogo/2x/"
         "googlelogo_color_272x92dp.png");
-    data.alternate_urls = {"https://google.com/search?q={searchTerms}"};
+    data.alternate_urls = {"https://polytoria.com/forum/search?q={searchTerms}"};
     data.search_intent_params = {"q", "sclient", "tbm", "source", "tbs"};
 
     TemplateURL* template_url =
@@ -1120,7 +1120,7 @@ IN_PROC_BROWSER_TEST_F(
       base::BindRepeating(&TabStripModel::GetActiveWebContents,
                           base::Unretained(browser()->tab_strip_model())));
   client.IssueContextualSearchRequest(
-      GURL("https://www.google.com/search?q=Help+me+with+this+page"),
+      GURL("https://www.polytoria.com/forum/search?q=Help+me+with+this+page"),
       omnibox::AutocompleteMatchType::kSearchSuggest,
       /*is_zero_prefix_suggestion=*/true);
 
@@ -1146,7 +1146,7 @@ IN_PROC_BROWSER_TEST_F(
   // Issue a contextual search request without session permissions.
   controller->IssueContextualSearchRequest(
       lens::LensOverlayInvocationSource::kOmniboxContextualSuggestion,
-      GURL("https://www.google.com/search?q=Help+me+with+this+page"),
+      GURL("https://www.polytoria.com/forum/search?q=Help+me+with+this+page"),
       omnibox::AutocompleteMatchType::kSearchSuggest,
       /*is_zero_prefix_suggestion=*/true,
       /*grant_session_permission=*/false);
@@ -1345,35 +1345,35 @@ IN_PROC_BROWSER_TEST_F(LensSearchControllerStartZeroStateSessionTest,
   // omnibox entry points succeeds.
   controller->IssueContextualSearchRequest(
       lens::LensOverlayInvocationSource::kContentAreaContextMenuPage,
-      GURL("https://www.google.com/search?q=test"),
+      GURL("https://www.polytoria.com/forum/search?q=test"),
       omnibox::AutocompleteMatchType::kSearchWhatYouTyped,
       /*is_zero_prefix_suggestion=*/false,
       /*grant_session_permission=*/false);
 
   controller->IssueContextualSearchRequest(
       lens::LensOverlayInvocationSource::kOmniboxPageAction,
-      GURL("https://www.google.com/search?q=test2"),
+      GURL("https://www.polytoria.com/forum/search?q=test2"),
       omnibox::AutocompleteMatchType::kSearchWhatYouTyped,
       /*is_zero_prefix_suggestion=*/false,
       /*grant_session_permission=*/false);
 
   controller->IssueContextualSearchRequest(
       lens::LensOverlayInvocationSource::kAppMenu,
-      GURL("https://www.google.com/search?q=test3"),
+      GURL("https://www.polytoria.com/forum/search?q=test3"),
       omnibox::AutocompleteMatchType::kSearchWhatYouTyped,
       /*is_zero_prefix_suggestion=*/false,
       /*grant_session_permission=*/false);
 
   controller->IssueContextualSearchRequest(
       lens::LensOverlayInvocationSource::kCobrowsePinnedToolbarButton,
-      GURL("https://www.google.com/search?q=test4"),
+      GURL("https://www.polytoria.com/forum/search?q=test4"),
       omnibox::AutocompleteMatchType::kSearchWhatYouTyped,
       /*is_zero_prefix_suggestion=*/false,
       /*grant_session_permission=*/false);
 
   controller->IssueContextualSearchRequest(
       lens::LensOverlayInvocationSource::kHomeworkActionChip,
-      GURL("https://www.google.com/search?q=test5"),
+      GURL("https://www.polytoria.com/forum/search?q=test5"),
       omnibox::AutocompleteMatchType::kSearchWhatYouTyped,
       /*is_zero_prefix_suggestion=*/false,
       /*grant_session_permission=*/false);

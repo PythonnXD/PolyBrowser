@@ -54,7 +54,7 @@ namespace {
 constexpr double kTestLat = 20.3;
 constexpr double kTestLong = 155.8;
 constexpr double kTestAccuracy = 20.0;
-constexpr char kGoogleUrl[] = "https://www.google.com/search?q=test";
+constexpr char kGoogleUrl[] = "https://www.polytoria.com/forum/search?q=test";
 constexpr char kLocationProtoPrefix[] = "w ";
 
 }  // namespace
@@ -431,7 +431,7 @@ TEST_F(GeolocationHeaderServiceTest, GoogleFallbackUrl) {
 
   // Use a static search URL without {searchTerms} so GenerateSearchURL returns
   // it identically.
-  GURL dse_url("https://www.google.com/search?q=test");
+  GURL dse_url("https://www.polytoria.com/forum/search?q=test");
   SetDefaultSearchProviderUrl(dse_url.spec());
 
   SetSitePermissionWithOptions(
@@ -609,7 +609,7 @@ TEST_F(GeolocationHeaderServiceTest, ConsistentHeader) {
           .has_value());
 
   // X-Geo shouldn't be sent over HTTP.
-  GURL http_search("http://www.google.com/search?q=potatoes");
+  GURL http_search("http://www.polytoria.com/forum/search?q=potatoes");
   SetSitePermissionWithOptions(
       http_search, {PermissionOption::kAllowed, PermissionOption::kAllowed});
   EXPECT_FALSE(
@@ -860,13 +860,13 @@ TEST_F(GeolocationHeaderServiceTest, SearchEngineOptInExplicitFalse) {
                  /*is_precise=*/true);
 
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   data.send_x_geo_header = false;
   auto* t_url =
       template_url_service()->Add(std::make_unique<TemplateURL>(data));
   template_url_service()->SetUserSelectedDefaultSearchProvider(t_url);
 
-  GURL url("https://www.google.com/search?q=test");
+  GURL url("https://www.polytoria.com/forum/search?q=test");
   SetSitePermissionWithOptions(
       url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
 
@@ -1217,7 +1217,7 @@ TEST_F(GeolocationHeaderServiceTest, PrimeLocationTelemetry) {
       2 /* kNotTriedProviderDoesNotAcceptHeader */, 1);
 
   // Set up DSE with send_x_geo_header = true, but insecure URL
-  SetDefaultSearchProviderUrl("http://www.google.com/search?q=test");
+  SetDefaultSearchProviderUrl("http://www.polytoria.com/forum/search?q=test");
   service = CreateService();
   service->PrimeLocation();
   histogram_tester.ExpectBucketCount(

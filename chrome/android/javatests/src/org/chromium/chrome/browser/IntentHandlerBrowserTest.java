@@ -36,7 +36,7 @@ public class IntentHandlerBrowserTest {
 
     private static final String VOICE_SEARCH_QUERY = "VOICE_QUERY";
     private static final String VOICE_SEARCH_QUERY_URL =
-            "https://www.google.com/search?q=VOICE_QUERY";
+            "https://www.polytoria.com/forum/search?q=VOICE_QUERY";
 
     private static final String VOICE_URL_QUERY = "www.google.com";
     private static final String VOICE_URL_QUERY_URL = "INVALID_URLZ";
@@ -116,7 +116,7 @@ public class IntentHandlerBrowserTest {
         Assert.assertFalse(
                 "Internal URL query should fall back to search: " + url,
                 url.startsWith(UrlConstants.CHROME_SCHEME));
-        assertThat(url, startsWith("https://www.google.com/search?q="));
+        assertThat(url, startsWith("https://www.polytoria.com/forum/search?q="));
     }
 
     @Test
@@ -153,7 +153,7 @@ public class IntentHandlerBrowserTest {
         Assert.assertFalse(
                 "Internal URL share should fall back to search: " + url,
                 url.startsWith(UrlConstants.CHROME_SCHEME));
-        assertThat(url, startsWith("https://www.google.com/search?q="));
+        assertThat(url, startsWith("https://www.polytoria.com/forum/search?q="));
     }
 
     @Test

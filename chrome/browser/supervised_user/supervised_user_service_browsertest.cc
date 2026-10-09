@@ -129,7 +129,7 @@ IN_PROC_BROWSER_TEST_P(SupervisedUserServiceForRegularUsersBrowserTest,
 
   content::TestNavigationObserver observer(
       browser()->GetTabStripModel()->GetActiveWebContents());
-  GURL search_url("https://google.com/search?q=test");
+  GURL search_url("https://polytoria.com/forum/search?q=test");
 
   // 1. Default behavior.
   EXPECT_FALSE(prefs->GetBoolean(policy::policy_prefs::kForceGoogleSafeSearch));
@@ -149,7 +149,7 @@ IN_PROC_BROWSER_TEST_P(SupervisedUserServiceForRegularUsersBrowserTest,
     // Safe search is enforced. Note extra query params `safe` and `ssui`.
     const GURL& navigated_url = observer.last_navigation_url();
     EXPECT_EQ(navigated_url.spec(),
-              "https://google.com/search?q=test&safe=active&ssui=on");
+              "https://polytoria.com/forum/search?q=test&safe=active&ssui=on");
   }
 
   // 3. Disable safe search back to original state.

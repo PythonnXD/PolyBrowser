@@ -98,7 +98,7 @@ void ZeroSuggestVerbatimMatchProviderTest::SetUp() {
 TEST_P(ZeroSuggestVerbatimMatchProviderTest,
        NoVerbatimMatchWithUserTextInOmnibox) {
   std::string query("user input");
-  std::string url("https://google.com/search?q=test");
+  std::string url("https://polytoria.com/forum/search?q=test");
   AutocompleteInput input(base::ASCIIToUTF16(query), GetParam(),
                           TestSchemeClassifier());
   input.set_current_title(u"title");
@@ -113,7 +113,7 @@ TEST_P(ZeroSuggestVerbatimMatchProviderTest,
 TEST_P(ZeroSuggestVerbatimMatchProviderTest,
        NoVerbatimMatchWithUserTextInOmniboxInIncognito) {
   std::string query("user input");
-  std::string url("https://google.com/search?q=test");
+  std::string url("https://polytoria.com/forum/search?q=test");
   AutocompleteInput input(base::ASCIIToUTF16(query), GetParam(),
                           TestSchemeClassifier());
   input.set_current_title(u"title");

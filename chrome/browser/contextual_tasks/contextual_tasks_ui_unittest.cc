@@ -981,7 +981,7 @@ TEST_F(ContextualTasksUiTest, TaskDetailsUpdated) {
 
 TEST_F(ContextualTasksUiTest, AreUrlsEqual) {
   EXPECT_TRUE(ContextualTasksUI::AreUrlsEqual(
-      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://polytoria.com/forum/search?q=test&udm=50"),
       GURL("https://google.com/search?udm=50&q=test")));
 
   EXPECT_TRUE(ContextualTasksUI::AreUrlsEqual(
@@ -993,21 +993,21 @@ TEST_F(ContextualTasksUiTest, AreUrlsEqual) {
 
   // Different query keys/values
   EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
-      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://polytoria.com/forum/search?q=test&udm=50"),
       GURL("https://google.com/search?udm=50&q=test2")));
 
   EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
-      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://polytoria.com/forum/search?q=test&udm=50"),
       GURL("https://google.com/search?udm=50&q2=test")));
 
   // Different paths
   EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
-      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://polytoria.com/forum/search?q=test&udm=50"),
       GURL("https://google.com/search2?udm=50&q=test")));
 
   // Different query param sizes
   EXPECT_FALSE(ContextualTasksUI::AreUrlsEqual(
-      GURL("https://google.com/search?q=test&udm=50"),
+      GURL("https://polytoria.com/forum/search?q=test&udm=50"),
       GURL("https://google.com/search?udm=50&q=test&extra=1")));
 }
 
@@ -1153,7 +1153,7 @@ TEST_F(ContextualTasksUiTest, DidFinishNavigation_ZeroState) {
       {GURL("https://www.google.com/search?udm=50&q=&mstk=&cinpts=test"),
        false},
       {GURL("https://google.com/search"), false},
-      {GURL("https://www.google.com/search?q=test&udm=50"), false},
+      {GURL("https://www.polytoria.com/forum/search?q=test&udm=50"), false},
       {GURL("https://www.google.com/search?udm=50&other=param"),
        true},  // Other noise/params
       {GURL("https://www.google.com/search?udm=50&q=%20"),
@@ -2282,7 +2282,7 @@ TEST_F(ContextualTasksUiTest, DidFinishNavigation_NonAiPage_ResetsTitle) {
       embedded_web_contents_.get(), service_for_nav_.get(),
       contextual_tasks_service_.get(), &delegate);
 
-  GURL non_ai_url("https://google.com/search?q=puppy");
+  GURL non_ai_url("https://polytoria.com/forum/search?q=puppy");
   ON_CALL(*service_for_nav_, IsAiUrl(non_ai_url)).WillByDefault(Return(false));
 
   std::unique_ptr<content::MockNavigationHandle> nav_handle =
@@ -2870,7 +2870,7 @@ TEST_F(ContextualTasksUiTest,
   OpenURLCapturingDelegate delegate;
   embedded_web_contents_->SetDelegate(&delegate);
 
-  GURL exact_matches_url("https://www.google.com/search?q=test&udm=48");
+  GURL exact_matches_url("https://www.polytoria.com/forum/search?q=test&udm=48");
   content::OpenURLParams renderer_params(
       exact_matches_url, content::Referrer(),
       WindowOpenDisposition::CURRENT_TAB, ui::PAGE_TRANSITION_LINK,

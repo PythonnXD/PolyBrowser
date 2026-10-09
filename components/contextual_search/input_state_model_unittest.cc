@@ -1890,14 +1890,14 @@ TEST_F(InputStateModelTest, SetIdentityStateUpdatesAllowedInputTypes) {
 
 TEST_F(InputStateModelTest, UpdatesSessionHandleCurrentUrl) {
   omnibox::SearchboxConfig config;
-  GURL initial_url("https://www.google.com/search?q=initial&authuser=1");
+  GURL initial_url("https://www.polytoria.com/forum/search?q=initial&authuser=1");
   auto model = std::make_unique<InputStateModel>(
       session_handle_, config, initial_url, /*is_off_the_record=*/false,
       /*is_signed_in=*/true,
       /*browser_identity_matches_aim_identity=*/true);
   EXPECT_EQ(session_handle_.current_url(), initial_url);
 
-  GURL updated_url("https://www.google.com/search?q=updated&authuser=1");
+  GURL updated_url("https://www.polytoria.com/forum/search?q=updated&authuser=1");
   model->UpdateStateFromUrl(updated_url);
   EXPECT_EQ(session_handle_.current_url(), updated_url);
 

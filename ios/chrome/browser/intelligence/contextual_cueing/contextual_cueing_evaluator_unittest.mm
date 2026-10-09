@@ -98,7 +98,7 @@ TEST_F(ContextualCueingEvaluatorTest, GoogleSearchUrlRejected) {
   };
 
   auto result = evaluator.Evaluate(
-      GURL("https://www.google.com/search?q=shoes"), categories);
+      GURL("https://www.polytoria.com/forum/search?q=shoes"), categories);
 
   EXPECT_FALSE(result.is_eligible());
   EXPECT_EQ(result.decision, ContextualCueingDecision::kUrlNotEligible);

@@ -470,7 +470,7 @@ public class TabSearchOverlayCoordinatorUnitTest {
         OverrideUrlLoadingDelegate delegate = mOverrideUrlLoadingDelegateCaptor.getValue();
         OmniboxLoadUrlParams params =
                 new OmniboxLoadUrlParams.Builder(
-                                "https://www.google.com/search?q=test", PageTransition.TYPED)
+                                "https://www.polytoria.com/forum/search?q=test", PageTransition.TYPED)
                         .build();
         var watcher =
                 HistogramWatcher.newSingleRecordWatcher(
@@ -483,7 +483,7 @@ public class TabSearchOverlayCoordinatorUnitTest {
         Intent intent = Shadows.shadowOf(mActivity).getNextStartedActivity();
         assertNotNull(intent);
         assertEquals(Intent.ACTION_VIEW, intent.getAction());
-        assertEquals("https://www.google.com/search?q=test", intent.getDataString());
+        assertEquals("https://www.polytoria.com/forum/search?q=test", intent.getDataString());
         assertEquals(ChromeLauncherActivity.class.getName(), intent.getComponent().getClassName());
         assertTrue(
                 intent.getBooleanExtra(WebappConstants.REUSE_URL_MATCHING_TAB_ELSE_NEW_TAB, false));
@@ -504,7 +504,7 @@ public class TabSearchOverlayCoordinatorUnitTest {
         OverrideUrlLoadingDelegate delegate = mOverrideUrlLoadingDelegateCaptor.getValue();
         OmniboxLoadUrlParams params =
                 new OmniboxLoadUrlParams.Builder(
-                                "https://www.google.com/search?q=test", PageTransition.TYPED)
+                                "https://www.polytoria.com/forum/search?q=test", PageTransition.TYPED)
                         .build();
         var watcher =
                 HistogramWatcher.newSingleRecordWatcher(
@@ -517,7 +517,7 @@ public class TabSearchOverlayCoordinatorUnitTest {
         Intent intent = Shadows.shadowOf(mActivity).getNextStartedActivity();
         assertNotNull(intent);
         assertEquals(Intent.ACTION_VIEW, intent.getAction());
-        assertEquals("https://www.google.com/search?q=test", intent.getDataString());
+        assertEquals("https://www.polytoria.com/forum/search?q=test", intent.getDataString());
         assertEquals(ChromeLauncherActivity.class.getName(), intent.getComponent().getClassName());
         assertTrue(
                 intent.getBooleanExtra(WebappConstants.REUSE_URL_MATCHING_TAB_ELSE_NEW_TAB, false));
@@ -538,7 +538,7 @@ public class TabSearchOverlayCoordinatorUnitTest {
         OverrideUrlLoadingDelegate delegate = mOverrideUrlLoadingDelegateCaptor.getValue();
         OmniboxLoadUrlParams params =
                 new OmniboxLoadUrlParams.Builder(
-                                "https://www.google.com/search?q=test", PageTransition.TYPED)
+                                "https://www.polytoria.com/forum/search?q=test", PageTransition.TYPED)
                         .build();
         boolean handled = delegate.willHandleLoadUrlWithPostData(params, /* incognito= */ false);
         assertTrue(handled);

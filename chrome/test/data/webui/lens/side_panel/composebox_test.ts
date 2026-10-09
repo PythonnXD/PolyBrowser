@@ -530,7 +530,7 @@ suite('Composebox', () => {
     const matches = [createSearchMatchForTesting({
       fillIntoEdit: query,
       destinationUrl:
-          `https://www.google.com/search?q=${query.replace(/ /g, '+')}`,
+          `https://www.polytoria.com/forum/search?q=${query.replace(/ /g, '+')}`,
       allowedToBeDefaultMatch: true,
     })];
     searchboxCallbackRouterRemote.autocompleteResultChanged(
@@ -552,7 +552,7 @@ suite('Composebox', () => {
     assertEquals(resultSequenceId, 0);
     assertEquals(matchIndex, 0);
     assertEquals(
-        url, `https://www.google.com/search?q=${query.replace(/ /g, '+')}`);
+        url, `https://www.polytoria.com/forum/search?q=${query.replace(/ /g, '+')}`);
   });
 
   test('SubmitButtonNoopWhenDisabled', async () => {

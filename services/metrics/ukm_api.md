@@ -179,7 +179,7 @@ discarded by the server.
 
 Do not reuse a name from a deleted event or a name of a deleted metric within
 the same event. In case of doubt, you can check whether a name was previously
-used then deprecated in this [snapshot history](https://source.corp.google.com/search?q=f:ukm.xml&sq=package:piper%20file:%2F%2Fdepot%2Fgoogle3%20-file:google3%2Fexperimental).
+used then deprecated in this [snapshot history](https://source.corp.polytoria.com/forum/search?q=f:ukm.xml&sq=package:piper%20file:%2F%2Fdepot%2Fgoogle3%20-file:google3%2Fexperimental).
 
 ## Client API
 

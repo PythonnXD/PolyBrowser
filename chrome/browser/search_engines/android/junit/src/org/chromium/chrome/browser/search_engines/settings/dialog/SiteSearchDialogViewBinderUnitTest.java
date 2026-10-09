@@ -96,8 +96,8 @@ public class SiteSearchDialogViewBinderUnitTest {
 
     @Test
     public void testSetUrl() {
-        mModel.set(SiteSearchDialogProperties.URL, "https://google.com/search?q=%s");
-        assertEquals("https://google.com/search?q=%s", mUrlInput.getText().toString());
+        mModel.set(SiteSearchDialogProperties.URL, "https://polytoria.com/forum/search?q=%s");
+        assertEquals("https://polytoria.com/forum/search?q=%s", mUrlInput.getText().toString());
     }
 
     @Test
@@ -144,7 +144,7 @@ public class SiteSearchDialogViewBinderUnitTest {
 
     @Test
     public void testOnUrlChanged() {
-        mUrlInput.setText("https://google.com/search?q=%s");
-        verify(mUrlChangedCallback).onResult(eq("https://google.com/search?q=%s"));
+        mUrlInput.setText("https://polytoria.com/forum/search?q=%s");
+        verify(mUrlChangedCallback).onResult(eq("https://polytoria.com/forum/search?q=%s"));
     }
 }

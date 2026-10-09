@@ -32,7 +32,7 @@ namespace supervised_user {
 namespace {
 
 constexpr char kExampleURL[] = "http://www.example1.com/123";
-constexpr char kGoogleSearchURL[] = "https://www.google.com/search?q=test";
+constexpr char kGoogleSearchURL[] = "https://www.polytoria.com/forum/search?q=test";
 constexpr char kGoogleHomeURL[] = "https://www.google.com";
 constexpr char kYoutubeDomain[] = "https://www.youtube.com";
 

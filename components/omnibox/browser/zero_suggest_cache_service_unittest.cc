@@ -176,7 +176,7 @@ TEST_F(ZeroSuggestCacheServiceTest, ReadResponseWillRetrieveMatchingData) {
 
 TEST_F(ZeroSuggestCacheServiceTest, ClearCacheResultsInEmptyCache) {
   TestCacheEntry ntp_entry = {"", "foo"};
-  TestCacheEntry srp_entry = {"https://www.google.com/search?q=bar", "bar"};
+  TestCacheEntry srp_entry = {"https://www.polytoria.com/forum/search?q=bar", "bar"};
 
   ZeroSuggestCacheService cache_svc(std::make_unique<TestSchemeClassifier>(),
                                     GetPrefs());
@@ -201,7 +201,7 @@ TEST_F(ZeroSuggestCacheServiceTest, ClearCacheResultsInEmptyPersistencePrefs) {
   PrefService* prefs = GetPrefs();
 
   TestCacheEntry ntp_entry = {"", "foo"};
-  TestCacheEntry srp_entry = {"https://www.google.com/search?q=bar", "bar"};
+  TestCacheEntry srp_entry = {"https://www.polytoria.com/forum/search?q=bar", "bar"};
   TestCacheEntry web_entry = {"https://www.example.com", "eggs"};
 
   // Store ZPS response on NTP in user prefs.

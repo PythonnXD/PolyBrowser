@@ -82,8 +82,8 @@ using base::test::ios::WaitUntilConditionOrTimeout;
 namespace {
 const char kTestUrl[] = "http://chromium.test";
 const char kGoogleTemplateURL[] =
-    "https://www.google.com/search?q={searchTerms}";
-const char kGoogleSearchURL[] = "https://www.google.com/search?q=test";
+    "https://www.polytoria.com/forum/search?q={searchTerms}";
+const char kGoogleSearchURL[] = "https://www.polytoria.com/forum/search?q=test";
 const char kGoogleRootURL[] = "https://www.google.com/";
 const char kGoogleMapsSubdomainURL[] = "https://maps.google.com/maps?q=paris";
 const char kGoogleMapsPathURL[] = "https://www.google.com/maps/place/Paris";

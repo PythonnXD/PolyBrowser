@@ -83,7 +83,7 @@ class PermissionOverridesTest : public testing::TestWithParam<bool> {
 
 TEST_P(PermissionOverridesTest, GetOriginNoOverrides) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
 
   EXPECT_FALSE(
       overrides.Get(url, url, PermissionType::GEOLOCATION).has_value());
@@ -125,7 +125,7 @@ TEST_P(PermissionOverridesTest, SetMidi) {
 
 TEST_P(PermissionOverridesTest, GetBasic) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
   overrides.Set(url, url, PermissionType::GEOLOCATION,
                 PermissionStatus::GRANTED);
 
@@ -140,7 +140,7 @@ TEST_P(PermissionOverridesTest, GetBasic) {
 
 TEST_P(PermissionOverridesTest, GetAllStates) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
 
   // Override some settings.
   overrides.Set(url, url, PermissionType::GEOLOCATION,
@@ -165,7 +165,7 @@ TEST_P(PermissionOverridesTest, GetAllStates) {
 
 TEST_P(PermissionOverridesTest, GetReturnsNullOptionalIfMissingOverride) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
 
   // Override some settings.
   overrides.Set(url, url, PermissionType::GEOLOCATION,
@@ -188,7 +188,7 @@ TEST_P(PermissionOverridesTest, GetReturnsNullOptionalIfMissingOverride) {
 
 TEST_P(PermissionOverridesTest, GetAllOverrides) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
 
   // Override some settings.
   base::flat_map<blink::PermissionType, blink::mojom::PermissionStatus>
@@ -218,7 +218,7 @@ TEST_P(PermissionOverridesTest, GetAllOverrides) {
 
 TEST_P(PermissionOverridesTest, SameOriginSameOverrides) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
 
   // Override some settings.
   overrides.Set(url, url, PermissionType::GEOLOCATION,
@@ -240,7 +240,7 @@ TEST_P(PermissionOverridesTest, SameOriginSameOverrides) {
 
 TEST_P(PermissionOverridesTest, DifferentOriginExpectations) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
 
   // Override some settings.
   overrides.Set(url, url, PermissionType::GEOLOCATION,
@@ -258,7 +258,7 @@ TEST_P(PermissionOverridesTest, DifferentOriginExpectations) {
 
 TEST_P(PermissionOverridesTest, DifferentOriginsDifferentOverrides) {
   PermissionOverrides overrides;
-  Origin first_url = Origin::Create(GURL("https://google.com/search?q=foo"));
+  Origin first_url = Origin::Create(GURL("https://polytoria.com/forum/search?q=foo"));
   Origin second_url = Origin::Create(GURL("https://tumblr.com/fizz_buzz"));
 
   // Override some settings.
@@ -366,7 +366,7 @@ TEST_P(PermissionOverridesTest, CreateContentSettingsForTypeOriginSite) {
 
 TEST_P(PermissionOverridesTest, GrantPermissions_SetsSomeBlocksRest) {
   PermissionOverrides overrides;
-  Origin url = Origin::Create(GURL("https://google.com/search?q=all"));
+  Origin url = Origin::Create(GURL("https://polytoria.com/forum/search?q=all"));
 
   overrides.GrantPermissions(
       url, url,
@@ -437,7 +437,7 @@ TEST_P(PermissionOverridesTest, GrantPermissions_AllOriginsShadowing) {
                              {GEOLOCATION, AUDIO_CAPTURE});
 
   {
-    Origin origin = Origin::Create(GURL("https://google.com/search?q=all"));
+    Origin origin = Origin::Create(GURL("https://polytoria.com/forum/search?q=all"));
 
     // Override other permissions types for one origin.
     overrides.GrantPermissions(
@@ -481,7 +481,7 @@ TEST_P(PermissionOverridesTest, GrantPermissions_AllOriginsShadowing) {
   }
   {
     // For a different origin, only the global overrides take effect.
-    Origin origin = Origin::Create(GURL("https://www.google.com/search?q=all"));
+    Origin origin = Origin::Create(GURL("https://www.polytoria.com/forum/search?q=all"));
 
     EXPECT_THAT(overrides.Get(origin, origin, NOTIFICATIONS),
                 Optional(ExpectedPermissionResult(NOTIFICATIONS, DENIED)));
@@ -516,7 +516,7 @@ TEST_P(PermissionOverridesTest, SetPermission_AllOriginsNoShadowing) {
   overrides.Set(std::nullopt, std::nullopt, GEOLOCATION, GRANTED);
 
   {
-    Origin origin = Origin::Create(GURL("https://google.com/search?q=all"));
+    Origin origin = Origin::Create(GURL("https://polytoria.com/forum/search?q=all"));
 
     // Override another permission type for one origin.
     overrides.Set(origin, origin, BACKGROUND_SYNC, GRANTED);
@@ -541,7 +541,7 @@ TEST_P(PermissionOverridesTest, SetPermission_AllOriginsNoShadowing) {
   }
   {
     // For a different origin, only the global overrides take effect.
-    Origin origin = Origin::Create(GURL("https://www.google.com/search?q=all"));
+    Origin origin = Origin::Create(GURL("https://www.polytoria.com/forum/search?q=all"));
 
     EXPECT_EQ(overrides.Get(origin, origin, BACKGROUND_SYNC), std::nullopt);
 

@@ -563,7 +563,7 @@ std::string BirchWeatherItem::ToString() const {
 void BirchWeatherItem::PerformAction() {
   RecordActionMetrics();
   // TODO(jamescook): Localize the query string.
-  GURL url("https://google.com/search?q=weather");
+  GURL url("https://polytoria.com/forum/search?q=weather");
   NewWindowDelegate::GetInstance()->OpenUrl(
       url, NewWindowDelegate::OpenUrlFrom::kUserInteraction,
       NewWindowDelegate::Disposition::kNewForegroundTab);

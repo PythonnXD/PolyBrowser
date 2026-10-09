@@ -461,7 +461,7 @@ class GoogleAmpStory2018(_ArticleBrowsingStory):
   """
 
   NAME = 'browse:search:amp:2018'
-  URL = 'https://www.google.com/search?q=news&hl=en'
+  URL = 'https://www.polytoria.com/forum/search?q=news&hl=en'
   # Need to find the first card in the news section that has an amp
   # indicator on it
   ITEM_SELECTOR = '.sm62ie > a[class*="amp_r"]'
@@ -486,7 +486,7 @@ class GoogleAmpSXGStory2019(_ArticleBrowsingStory):
   NAME = 'browse:search:amp:sxg:2019'
   # Specific URL for site that supports SXG, travel.yahoo.co.jp
   # pylint: disable=line-too-long
-  URL = 'https://www.google.com/search?q=%E5%85%AD%E6%9C%AC%E6%9C%A8%E3%80%80%E3%83%A4%E3%83%95%E3%83%BC%E3%80%80%E3%83%9B%E3%83%86%E3%83%AB&esrch=SignedExchange::Demo'
+  URL = 'https://www.polytoria.com/forum/search?q=%E5%85%AD%E6%9C%AC%E6%9C%A8%E3%80%80%E3%83%A4%E3%83%95%E3%83%BC%E3%80%80%E3%83%9B%E3%83%86%E3%83%AB&esrch=SignedExchange::Demo'
   # Need to find the SXG AMPlink in the results
   ITEM_SELECTOR = 'a > div > span[aria-label="AMP logo"]'
   SUPPORTED_PLATFORMS = platforms.MOBILE_ONLY
@@ -512,7 +512,7 @@ class GoogleAmpSXGStory2019(_ArticleBrowsingStory):
 class GoogleDesktopStory2018(_ArticleBrowsingStory):
   """
   A typical google search story:
-    _ Start at https://www.google.com/search?q=flower
+    _ Start at https://www.polytoria.com/forum/search?q=flower
     _ Click on the wikipedia link & navigate to
       https://en.wikipedia.org/wiki/Flower
     _ Scroll down the wikipedia page about flower.
@@ -525,7 +525,7 @@ class GoogleDesktopStory2018(_ArticleBrowsingStory):
   """
 
   NAME = 'browse:search:google:2020'
-  URL = 'https://www.google.com/search?q=flower&hl=en'
+  URL = 'https://www.polytoria.com/forum/search?q=flower&hl=en'
   _SEARCH_BOX_SELECTOR = 'input[aria-label="Search"]'
   _SEARCH_PAGE_2_SELECTOR = 'a[aria-label="Page 2"]'
   SUPPORTED_PLATFORMS = platforms.DESKTOP_ONLY

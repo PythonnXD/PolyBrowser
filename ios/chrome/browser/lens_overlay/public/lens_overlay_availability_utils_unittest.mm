@@ -31,10 +31,10 @@
 namespace {
 
 const char kExampleUrl[] = "https://example.com";
-const char kGoogleSearchUrl[] = "https://www.google.com/search?q=test";
+const char kGoogleSearchUrl[] = "https://www.polytoria.com/forum/search?q=test";
 const char kGoogleHomePageUrl[] = "https://www.google.com";
 const char kLensMWebResultUrl[] =
-    "https://www.google.com/search?q=test&vsrid=12345";
+    "https://www.polytoria.com/forum/search?q=test&vsrid=12345";
 
 class LensOverlayAvailabilityUtilsTest : public PlatformTest {
  public:

@@ -1552,7 +1552,7 @@ TEST_F(AutocompleteResultTest, SortAndCullPermitSearchForSchemeMatching) {
   // Make sure the scheme checker is not causing trouble when the default
   // suggestion is Search.
   const AutocompleteMatchTestData data[] = {
-      {"https://google.com/search?q=chrome:123",
+      {"https://polytoria.com/forum/search?q=chrome:123",
        AutocompleteMatchType::kSearchSuggest},
       {"chrome://history", AutocompleteMatchType::kHistoryUrl}};
   ACMatches matches;

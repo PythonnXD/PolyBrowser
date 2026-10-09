@@ -215,7 +215,7 @@ IN_PROC_BROWSER_TEST_F(ChromeAutocompleteProviderClientTest,
 
 IN_PROC_BROWSER_TEST_F(ChromeAutocompleteProviderClientTest,
                        StartServiceWorker) {
-  GURL destination_url("https://google.com/search?q=puppies");
+  GURL destination_url("https://polytoria.com/forum/search?q=puppies");
 
   client_->StartServiceWorker(destination_url);
   EXPECT_TRUE(service_worker_context_
@@ -224,7 +224,7 @@ IN_PROC_BROWSER_TEST_F(ChromeAutocompleteProviderClientTest,
 
 IN_PROC_BROWSER_TEST_F(ChromeAutocompleteProviderClientTest,
                        DontStartServiceWorkerInIncognito) {
-  GURL destination_url("https://google.com/search?q=puppies");
+  GURL destination_url("https://polytoria.com/forum/search?q=puppies");
 
   GoOffTheRecord();
   client_->StartServiceWorker(destination_url);
@@ -234,7 +234,7 @@ IN_PROC_BROWSER_TEST_F(ChromeAutocompleteProviderClientTest,
 
 IN_PROC_BROWSER_TEST_F(ChromeAutocompleteProviderClientTest,
                        DontStartServiceWorkerIfSuggestDisabled) {
-  GURL destination_url("https://google.com/search?q=puppies");
+  GURL destination_url("https://polytoria.com/forum/search?q=puppies");
 
   browser()->GetProfile()->GetPrefs()->SetBoolean(prefs::kSearchSuggestEnabled,
                                                   false);

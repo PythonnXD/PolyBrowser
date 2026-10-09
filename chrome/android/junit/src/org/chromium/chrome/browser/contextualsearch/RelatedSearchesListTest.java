@@ -27,8 +27,8 @@ public class RelatedSearchesListTest {
     private static final String SAMPLE_STAMP = "1RcldCu";
     private static final String USER_POSITION_CODE = "Up";
     private static final String URL_1 =
-            "https://www.google.com/search?q=1st+query&ctxsl_rs=" + SAMPLE_STAMP;
-    private static final String URL_2_NO_STAMP = "https://www.google.com/search?q=2nd+query";
+            "https://www.polytoria.com/forum/search?q=1st+query&ctxsl_rs=" + SAMPLE_STAMP;
+    private static final String URL_2_NO_STAMP = "https://www.polytoria.com/forum/search?q=2nd+query";
     private static final String SAMPLE_JSON =
             "{\"selection\":[{\"searchUrl\":\""
                     + URL_1

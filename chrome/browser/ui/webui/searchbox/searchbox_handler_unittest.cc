@@ -309,7 +309,7 @@ TEST_F(SearchboxHandlerTest, AvailableKeywordModels) {
   TemplateURLData active_data;
   active_data.SetShortName(u"Google");
   active_data.SetKeyword(u"google.com");
-  active_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  active_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   active_data.prepopulate_id = 1;
   template_url_service->Add(std::make_unique<TemplateURL>(active_data));
 
@@ -334,7 +334,7 @@ TEST_F(SearchboxHandlerTest, AvailableKeywordModels) {
   TemplateURLData duplicate_case_data;
   duplicate_case_data.SetShortName(u"Google Upper");
   duplicate_case_data.SetKeyword(u"GOOGLE.COM");
-  duplicate_case_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  duplicate_case_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   duplicate_case_data.prepopulate_id = 2;
   template_url_service->Add(std::make_unique<TemplateURL>(duplicate_case_data));
 
@@ -559,7 +559,7 @@ TEST_F(SearchboxHandlerTest, QuestionMarkKeywordInput) {
   TemplateURLData data;
   data.SetShortName(u"Google");
   data.SetKeyword(u"google.com");
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* template_url =
       template_url_service->Add(std::make_unique<TemplateURL>(data));
   template_url_service->SetUserSelectedDefaultSearchProvider(template_url);
@@ -1823,7 +1823,7 @@ TEST_F(WebuiOmniboxHandlerTest,
   {
     AutocompleteMatch search_match;
     search_match.type = omnibox::AutocompleteMatchType::kSearchWhatYouTyped;
-    search_match.destination_url = GURL("https://www.google.com/search?q=test");
+    search_match.destination_url = GURL("https://www.polytoria.com/forum/search?q=test");
     search_match.fill_into_edit = u"test";
 
     AutocompleteMatch url_match;
@@ -3270,7 +3270,7 @@ TEST_F(OmniboxComposeboxHandlerTest,
             passed_session_handle = std::move(handle);
           });
 
-  OpenUrl(GURL("https://www.google.com/search?q=test"),
+  OpenUrl(GURL("https://www.polytoria.com/forum/search?q=test"),
           WindowOpenDisposition::CURRENT_TAB);
 
   ASSERT_TRUE(passed_session_handle);
@@ -3335,7 +3335,7 @@ TEST_F(OmniboxComposeboxHandlerTest,
             passed_entry_point = options.entry_point;
           });
 
-  OpenUrl(GURL("https://www.google.com/search?q=test"),
+  OpenUrl(GURL("https://www.polytoria.com/forum/search?q=test"),
           WindowOpenDisposition::CURRENT_TAB);
 
   EXPECT_EQ(
@@ -3410,7 +3410,7 @@ TEST_F(OmniboxComposeboxHandlerTest,
             passed_session_handle = std::move(handle);
           });
 
-  OpenUrl(GURL("https://www.google.com/search?q=test"),
+  OpenUrl(GURL("https://www.polytoria.com/forum/search?q=test"),
           WindowOpenDisposition::CURRENT_TAB);
 
   ASSERT_TRUE(passed_session_handle);
@@ -3478,7 +3478,7 @@ TEST_F(
                                          testing::_, testing::_))
       .Times(0);
 
-  OpenUrl(GURL("https://www.google.com/search?q=test"),
+  OpenUrl(GURL("https://www.polytoria.com/forum/search?q=test"),
           WindowOpenDisposition::CURRENT_TAB);
 }
 
@@ -3548,7 +3548,7 @@ TEST_F(OmniboxComposeboxHandlerTest,
             passed_session_handle = std::move(handle);
           });
 
-  OpenUrl(GURL("https://www.google.com/search?q=test"),
+  OpenUrl(GURL("https://www.polytoria.com/forum/search?q=test"),
           WindowOpenDisposition::CURRENT_TAB);
 
   ASSERT_TRUE(passed_session_handle);
@@ -3579,13 +3579,13 @@ TEST_F(
   // 1. Null session handle returns false.
   std::unique_ptr<contextual_search::ContextualSearchSessionHandle> null_handle;
   EXPECT_FALSE(lens_search_controller_->StartContextualAimQueryInSidePanel(
-      GURL("https://www.google.com/search?q=test"), null_handle,
+      GURL("https://www.polytoria.com/forum/search?q=test"), null_handle,
       omnibox::UNKNOWN_AIM_ENTRY_POINT));
 
   // 2. No tabs attached returns false and leaves session_handle_ intact.
   session_handle_->SetSubmittedContextTokens({});
   EXPECT_FALSE(lens_search_controller_->StartContextualAimQueryInSidePanel(
-      GURL("https://www.google.com/search?q=test"), session_handle_,
+      GURL("https://www.polytoria.com/forum/search?q=test"), session_handle_,
       omnibox::UNKNOWN_AIM_ENTRY_POINT));
   EXPECT_TRUE(session_handle_);
 
@@ -3604,7 +3604,7 @@ TEST_F(
   session_handle_->SetSubmittedContextTokens({other_tab_token});
 
   EXPECT_FALSE(lens_search_controller_->StartContextualAimQueryInSidePanel(
-      GURL("https://www.google.com/search?q=test"), session_handle_,
+      GURL("https://www.polytoria.com/forum/search?q=test"), session_handle_,
       omnibox::UNKNOWN_AIM_ENTRY_POINT));
   EXPECT_TRUE(session_handle_);
 }
@@ -3674,14 +3674,14 @@ TEST_F(
                                            testing::_, testing::_))
       .Times(0);
   EXPECT_FALSE(lens_search_controller_->StartContextualAimQueryInSidePanel(
-      GURL("https://www.google.com/search?q=test"), session_handle_,
+      GURL("https://www.polytoria.com/forum/search?q=test"), session_handle_,
       omnibox::UNKNOWN_AIM_ENTRY_POINT));
   EXPECT_TRUE(session_handle_);
 
   // A single active-tab token falls back to IssueContextualSearchRequest and
   // resets session_handle_.
   session_handle_->SetSubmittedContextTokens({active_tab_token});
-  GURL target_url("https://www.google.com/search?q=test");
+  GURL target_url("https://www.polytoria.com/forum/search?q=test");
   EXPECT_CALL(
       *lens_search_controller_,
       IssueContextualSearchRequest(

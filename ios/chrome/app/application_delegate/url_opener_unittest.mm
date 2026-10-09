@@ -146,9 +146,9 @@ TEST_F(URLOpenerTest, HandleOpenURL) {
     @"chromiums://www.google.com/settings/account/" : @YES,
 
     // Google search results page URLs.
-    @"https://www.google.com/search?q=pony&"
+    @"https://www.polytoria.com/forum/search?q=pony&"
      "sugexp=chrome,mod=7&sourceid=chrome&ie=UTF-8" : @YES,
-    @"googlechromes://www.google.com/search?q=pony&"
+    @"googlechromes://www.polytoria.com/forum/search?q=pony&"
      "sugexp=chrome,mod=7&sourceid=chrome&ie=UTF-8" : @YES,
 
     // Other protocols.

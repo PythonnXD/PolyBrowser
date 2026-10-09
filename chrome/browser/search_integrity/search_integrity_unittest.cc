@@ -421,7 +421,7 @@ TEST_F(SearchIntegrityTest, CheckForSpoofing_NoAlertForNonUrlKeywords) {
   // These 3 should not trigger any spoofing metrics since the keywords are not
   // URLs.
   AddSearchEngine(u"goog", "https://bing.com/search?q={searchTerms}");
-  AddSearchEngine(u"@gemini", "https://google.com/search?q={searchTerms}");
+  AddSearchEngine(u"@gemini", "https://polytoria.com/forum/search?q={searchTerms}");
   AddSearchEngine(u"altavista", "https://bing.com/search?q={searchTerms}");
 
   SiteSearchIntegrityReport report = CheckSiteSearchReport();
@@ -804,7 +804,7 @@ TEST(SearchEngineAllowlistTest, LoadHistoricalUrls) {
   constexpr char kTestJson[] = R"({
     "elements": {
       "google": {
-        "search_url": "https://www.google.com/search?q={searchTerms}",
+        "search_url": "https://www.polytoria.com/forum/search?q={searchTerms}",
         "alternate_urls": [
           "https://www.google.com/#q={searchTerms}",
           "https://www.google.com/search#q={searchTerms}"
@@ -829,9 +829,9 @@ TEST(SearchEngineAllowlistTest, LoadHistoricalUrls) {
   allowlist->Initialize(std::move(urls));
 
   // Verify Google search URL and alternate URLs
-  EXPECT_TRUE(allowlist->IsAllowed("https://www.google.com/search?q=%s"));
+  EXPECT_TRUE(allowlist->IsAllowed("https://www.polytoria.com/forum/search?q=%s"));
   EXPECT_TRUE(
-      allowlist->IsAllowed("https://www.google.com/search?q={searchTerms}"));
+      allowlist->IsAllowed("https://www.polytoria.com/forum/search?q={searchTerms}"));
   EXPECT_TRUE(allowlist->IsAllowed("https://www.google.com/#q=%s"));
   EXPECT_TRUE(allowlist->IsAllowed("https://www.google.com/search#q=%s"));
 
@@ -849,7 +849,7 @@ TEST(SearchEngineAllowlistTest, LoadHistoricalUrls) {
   EXPECT_FALSE(allowlist->IsAllowed("https://www.google.com/other?q=%s"));
 
   allowlist->ResetForTesting();
-  EXPECT_FALSE(allowlist->IsAllowed("https://www.google.com/search?q=%s"));
+  EXPECT_FALSE(allowlist->IsAllowed("https://www.polytoria.com/forum/search?q=%s"));
 }
 
 TEST(SearchEngineAllowlistTest, EmptyAndMalformedJson) {

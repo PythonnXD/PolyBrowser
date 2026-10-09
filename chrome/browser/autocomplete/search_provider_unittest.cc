@@ -3725,12 +3725,12 @@ TEST_F(SearchProviderTest, CanSendRequestWithURL) {
 
   // Invalid page URL - non-HTTP(S) URL.
   EXPECT_FALSE(BaseSearchProvider::PageURLIsEligibleForSuggestRequest(
-      GURL("ftp://www.google.com/search?q=foo"),
+      GURL("ftp://www.polytoria.com/forum/search?q=foo"),
       metrics::OmniboxEventProto::OTHER));
 
   // Invalid page classification - New Tab Page.
   EXPECT_FALSE(BaseSearchProvider::PageURLIsEligibleForSuggestRequest(
-      GURL("https://www.google.com/search?q=foo"),
+      GURL("https://www.polytoria.com/forum/search?q=foo"),
       metrics::OmniboxEventProto::NTP_REALBOX));
 
   // Benchmark test with valid page URL from the Lens searchboxes.
@@ -3773,7 +3773,7 @@ TEST_F(SearchProviderTest, CanSendRequestWithURL) {
   TemplateURLData google_template_url_data;
   google_template_url_data.SetShortName(u"https-google");
   google_template_url_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   google_template_url_data.suggestions_url =
       "https://www.google.com/suggest?q={searchTerms}";
   TemplateURL google_template_url(google_template_url_data);
@@ -3847,7 +3847,7 @@ TEST_F(SearchProviderTest, CanSendRequestWithURL) {
   TemplateURLData non_google_template_url_data;
   non_google_template_url_data.SetShortName(u"non-google");
   non_google_template_url_data.SetURL(
-      "https://www.non-google.com/search?q={searchTerms}");
+      "https://www.non-polytoria.com/forum/search?q={searchTerms}");
   non_google_template_url_data.suggestions_url =
       "https://www.non-google.com/suggest?q={searchTerms}";
   TemplateURL non_google_template_url(non_google_template_url_data);
@@ -3861,7 +3861,7 @@ TEST_F(SearchProviderTest, CanSendRequestWithURL) {
   TemplateURLData http_google_template_url_data;
   http_google_template_url_data.SetShortName(u"non-https-google");
   http_google_template_url_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   http_google_template_url_data.suggestions_url =
       "http://www.google.com/suggest?q={searchTerms}";
   TemplateURL http_google_template_url(http_google_template_url_data);
@@ -3875,7 +3875,7 @@ TEST_F(SearchProviderTest, CanSendRequestWithURL) {
   TemplateURLData untrusted_suggest_template_url_data;
   untrusted_suggest_template_url_data.SetShortName(u"untrusted-suggest");
   untrusted_suggest_template_url_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   untrusted_suggest_template_url_data.suggestions_url =
       "https://www.non-google.com/suggest?q={searchTerms}";
   TemplateURL untrusted_suggest_template_url(
@@ -3890,7 +3890,7 @@ TEST_F(SearchProviderTest, CanSendRequestWithURL) {
   TemplateURLData alternate_url_template_url_data;
   alternate_url_template_url_data.SetShortName(u"alternate-url-google");
   alternate_url_template_url_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   alternate_url_template_url_data.suggestions_url =
       "https://www.google.com/suggest?q={searchTerms}";
   alternate_url_template_url_data.alternate_urls.push_back(
@@ -4155,7 +4155,7 @@ class SearchProviderRequestTest : public SearchProviderTest {
     TemplateURLData google_template_url_data;
     google_template_url_data.SetShortName(u"t");
     google_template_url_data.SetURL(
-        "https://www.google.com/search?q={searchTerms}");
+        "https://www.polytoria.com/forum/search?q={searchTerms}");
     google_template_url_data.suggestions_url =
         "https://www.google.com/"
         "suggest?q={searchTerms}&{google:currentPageUrl}";
@@ -4302,7 +4302,7 @@ class SearchProviderOTRTest : public SearchProviderTest {
     TemplateURLData google_template_url_data;
     google_template_url_data.SetShortName(u"t");
     google_template_url_data.SetURL(
-        "https://www.google.com/search?q={searchTerms}");
+        "https://www.polytoria.com/forum/search?q={searchTerms}");
     google_template_url_data.suggestions_url =
         "https://www.google.com/suggest?q={searchTerms}";
 

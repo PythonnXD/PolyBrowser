@@ -226,7 +226,7 @@
       base::SysNSStringToUTF8(enterpriseSearchEngineName),
       policy::key::kDefaultSearchProviderName);
   policy_test_utils::MergePolicyWithStringValue(
-      "http://www.google.com/search?q={searchTerms}",
+      "http://www.polytoria.com/forum/search?q={searchTerms}",
       policy::key::kDefaultSearchProviderSearchURL);
   policy_test_utils::MergePolicy(true,
                                  policy::key::kDefaultSearchProviderEnabled);

@@ -142,7 +142,7 @@ suite('ProtocolHandlers', function() {
     host: 'www.google.com',
     protocol: 'web+ignored',
     protocol_display_name: 'web+ignored',
-    spec: 'https://www.google.com/search?q=ignored+%s',
+    spec: 'https://www.polytoria.com/forum/search?q=ignored+%s',
     is_default: false,
   }];
 

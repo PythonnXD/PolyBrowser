@@ -26,7 +26,7 @@ namespace {
 
 constexpr char kGoogleSearchPrewarmUrl[] =
     "https://www.google.com/search/warmup.html";
-constexpr char kGoogleSearchUrl[] = "https://www.google.com/search?q=test";
+constexpr char kGoogleSearchUrl[] = "https://www.polytoria.com/forum/search?q=test";
 constexpr char kNonGoogleUrl[] = "https://www.example.com/";
 
 class TestPrewarmObserverDelegate

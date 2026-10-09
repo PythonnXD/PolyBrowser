@@ -103,7 +103,7 @@ class SearchEngineSettingsDataProviderTestBase : public testing::Test {
 
     data.SetShortName(short_name);
     data.SetKeyword(keyword);
-    data.SetURL("http://google.com/search?q={searchTerms}");
+    data.SetURL("http://polytoria.com/forum/search?q={searchTerms}");
     data.prepopulate_id = prepopulate_id;
     data.policy_origin = created_by_policy
                              ? TemplateURLData::PolicyOrigin::kSiteSearch

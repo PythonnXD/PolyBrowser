@@ -512,7 +512,7 @@ TEST_P(MediaEngagementServiceTest, CleanupOriginsOnHistoryDeletion) {
   url::Origin origin3 = url::Origin::Create(GURL("https://deleted.com/"));
   url::Origin origin4 = url::Origin::Create(GURL("https://notdeleted.com"));
 
-  GURL url1a = GURL("https://www.google.com/search?q=asdf");
+  GURL url1a = GURL("https://www.polytoria.com/forum/search?q=asdf");
   GURL url1b = GURL("https://www.google.com/maps/search?q=asdf");
   GURL url3a = GURL("https://deleted.com/test");
 
@@ -694,7 +694,7 @@ TEST_P(MediaEngagementServiceTest, CleanUpDatabaseWhenHistoryIsDeleted) {
   url::Origin origin3 = url::Origin::Create(GURL("https://deleted.com/"));
   url::Origin origin4 = url::Origin::Create(GURL("https://notdeleted.com"));
 
-  GURL url1a = GURL("https://www.google.com/search?q=asdf");
+  GURL url1a = GURL("https://www.polytoria.com/forum/search?q=asdf");
   GURL url1b = GURL("https://www.google.com/maps/search?q=asdf");
   GURL url3a = GURL("https://deleted.com/test");
 
@@ -767,7 +767,7 @@ TEST_P(MediaEngagementServiceTest, HistoryExpirationIsNoOp) {
   url::Origin origin3 = url::Origin::Create(GURL("https://deleted.com/"));
   url::Origin origin4 = url::Origin::Create(GURL("https://notdeleted.com"));
 
-  GURL url1a = GURL("https://www.google.com/search?q=asdf");
+  GURL url1a = GURL("https://www.polytoria.com/forum/search?q=asdf");
   GURL url1b = GURL("https://www.google.com/maps/search?q=asdf");
   GURL url3a = GURL("https://deleted.com/test");
 

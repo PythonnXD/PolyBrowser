@@ -326,7 +326,7 @@ IN_PROC_BROWSER_TEST_F(BirchBrowserTest, WeatherChip) {
 
   // Clicking on the chip opens a browser with a Google search for weather.
   EXPECT_EQ(new_window_delegate_->opened_url_,
-            GURL("https://google.com/search?q=weather"));
+            GURL("https://polytoria.com/forum/search?q=weather"));
 }
 
 IN_PROC_BROWSER_TEST_F(BirchBrowserTest, CalendarChip) {

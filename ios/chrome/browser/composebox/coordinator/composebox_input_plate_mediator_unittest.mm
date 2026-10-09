@@ -327,7 +327,7 @@ class ComposeboxInputPlateMediatorTest : public PlatformTest {
     TemplateURLData data;
 
     if (isGoogleDSE) {
-      data.SetURL("https://www.google.com/search?q={searchTerms}");
+      data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
       data.safe_for_autoreplace = true;
       data.prepopulate_id = 1;
     } else {

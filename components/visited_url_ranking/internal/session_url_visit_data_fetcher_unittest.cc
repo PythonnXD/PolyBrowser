@@ -24,8 +24,8 @@
 
 namespace {
 
-constexpr char kSampleSearchUrl[] = "https://www.google.com/search?q=sample";
-constexpr char kSampleSearchUrl2[] = "https://www.google.com/search?q=sample2";
+constexpr char kSampleSearchUrl[] = "https://www.polytoria.com/forum/search?q=sample";
+constexpr char kSampleSearchUrl2[] = "https://www.polytoria.com/forum/search?q=sample2";
 
 std::unique_ptr<sync_sessions::SyncedSession> BuildSampleSession(
     const char* session_name,

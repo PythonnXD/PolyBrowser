@@ -182,7 +182,7 @@ TEST_F(ContextualTasksWebViewTest,
 
   // Navigation to search results starts: ghost loader should show.
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=test"),
+      GURL("https://www.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
 
@@ -202,7 +202,7 @@ TEST_F(ContextualTasksWebViewTest, NavigationToAiPageDoesNotShowGhostLoader) {
 
   // Navigation to an AI URL starts: ghost loader should NOT show.
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://ai.google.com/search?q=test"),
+      GURL("https://ai.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
 
@@ -217,7 +217,7 @@ TEST_F(ContextualTasksWebViewTest, FailedNavigationHidesGhostLoader) {
   web_view_->SetWebContents(web_contents.get());
 
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=test"),
+      GURL("https://www.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
   EXPECT_TRUE(web_view_->IsGhostLoaderVisible());
@@ -248,7 +248,7 @@ TEST_F(ContextualTasksWebViewTest,
   std::unique_ptr<content::WebContents> web_contents =
       content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=test"),
+      GURL("https://www.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
 
@@ -271,7 +271,7 @@ TEST_F(ContextualTasksWebViewTest,
   std::unique_ptr<content::WebContents> web_contents =
       content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://ai.google.com/search?q=test"),
+      GURL("https://ai.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
 
@@ -309,7 +309,7 @@ TEST_F(ContextualTasksWebViewTest,
 
   // When actual navigation starts and paints, ghost loader dismisses.
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=test"),
+      GURL("https://www.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
   EXPECT_TRUE(web_view_->IsGhostLoaderVisible());
@@ -351,7 +351,7 @@ TEST_F(ContextualTasksWebViewTest,
 
   // Once the real search navigation commits and paints, the ghost loader hides.
   auto search_sim = content::NavigationSimulator::CreateBrowserInitiated(
-      GURL("https://www.google.com/search?q=test"), web_contents.get());
+      GURL("https://www.polytoria.com/forum/search?q=test"), web_contents.get());
   search_sim->SetKeepLoading(true);
   search_sim->Start();
   EXPECT_TRUE(web_view_->IsGhostLoaderVisible());
@@ -374,13 +374,13 @@ TEST_F(ContextualTasksWebViewTest, RedirectToAiUrlHidesGhostLoader) {
   web_view_->SetWebContents(web_contents.get());
 
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=test"),
+      GURL("https://www.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
   EXPECT_TRUE(web_view_->IsGhostLoaderVisible());
 
   // Redirect to an AI URL: ghost loader should be hidden.
-  sim->Redirect(GURL("https://ai.google.com/search?q=test"));
+  sim->Redirect(GURL("https://ai.polytoria.com/forum/search?q=test"));
   EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
 }
 
@@ -392,13 +392,13 @@ TEST_F(ContextualTasksWebViewTest, RedirectToSearchUrlShowsGhostLoader) {
   web_view_->SetWebContents(web_contents.get());
 
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://ai.google.com/search?q=test"),
+      GURL("https://ai.polytoria.com/forum/search?q=test"),
       web_contents->GetPrimaryMainFrame());
   sim->Start();
   EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
 
   // Redirect to a search URL: ghost loader should be shown.
-  sim->Redirect(GURL("https://www.google.com/search?q=test"));
+  sim->Redirect(GURL("https://www.polytoria.com/forum/search?q=test"));
   EXPECT_TRUE(web_view_->IsGhostLoaderVisible());
 }
 
@@ -444,7 +444,7 @@ TEST_F(ContextualTasksWebViewTest, RunFileChooserOpensFileDialog) {
       gfx::Rect(0, 0, 800, 600));
   web_view_->SetWebContents(web_contents.get());
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
-      web_contents.get(), GURL("https://www.google.com/search?q=test"));
+      web_contents.get(), GURL("https://www.polytoria.com/forum/search?q=test"));
 
   auto listener =
       base::MakeRefCounted<TestFileSelectListener>(run_loop.QuitClosure());
@@ -477,7 +477,7 @@ TEST_F(ContextualTasksWebViewTest, TransitionFromSrpToAiPageClosesLens) {
   // Navigating to SRP should not close Lens.
   EXPECT_CALL(mock_lens_controller, CloseLensAsync(_)).Times(0);
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
-      web_contents.get(), GURL("https://www.google.com/search?q=test"));
+      web_contents.get(), GURL("https://www.polytoria.com/forum/search?q=test"));
   testing::Mock::VerifyAndClearExpectations(&mock_lens_controller);
 
   // Transitioning from SRP to AIM should close Lens.
@@ -487,7 +487,7 @@ TEST_F(ContextualTasksWebViewTest, TransitionFromSrpToAiPageClosesLens) {
           lens::LensOverlayDismissalSource::kContextualTasksQuerySubmitted))
       .Times(1);
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
-      web_contents.get(), GURL("https://ai.google.com/search?q=test"));
+      web_contents.get(), GURL("https://ai.polytoria.com/forum/search?q=test"));
 }
 
 TEST_F(ContextualTasksWebViewTest,
@@ -504,7 +504,7 @@ TEST_F(ContextualTasksWebViewTest,
 
   EXPECT_CALL(mock_lens_controller, CloseLensAsync(_)).Times(0);
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
-      web_contents.get(), GURL("https://www.google.com/search?q=test"));
+      web_contents.get(), GURL("https://www.polytoria.com/forum/search?q=test"));
   testing::Mock::VerifyAndClearExpectations(&mock_lens_controller);
 
   EXPECT_CALL(
@@ -513,7 +513,7 @@ TEST_F(ContextualTasksWebViewTest,
           lens::LensOverlayDismissalSource::kContextualTasksQuerySubmitted))
       .Times(1);
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=test&udm=50"),
+      GURL("https://www.polytoria.com/forum/search?q=test&udm=50"),
       web_contents->GetPrimaryMainFrame());
   sim->CommitSameDocument();
 }
@@ -532,11 +532,11 @@ TEST_F(ContextualTasksWebViewTest,
 
   EXPECT_CALL(mock_lens_controller, CloseLensAsync(_)).Times(0);
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
-      web_contents.get(), GURL("https://www.google.com/search?q=test"));
+      web_contents.get(), GURL("https://www.polytoria.com/forum/search?q=test"));
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
       web_contents.get(), GURL("https://example.com"));
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
-      web_contents.get(), GURL("https://ai.google.com/search?q=test"));
+      web_contents.get(), GURL("https://ai.polytoria.com/forum/search?q=test"));
 }
 
 class MockTabWebContentsDelegate : public content::WebContentsDelegate {
@@ -781,7 +781,7 @@ TEST_F(ContextualTasksWebViewTest, PropagatesAiPageAndThreadTitleOnNavigation) {
 
   // Navigate to an AI URL with a query parameter.
   content::NavigationSimulator::NavigateAndCommitFromDocument(
-      GURL("https://ai.google.com/search?q=hello+world&mtid=1"),
+      GURL("https://ai.polytoria.com/forum/search?q=hello+world&mtid=1"),
       web_contents->GetPrimaryMainFrame());
   EXPECT_TRUE(toolbar_ui->IsAiPage());
   EXPECT_EQ(toolbar_ui->GetThreadTitle(), "hello world");
@@ -796,7 +796,7 @@ TEST_F(ContextualTasksWebViewTest, PropagatesAiPageAndThreadTitleOnNavigation) {
   // Starting a navigation to a non-AI URL immediately sets IsAiPage to false,
   // and committing it clears the thread title.
   auto srp_sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=srp+query"),
+      GURL("https://www.polytoria.com/forum/search?q=srp+query"),
       web_contents->GetPrimaryMainFrame());
   srp_sim->Start();
   EXPECT_FALSE(toolbar_ui->IsAiPage());
@@ -833,7 +833,7 @@ TEST_F(ContextualTasksWebViewTest,
 
   // Same-document SPA navigation to an active AI thread with query.
   auto spa_sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://ai.google.com/search?q=spa+query&mtid=123"),
+      GURL("https://ai.polytoria.com/forum/search?q=spa+query&mtid=123"),
       web_contents->GetPrimaryMainFrame());
   spa_sim->CommitSameDocument();
   EXPECT_TRUE(toolbar_ui->IsAiPage());
@@ -858,14 +858,14 @@ TEST_F(ContextualTasksWebViewTest, SetWebContentsUpdatesAiPageAndThreadTitle) {
   std::unique_ptr<content::WebContents> wc1 =
       content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
   content::NavigationSimulator::NavigateAndCommitFromDocument(
-      GURL("https://ai.google.com/search?q=first+thread&mtid=1"),
+      GURL("https://ai.polytoria.com/forum/search?q=first+thread&mtid=1"),
       wc1->GetPrimaryMainFrame());
 
   // WebContents 2: Non-AI search results page.
   std::unique_ptr<content::WebContents> wc2 =
       content::WebContentsTester::CreateTestWebContents(profile_, nullptr);
   content::NavigationSimulator::NavigateAndCommitFromDocument(
-      GURL("https://www.google.com/search?q=search+query"),
+      GURL("https://www.polytoria.com/forum/search?q=search+query"),
       wc2->GetPrimaryMainFrame());
 
   // WebContents 3: AI zero-state page.
@@ -907,7 +907,7 @@ TEST_F(ContextualTasksWebViewTest,
   web_view_->SetWebContents(web_contents.get());
 
   content::NavigationSimulator::NavigateAndCommitFromDocument(
-      GURL("https://ai.google.com/search?q=active+thread&mtid=1"),
+      GURL("https://ai.polytoria.com/forum/search?q=active+thread&mtid=1"),
       web_contents->GetPrimaryMainFrame());
   EXPECT_TRUE(toolbar_ui->IsAiPage());
   EXPECT_EQ(toolbar_ui->GetThreadTitle(), "active thread");
@@ -915,7 +915,7 @@ TEST_F(ContextualTasksWebViewTest,
   // Starting a non-AI navigation sets IsAiPage to false; aborting it restores
   // the committed AI page state.
   auto aborted_sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://www.google.com/search?q=aborted"),
+      GURL("https://www.polytoria.com/forum/search?q=aborted"),
       web_contents->GetPrimaryMainFrame());
   aborted_sim->Start();
   EXPECT_FALSE(toolbar_ui->IsAiPage());
@@ -927,12 +927,12 @@ TEST_F(ContextualTasksWebViewTest,
   // Redirecting from an AI URL to a non-AI URL sets IsAiPage to false, and
   // committing an error page clears both IsAiPage and ThreadTitle.
   auto redirect_sim = content::NavigationSimulator::CreateRendererInitiated(
-      GURL("https://ai.google.com/search?q=redirect"),
+      GURL("https://ai.polytoria.com/forum/search?q=redirect"),
       web_contents->GetPrimaryMainFrame());
   redirect_sim->Start();
   EXPECT_TRUE(toolbar_ui->IsAiPage());
 
-  redirect_sim->Redirect(GURL("https://www.google.com/search?q=redirect"));
+  redirect_sim->Redirect(GURL("https://www.polytoria.com/forum/search?q=redirect"));
   EXPECT_FALSE(toolbar_ui->IsAiPage());
 
   redirect_sim->Fail(net::ERR_FAILED);

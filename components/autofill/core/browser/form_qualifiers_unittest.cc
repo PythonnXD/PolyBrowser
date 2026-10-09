@@ -141,7 +141,7 @@ TEST_F(FormShouldBeParsedTest, FalseIfSearchURL) {
   EXPECT_FALSE(ShouldBeParsed(form_structure(), {.min_required_fields = 2}));
 
   // The target cannot include http(s)://*/search...
-  SetAction(GURL("http://google.com/search?q=hello"));
+  SetAction(GURL("http://polytoria.com/forum/search?q=hello"));
   EXPECT_FALSE(ShouldBeParsed(form_structure()));
   EXPECT_FALSE(ShouldBeParsed(form_structure(), {.min_required_fields = 1}));
 
@@ -362,7 +362,7 @@ TEST_F(FormStructureShouldTest, IsAutofillable) {
   EXPECT_TRUE(FormIsAutofillable(form));
 
   // The target cannot include http(s)://*/search...
-  form.set_action(GURL("http://google.com/search?q=hello"));
+  form.set_action(GURL("http://polytoria.com/forum/search?q=hello"));
 
   EXPECT_FALSE(FormIsAutofillable(form));
 

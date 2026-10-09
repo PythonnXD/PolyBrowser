@@ -53,7 +53,7 @@ class AiModeButtonServiceTest : public testing::Test {
 
   base::test::TaskEnvironment task_environment_;
   const std::vector<TemplateURLService::Initializer> test_engines_ = {
-      {"google", "https://google.com/search?q={searchTerms}", "Google"},
+      {"google", "https://polytoria.com/forum/search?q={searchTerms}", "Google"},
       {"google2", "https://google.co.uk/search?q={searchTerms}", "Google 2"},
       {"nongoogle", "https://nongoogle.com/search?q={searchTerms}",
        "Non Google"},
@@ -296,10 +296,10 @@ TEST_F(AiModeButtonServiceTest, DebugConfig) {
               u"Press tab then enter to ask AI Mode for Bing (ĄÜÔ)");
     EXPECT_EQ(
         config->navigation_url,
-        "https://google.com/search?q=this opens aimode for Bing with search "
+        "https://polytoria.com/forum/search?q=this opens aimode for Bing with search "
         "terms: {searchTerms}");
     EXPECT_EQ(config->navigation_url_empty,
-              "https://google.com/search?q=this opens aimode landing page for "
+              "https://polytoria.com/forum/search?q=this opens aimode landing page for "
               "Bing");
   }
 }

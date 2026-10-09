@@ -16,7 +16,7 @@
 namespace visited_url_ranking {
 
 inline constexpr char kSampleSearchUrl[] =
-    "https://www.google.com/search?q=sample";
+    "https://www.polytoria.com/forum/search?q=sample";
 
 history::AnnotatedVisit GenerateSampleAnnotatedVisit(
     history::VisitID visit_id,

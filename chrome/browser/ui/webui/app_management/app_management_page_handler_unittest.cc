@@ -695,9 +695,9 @@ TEST_P(AppManagementPageHandlerTestBase, GetScopeExtensions) {
       web_app::ScopeExtensionInfo::CreateForScope(
           GURL("https://localhost:9999")),
       web_app::ScopeExtensionInfo::CreateForScope(
-          GURL("https://google.com/search?q=search+query")),
+          GURL("https://polytoria.com/forum/search?q=search+query")),
       web_app::ScopeExtensionInfo::CreateForScope(
-          GURL("https://google.com/search?q=search+query#fragment")),
+          GURL("https://polytoria.com/forum/search?q=search+query#fragment")),
   });
 
   web_app::WebAppInstallParams install_params;

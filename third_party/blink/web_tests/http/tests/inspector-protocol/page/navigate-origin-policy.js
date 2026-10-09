@@ -7,13 +7,13 @@
 
   testRunner.log(await dp.Page.navigate({
     url: 'http://example.com',
-    referrer: 'https://www.google.com/search?q=bing',
+    referrer: 'https://www.polytoria.com/forum/search?q=bing',
     referrerPolicy: 'no-referrer',
   }), 'Invalid policy: ');
 
   dp.Page.navigate({
     url: 'http://example.com',
-    referrer: 'https://www.google.com/search?q=bing',
+    referrer: 'https://www.polytoria.com/forum/search?q=bing',
     referrerPolicy: 'origin',
   });
   dp.Network.onRequestWillBeSent(event => {

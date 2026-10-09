@@ -128,7 +128,7 @@ TEST_F(TemplateURLTest, TestValidWithComplete) {
 // engine's data is replaced, e.g. by TemplateURLService::Update().
 TEST_F(TemplateURLTest, IsTrustedGoogleEngineInvalidatedByCopyFrom) {
   TemplateURLData google_data;
-  google_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  google_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   google_data.suggestions_url =
       "https://www.google.com/complete/search?q={searchTerms}";
   TemplateURL turl(google_data);
@@ -146,11 +146,11 @@ TEST_F(TemplateURLTest, IsTrustedGoogleEngineInvalidatedByCopyFrom) {
 
 TEST_F(TemplateURLTest, IsTrustedGoogleEngineInvalidatedBySetURL) {
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL turl(data);
   EXPECT_TRUE(turl.IsTrustedGoogleEngine(search_terms_data_));
 
-  turl.SetURL("http://www.google.com/search?q={searchTerms}");
+  turl.SetURL("http://www.polytoria.com/forum/search?q={searchTerms}");
   EXPECT_FALSE(turl.IsTrustedGoogleEngine(search_terms_data_));
 }
 
@@ -2154,7 +2154,7 @@ TEST_F(TemplateURLTest, SuggestQueryParams) {
   TemplateURLRef::SearchTermsArgs search_terms(u"abc");
   search_terms.original_query = u"def";
   search_terms.accepted_suggestion = 0;
-  EXPECT_EQ("http://www.google.com/search?q=abc#oq=def&x",
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=abc#oq=def&x",
             url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
 
   // Set the |additional_query_params|.
@@ -2186,13 +2186,13 @@ TEST_F(TemplateURLTest, ExtraQueryParams) {
   TemplateURLRef::SearchTermsArgs search_terms(u"abc");
   search_terms.original_query = u"def";
   search_terms.accepted_suggestion = 0;
-  EXPECT_EQ("http://www.google.com/search?q=abc#oq=def&x",
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=abc#oq=def&x",
             url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
 
   // Set the flag.  Since there are no command-line args, this should have no
   // effect.
   search_terms.append_extra_query_params_from_command_line = true;
-  EXPECT_EQ("http://www.google.com/search?q=abc#oq=def&x",
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=abc#oq=def&x",
             url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
 
   // Now append the command-line arg.  This should be inserted into the query.
@@ -2203,7 +2203,7 @@ TEST_F(TemplateURLTest, ExtraQueryParams) {
 
   // Turn off the flag.  Now the command-line arg should be ignored again.
   search_terms.append_extra_query_params_from_command_line = false;
-  EXPECT_EQ("http://www.google.com/search?q=abc#oq=def&x",
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=abc#oq=def&x",
             url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
 }
 
@@ -2223,7 +2223,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
 
   // 1. By default, feature is disabled and the full original query is preserved
   // in oq.
-  EXPECT_EQ("http://www.google.com/search?q=" + std::string(2500, 'a') +
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=" + std::string(2500, 'a') +
                 "&oq=" + std::string(2500, 'a') + "&",
             url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
   EXPECT_FALSE(search_terms.is_oq_truncated.has_value());
@@ -2234,7 +2234,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
     base::test::ScopedFeatureList feature_list;
     feature_list.InitAndEnableFeature(omnibox::kTruncateSearchUrlOq);
     EXPECT_EQ(
-        "http://www.google.com/search?q=" + std::string(2500, 'a') +
+        "http://www.polytoria.com/forum/search?q=" + std::string(2500, 'a') +
             "&oq=" + std::string(2048, 'a') + "&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
@@ -2244,7 +2244,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
     search_terms.search_terms = short_query;
     search_terms.original_query = short_query;
     EXPECT_EQ(
-        "http://www.google.com/search?q=short&oq=short&",
+        "http://www.polytoria.com/forum/search?q=short&oq=short&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(false));
   }
@@ -2260,7 +2260,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
     search_terms.search_terms = query_15;
     search_terms.original_query = query_15;
     EXPECT_EQ(
-        "http://www.google.com/search?q=abcdefghijklmno&oq=abcdefghij&",
+        "http://www.polytoria.com/forum/search?q=abcdefghijklmno&oq=abcdefghij&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
 
@@ -2268,7 +2268,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
     search_terms.search_terms = query_3;
     search_terms.original_query = query_3;
     EXPECT_EQ(
-        "http://www.google.com/search?q=abc&oq=abc&",
+        "http://www.polytoria.com/forum/search?q=abc&oq=abc&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(false));
   }
@@ -2284,7 +2284,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
     search_terms.search_terms = query_3;
     search_terms.original_query = query_3;
     EXPECT_EQ(
-        "http://www.google.com/search?q=abc&oq=&",
+        "http://www.polytoria.com/forum/search?q=abc&oq=&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
   }
@@ -2306,7 +2306,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%F0%9F%98%80&oq=a&",
+          "http://www.polytoria.com/forum/search?q=a%F0%9F%98%80&oq=a&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
     }
@@ -2318,7 +2318,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", "13"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%F0%9F%98%80&oq=a%F0%9F%98%80&",
+          "http://www.polytoria.com/forum/search?q=a%F0%9F%98%80&oq=a%F0%9F%98%80&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(false));
     }
@@ -2336,7 +2336,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=abc%25d&oq=abc&",
+          "http://www.polytoria.com/forum/search?q=abc%25d&oq=abc&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
     }
@@ -2348,7 +2348,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", "6"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=abc%25d&oq=abc%25&",
+          "http://www.polytoria.com/forum/search?q=abc%25d&oq=abc%25&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
     }
@@ -2364,7 +2364,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=caf%C3%A9&oq=caf&",
+          "http://www.polytoria.com/forum/search?q=caf%C3%A9&oq=caf&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
     }
@@ -2374,7 +2374,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", "9"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=caf%C3%A9&oq=caf%C3%A9&",
+          "http://www.polytoria.com/forum/search?q=caf%C3%A9&oq=caf%C3%A9&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(false));
     }
@@ -2390,7 +2390,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%E4%B8%96&oq=a&",
+          "http://www.polytoria.com/forum/search?q=a%E4%B8%96&oq=a&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
     }
@@ -2400,7 +2400,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", "10"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%E4%B8%96&oq=a%E4%B8%96&",
+          "http://www.polytoria.com/forum/search?q=a%E4%B8%96&oq=a%E4%B8%96&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(false));
     }
@@ -2416,7 +2416,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%26b&oq=a&",
+          "http://www.polytoria.com/forum/search?q=a%26b&oq=a&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
     }
@@ -2426,7 +2426,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
           omnibox::kTruncateSearchUrlOq,
           {{"truncate_search_url_oq_length", "4"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%26b&oq=a%26&",
+          "http://www.polytoria.com/forum/search?q=a%26b&oq=a%26&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
     }
@@ -2442,7 +2442,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlOq) {
     search_terms.search_terms = long_query;
     search_terms.original_query = long_query;
     EXPECT_EQ(
-        "http://www.google.com/search?q=" + std::string(2500, 'a') +
+        "http://www.polytoria.com/forum/search?q=" + std::string(2500, 'a') +
             "&oq=" + std::string(2500, 'a') + "&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(false));
@@ -2483,7 +2483,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
 
   // 1. By default, feature is disabled and the full search terms are preserved
   // in q.
-  EXPECT_EQ("http://www.google.com/search?q=" + std::string(2500, 'a') +
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=" + std::string(2500, 'a') +
                 "&oq=" + std::string(2500, 'a') + "&",
             url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
   EXPECT_FALSE(search_terms.is_q_truncated.has_value());
@@ -2494,7 +2494,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
     base::test::ScopedFeatureList feature_list;
     feature_list.InitAndEnableFeature(omnibox::kTruncateSearchUrlQ);
     EXPECT_EQ(
-        "http://www.google.com/search?q=" + std::string(2048, 'a') +
+        "http://www.polytoria.com/forum/search?q=" + std::string(2048, 'a') +
             "&oq=" + std::string(2500, 'a') + "&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
@@ -2504,7 +2504,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
     search_terms.search_terms = short_query;
     search_terms.original_query = short_query;
     EXPECT_EQ(
-        "http://www.google.com/search?q=short&oq=short&",
+        "http://www.polytoria.com/forum/search?q=short&oq=short&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(false));
   }
@@ -2519,7 +2519,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
     search_terms.search_terms = query_15;
     search_terms.original_query = query_15;
     EXPECT_EQ(
-        "http://www.google.com/search?q=abcdefghij&oq=abcdefghijklmno&",
+        "http://www.polytoria.com/forum/search?q=abcdefghij&oq=abcdefghijklmno&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
 
@@ -2527,7 +2527,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
     search_terms.search_terms = query_3;
     search_terms.original_query = query_3;
     EXPECT_EQ(
-        "http://www.google.com/search?q=abc&oq=abc&",
+        "http://www.polytoria.com/forum/search?q=abc&oq=abc&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(false));
   }
@@ -2542,7 +2542,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
     search_terms.search_terms = query_3;
     search_terms.original_query = query_3;
     EXPECT_EQ(
-        "http://www.google.com/search?q=&oq=abc&",
+        "http://www.polytoria.com/forum/search?q=&oq=abc&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
   }
@@ -2564,7 +2564,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a&oq=a%F0%9F%98%80&",
+          "http://www.polytoria.com/forum/search?q=a&oq=a%F0%9F%98%80&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     }
@@ -2576,7 +2576,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", "13"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%F0%9F%98%80&oq=a%F0%9F%98%80&",
+          "http://www.polytoria.com/forum/search?q=a%F0%9F%98%80&oq=a%F0%9F%98%80&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(false));
     }
@@ -2594,7 +2594,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=abc&oq=abc%25d&",
+          "http://www.polytoria.com/forum/search?q=abc&oq=abc%25d&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     }
@@ -2606,7 +2606,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", "6"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=abc%25&oq=abc%25d&",
+          "http://www.polytoria.com/forum/search?q=abc%25&oq=abc%25d&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     }
@@ -2622,7 +2622,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=caf&oq=caf%C3%A9&",
+          "http://www.polytoria.com/forum/search?q=caf&oq=caf%C3%A9&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     }
@@ -2632,7 +2632,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", "9"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=caf%C3%A9&oq=caf%C3%A9&",
+          "http://www.polytoria.com/forum/search?q=caf%C3%A9&oq=caf%C3%A9&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(false));
     }
@@ -2648,7 +2648,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a&oq=a%E4%B8%96&",
+          "http://www.polytoria.com/forum/search?q=a&oq=a%E4%B8%96&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     }
@@ -2658,7 +2658,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", "10"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%E4%B8%96&oq=a%E4%B8%96&",
+          "http://www.polytoria.com/forum/search?q=a%E4%B8%96&oq=a%E4%B8%96&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(false));
     }
@@ -2674,7 +2674,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", base::NumberToString(length)}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a&oq=a%26b&",
+          "http://www.polytoria.com/forum/search?q=a&oq=a%26b&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     }
@@ -2684,7 +2684,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
           omnibox::kTruncateSearchUrlQ,
           {{"truncate_search_url_q_length", "4"}});
       EXPECT_EQ(
-          "http://www.google.com/search?q=a%26&oq=a%26b&",
+          "http://www.polytoria.com/forum/search?q=a%26&oq=a%26b&",
           url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
       EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     }
@@ -2704,7 +2704,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
     search_terms.search_terms = query_15;
     search_terms.original_query = query_15;
     EXPECT_EQ(
-        "http://www.google.com/search?q=abcde&oq=abcdefghij&",
+        "http://www.polytoria.com/forum/search?q=abcde&oq=abcdefghij&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
     EXPECT_EQ(search_terms.is_oq_truncated, std::optional<bool>(true));
@@ -2734,12 +2734,12 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
 
     TemplateURLData hardcoded_google_data;
     hardcoded_google_data.SetURL(
-        "https://www.google.com/search?q={searchTerms}");
+        "https://www.polytoria.com/forum/search?q={searchTerms}");
     TemplateURL hardcoded_google_url(hardcoded_google_data);
 
     search_terms.search_terms = long_query;
     search_terms.original_query = long_query;
-    EXPECT_EQ("https://www.google.com/search?q=" + std::string(2048, 'a'),
+    EXPECT_EQ("https://www.polytoria.com/forum/search?q=" + std::string(2048, 'a'),
               hardcoded_google_url.url_ref().ReplaceSearchTerms(
                   search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(true));
@@ -2755,7 +2755,7 @@ TEST_F(TemplateURLTest, TruncateSearchUrlQ) {
     search_terms.search_terms = long_query;
     search_terms.original_query = long_query;
     EXPECT_EQ(
-        "http://www.google.com/search?q=" + std::string(2500, 'a') +
+        "http://www.polytoria.com/forum/search?q=" + std::string(2500, 'a') +
             "&oq=" + std::string(2500, 'a') + "&",
         url.url_ref().ReplaceSearchTerms(search_terms, search_terms_data_));
     EXPECT_EQ(search_terms.is_q_truncated, std::optional<bool>(false));
@@ -3686,13 +3686,13 @@ TEST_F(TemplateURLTest, InvalidateCachedValues) {
   std::u16string search_terms;
 
   EXPECT_TRUE(url.HasGoogleBaseURLs(search_terms_data_));
-  EXPECT_EQ("http://www.google.com/search?q=X",
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=X",
             url.url_ref().ReplaceSearchTerms(search_terms_args,
                                              search_terms_data_));
   EXPECT_EQ("http://www.google.com/s#q=X",
             url.url_refs()[0].ReplaceSearchTerms(search_terms_args,
                                                  search_terms_data_));
-  EXPECT_EQ("http://www.google.com/search?q=X",
+  EXPECT_EQ("http://www.polytoria.com/forum/search?q=X",
             url.url_refs()[1].ReplaceSearchTerms(search_terms_args,
                                                  search_terms_data_));
   EXPECT_EQ("http://www.google.com/complete/search?q=X",
@@ -3712,7 +3712,7 @@ TEST_F(TemplateURLTest, InvalidateCachedValues) {
                 search_terms_args, search_terms_data_));
 
   EXPECT_TRUE(url.ExtractSearchTermsFromURL(
-      GURL("http://www.google.com/search?q=Y+Z"),
+      GURL("http://www.polytoria.com/forum/search?q=Y+Z"),
       search_terms_data_, &search_terms));
   EXPECT_EQ(u"Y Z", search_terms);
   EXPECT_TRUE(url.ExtractSearchTermsFromURL(
@@ -3771,7 +3771,7 @@ TEST_F(TemplateURLTest, PathWildcard) {
 
   // Test extracting search terms from a URL.
   std::u16string search_terms;
-  url.ExtractSearchTermsFromURL(GURL("https://www.google.com/search?q=testing"),
+  url.ExtractSearchTermsFromURL(GURL("https://www.polytoria.com/forum/search?q=testing"),
                                 search_terms_data_, &search_terms);
   EXPECT_EQ(u"testing", search_terms);
   url.ExtractSearchTermsFromURL(
@@ -3784,7 +3784,7 @@ TEST_F(TemplateURLTest, PathWildcard) {
       "https://www.google.com/search{google:pathWildcard}rch?q={searchTerms}");
   TemplateURL overlap_url(data);
   overlap_url.ExtractSearchTermsFromURL(
-      GURL("https://www.google.com/search?q=testing"), search_terms_data_,
+      GURL("https://www.polytoria.com/forum/search?q=testing"), search_terms_data_,
       &search_terms);
   EXPECT_TRUE(search_terms.empty());
 
@@ -3793,7 +3793,7 @@ TEST_F(TemplateURLTest, PathWildcard) {
       "https://www.google.com/{google:pathWildcard}rch?q={searchTerms}");
   TemplateURL suffix_url(data);
   suffix_url.ExtractSearchTermsFromURL(
-      GURL("https://www.google.com/search?q=testing"), search_terms_data_,
+      GURL("https://www.polytoria.com/forum/search?q=testing"), search_terms_data_,
       &search_terms);
   EXPECT_EQ(u"testing", search_terms);
 
@@ -3809,7 +3809,7 @@ TEST_F(TemplateURLTest, PathWildcard) {
   url.ReplaceSearchTermsInURL(url.GenerateSearchURL(search_terms_data_),
                               search_terms_args, search_terms_data_,
                               &generated_url);
-  EXPECT_EQ("https://www.google.com/search?q=foo", generated_url.spec());
+  EXPECT_EQ("https://www.polytoria.com/forum/search?q=foo", generated_url.spec());
 }
 
 TEST_F(TemplateURLTest, ImageTranslate) {

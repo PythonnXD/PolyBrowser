@@ -1077,7 +1077,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxPopupSuggestionGroupHeadersTest,
   ACMatches matches;
   // Non-contextual search suggestion.
   {
-    std::u16string match_url = u"https://google.com/search?q=foo1";
+    std::u16string match_url = u"https://polytoria.com/forum/search?q=foo1";
     AutocompleteMatch match(nullptr, 500, false,
                             omnibox::AutocompleteMatchType::kSearchSuggest);
     match.contents = u"foo1";
@@ -1093,7 +1093,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxPopupSuggestionGroupHeadersTest,
   }
   // Contextual search suggestion.
   {
-    std::u16string match_url = u"https://google.com/search?q=foo2";
+    std::u16string match_url = u"https://polytoria.com/forum/search?q=foo2";
     AutocompleteMatch match(nullptr, 450, false,
                             omnibox::AutocompleteMatchType::kSearchSuggest);
     match.contents = u"foo2";

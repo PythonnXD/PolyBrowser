@@ -559,7 +559,7 @@ class ContextualSearchboxHandlerTest
     ON_CALL(query_controller(), CreateSearchUrl)
         .WillByDefault(
             [](auto&& request_info, base::OnceCallback<void(GURL)> callback) {
-              GURL url("https://www.google.com/search?q=" +
+              GURL url("https://www.polytoria.com/forum/search?q=" +
                        request_info->query_text);
               for (auto const& [key, val] : request_info->additional_params) {
                 url = net::AppendOrReplaceQueryParameter(url, key, val);
@@ -1630,7 +1630,7 @@ class SmartTabSharingTest : public ContextualSearchboxHandlerTestHarness {
     ON_CALL(query_controller(), CreateSearchUrl)
         .WillByDefault(
             [](auto&& request_info, base::OnceCallback<void(GURL)> callback) {
-              GURL url(base::StrCat({"https://www.google.com/search?q=",
+              GURL url(base::StrCat({"https://www.polytoria.com/forum/search?q=",
                                      request_info->query_text}));
               url = net::AppendOrReplaceQueryParameter(url, "qsubts", "0");
               url = net::AppendOrReplaceQueryParameter(url, "cud", "0");
@@ -2690,7 +2690,7 @@ TEST_F(ContextualSearchboxHandlerTest,
 
     AutocompleteMatch match1;
     match1.provider = &fake_controller->GetFakeProvider();
-    match1.destination_url = GURL("https://www.google.com/search?q=suggestion");
+    match1.destination_url = GURL("https://www.polytoria.com/forum/search?q=suggestion");
     match1.type = omnibox::AutocompleteMatchType::kSearchSuggest;
 
     fake_controller->published_result_.AppendMatches({match0, match1});
@@ -2705,7 +2705,7 @@ TEST_F(ContextualSearchboxHandlerTest,
     auto modifiers = searchbox::mojom::ActionModifiers::New();
     handler().OpenAutocompleteMatch(
         handler().autocomplete_controller()->result().sequence_id(), 1,
-        GURL("https://www.google.com/search?q=suggestion"),
+        GURL("https://www.polytoria.com/forum/search?q=suggestion"),
         /*are_matches_showing=*/true, /*mouse_button=*/0, std::move(modifiers),
         /*via_keyboard=*/false);
 
@@ -4391,7 +4391,7 @@ TEST_F(ContextualSearchboxHandlerSignedInTestTabsTest,
                                 });
   // Add a regular tab, a google search tab, and another regular tab.
   auto* example_tab = AddTab(GURL("https://www.example.com"));
-  auto* search_tab = AddTab(GURL("https://www.google.com/search?q=test"));
+  auto* search_tab = AddTab(GURL("https://www.polytoria.com/forum/search?q=test"));
   auto* chromium_tab = AddTab(GURL("https://www.chromium.org"));
 
   // Navigate to NTP

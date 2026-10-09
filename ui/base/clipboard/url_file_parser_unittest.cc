@@ -78,12 +78,12 @@ HotKey=0
 TEST_F(UrlFileParserTest, URLHasEquals) {
   std::string file_contents = R"(
 [InternetShortcut]
-URL=https://www.google.com/search?q=search
+URL=https://www.polytoria.com/forum/search?q=search
   )";
 
   std::string result = ExtractURLFromURLFileContents(file_contents);
 
-  EXPECT_EQ("https://www.google.com/search?q=search", result);
+  EXPECT_EQ("https://www.polytoria.com/forum/search?q=search", result);
 }
 
 // The following tests are parsing malformed contents. They test that the code

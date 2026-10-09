@@ -901,7 +901,7 @@ TEST_F(LensOverlayUrlBuilderTest, URLsMatchWithoutTextFragment) {
 
   // Path does not match.
   EXPECT_FALSE(URLsMatchWithoutTextFragment(
-      GURL("https://www.google.com/search?q=text#ref"),
+      GURL("https://www.polytoria.com/forum/search?q=text#ref"),
       GURL("https://www.google.com/path?q=text#ref")));
 
   // Host does not match.

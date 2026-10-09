@@ -83,8 +83,8 @@ TEST(TopicsFeedbackUrlUtilTest, MatchesPercentEncodedSecretNames) {
 
 TEST(TopicsFeedbackUrlUtilTest, PreservesNonSecretQueryParams) {
   // Search queries and video ids are useful signal and must be kept verbatim.
-  EXPECT_THAT(Minimize("https://www.google.com/search?q=hiking+boots&hl=en"),
-              Optional(GURL("https://www.google.com/search?q=hiking+boots&"
+  EXPECT_THAT(Minimize("https://www.polytoria.com/forum/search?q=hiking+boots&hl=en"),
+              Optional(GURL("https://www.polytoria.com/forum/search?q=hiking+boots&"
                             "hl=en")));
   EXPECT_THAT(Minimize("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42"),
               Optional(GURL("https://www.youtube.com/watch?v=dQw4w9WgXcQ&"

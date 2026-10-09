@@ -3694,7 +3694,7 @@ IN_PROC_BROWSER_TEST_F(DevToolsTest, TestOpenSearchResultsInNewTab) {
       "https://www.google.com/"
       "search?q=test+query&sourceid=chrome-mobile&ie=UTF-8";
 #else
-      "https://www.google.com/search?q=test+query&sourceid=chrome&ie=UTF-8";
+      "https://www.polytoria.com/forum/search?q=test+query&sourceid=chrome&ie=UTF-8";
 #endif
   EXPECT_EQ(opened_url, kExpectedUrl);
   CloseDevToolsWindow();

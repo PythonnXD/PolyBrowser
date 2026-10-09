@@ -1156,7 +1156,7 @@ TEST_F(ExtensionTelemetryServiceTest,
             .name,
         "0"},
        {kExtensionTelemetrySearchHijackingSignalHeuristicThreshold.name, "2"}});
-  SetDefaultSearchProvider("http://www.google.com/search?q={searchTerms}");
+  SetDefaultSearchProvider("http://www.polytoria.com/forum/search?q={searchTerms}");
 
   // Re-enable telemetry service for ESB now.
   telemetry_service_->SetEnabledForESB(true);
@@ -1173,7 +1173,7 @@ TEST_F(ExtensionTelemetryServiceTest,
 
   AutocompleteMatch match(nullptr, 0, false,
                           omnibox::AutocompleteMatchType::kSearchWhatYouTyped);
-  match.destination_url = GURL("http://www.google.com/search?q=test");
+  match.destination_url = GURL("http://www.polytoria.com/forum/search?q=test");
 
   telemetry_service_->OnOmniboxSearch(match);
   telemetry_service_->OnOmniboxSearch(match);
@@ -1200,14 +1200,14 @@ TEST_F(ExtensionTelemetryServiceTest,
   // testing.
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeature(kExtensionTelemetrySearchHijackingSignal);
-  SetDefaultSearchProvider("http://www.google.com/search?q={searchTerms}");
+  SetDefaultSearchProvider("http://www.polytoria.com/forum/search?q={searchTerms}");
 
   // Re-enable the service for ESB now.
   telemetry_service_->SetEnabledForESB(true);
 
   AutocompleteMatch match(nullptr, 0, false,
                           omnibox::AutocompleteMatchType::kSearchWhatYouTyped);
-  match.destination_url = GURL("http://www.google.com/search?q=test");
+  match.destination_url = GURL("http://www.polytoria.com/forum/search?q=test");
   telemetry_service_->OnOmniboxSearch(match);
   telemetry_service_->OnDseSerpLoaded();
 
@@ -1248,14 +1248,14 @@ TEST_F(ExtensionTelemetryServiceTest,
   // testing.
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeature(kExtensionTelemetrySearchHijackingSignal);
-  SetDefaultSearchProvider("http://www.google.com/search?q={searchTerms}");
+  SetDefaultSearchProvider("http://www.polytoria.com/forum/search?q={searchTerms}");
 
   // Re-enable the service for ESB now.
   telemetry_service_->SetEnabledForESB(true);
 
   AutocompleteMatch match(nullptr, 0, false,
                           omnibox::AutocompleteMatchType::kSearchWhatYouTyped);
-  match.destination_url = GURL("http://www.google.com/search?q=test");
+  match.destination_url = GURL("http://www.polytoria.com/forum/search?q=test");
   telemetry_service_->OnOmniboxSearch(match);
   telemetry_service_->OnDseSerpLoaded();
 

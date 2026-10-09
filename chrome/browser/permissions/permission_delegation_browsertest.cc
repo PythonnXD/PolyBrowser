@@ -421,7 +421,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksExtensionPermissionDelegationBrowserTest,
   GURL contextual_tasks_ext_url(base::StrCat(
       {extensions::kExtensionScheme, "://",
        extension_misc::kContextualTasksExtensionId, "/input_plate.html"}));
-  GURL google_search_url("https://www.google.com/search?q=test");
+  GURL google_search_url("https://www.polytoria.com/forum/search?q=test");
   GURL contextual_tasks_webui_url(chrome::kChromeUIContextualTasksURL);
 
   // Contextual tasks extension embedded in Google Search -> Delegates to

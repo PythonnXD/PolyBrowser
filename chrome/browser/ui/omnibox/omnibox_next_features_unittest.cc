@@ -289,7 +289,7 @@ class OmniboxNextAimEligibilityTest : public testing::Test {
     TemplateURLData template_url_data;
     template_url_data.SetShortName(u"Google");
     template_url_data.SetKeyword(u"google.com");
-    template_url_data.SetURL("https://www.google.com/search?q={searchTerms}");
+    template_url_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     auto template_url = std::make_unique<TemplateURL>(template_url_data);
     auto* template_url_ptr =
         template_url_service_test_util_->model()->Add(std::move(template_url));

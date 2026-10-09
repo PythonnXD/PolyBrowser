@@ -132,7 +132,7 @@ TEST_F(TemplateURLServiceUnitTest, EngineTypeUpdatedAfterResetTemplateURL) {
   TemplateURLData data;
   data.SetShortName(u"custom");
   data.SetKeyword(u"custom");
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* turl =
       template_url_service().Add(std::make_unique<TemplateURL>(data));
   ASSERT_TRUE(turl);
@@ -569,7 +569,7 @@ TEST_F(TemplateURLServiceUnitTest,
   TemplateURLData data;
   data.SetShortName(u"Google");
   data.SetKeyword(u"google.com");
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   data.image_translate_url = "https://www.google.com/image_translate";
   data.sync_guid = "deterministic-guid-123";
 

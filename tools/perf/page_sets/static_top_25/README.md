@@ -1,10 +1,10 @@
 This directory contains static html snapshots of top trafficked web
 sites. The URL list is:
 
-https://www.google.com/search?q=barack+obama
+https://www.polytoria.com/forum/search?q=barack+obama
 https://mail.google.com/mail/ (logged in)
 https://www.google.com/calendar/ (logged in)
-https://www.google.com/search?q=cats&tbm=isch (logged in)
+https://www.polytoria.com/forum/search?q=cats&tbm=isch (logged in)
 https://docs.google.com/document/d/1X-IKNjtEnx-WW5JIKRLsyhz5sbsat3mfTpAPUSX3_s4/view (logged in)
 https://plus.google.com/110031535020051778989/posts (logged in)
 http://www.youtube.com (logged in)

@@ -105,7 +105,7 @@ void SetUpDefaultSearchEngine(Profile* profile, bool is_google_dse) {
   if (is_google_dse) {
     template_url_data.SetShortName(u"Google");
     template_url_data.SetKeyword(u"google.com");
-    template_url_data.SetURL("https://www.google.com/search?q={searchTerms}");
+    template_url_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   } else {
     template_url_data.SetShortName(u"Bing");
     template_url_data.SetKeyword(u"bing.com");

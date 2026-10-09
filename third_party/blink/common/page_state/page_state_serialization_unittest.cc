@@ -129,7 +129,7 @@ class PageStateSerializationTest : public testing::Test {
   void PopulateFrameState(ExplodedFrameState* frame_state) {
     // Invent some data for the various fields.
     frame_state->url_string = u"http://dev.chromium.org/";
-    frame_state->referrer = u"https://www.google.com/search?q=dev.chromium.org";
+    frame_state->referrer = u"https://www.polytoria.com/forum/search?q=dev.chromium.org";
     frame_state->referrer_policy = network::mojom::ReferrerPolicy::kAlways;
     frame_state->target = u"foo";
     frame_state->state_object = std::nullopt;

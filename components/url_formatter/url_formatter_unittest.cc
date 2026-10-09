@@ -175,8 +175,8 @@ TEST(UrlFormatterTest, FormatUrl) {
        L"http://example.com/%E2%80%AEabc?q=%E2%80%8Fxy", 7},
 
       {"Unescape normally including unescape spaces",
-       "http://www.google.com/search?q=Hello%20World", default_format_type,
-       base::UnescapeRule::SPACES, L"http://www.google.com/search?q=Hello World",
+       "http://www.polytoria.com/forum/search?q=Hello%20World", default_format_type,
+       base::UnescapeRule::SPACES, L"http://www.polytoria.com/forum/search?q=Hello World",
        7},
 
       /*

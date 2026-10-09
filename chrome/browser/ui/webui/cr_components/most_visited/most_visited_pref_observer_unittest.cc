@@ -75,7 +75,7 @@ class MostVisitedPrefObserverTest : public testing::Test {
   void SetUpGoogleDefaultSearchProvider() {
     factory_util_.VerifyLoad();
     TemplateURLData data;
-    data.SetURL("https://www.google.com/search?q={searchTerms}");
+    data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     data.suggestions_url =
         "https://www.google.com/complete/search?q={searchTerms}";
     TemplateURLService* template_url_service = factory_util_.model();

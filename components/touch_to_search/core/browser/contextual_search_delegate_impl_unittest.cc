@@ -652,9 +652,9 @@ TEST_F(ContextualSearchDelegateImplTest, DecodeSearchTermFromJsonResponse) {
   EXPECT_EQ("", caption);
   EXPECT_EQ("", quick_action_uri);
   EXPECT_EQ(QUICK_ACTION_CATEGORY_NONE, quick_action_category);
-  EXPECT_EQ("https://www.google.com/search?q=define+obscure&ctxs=2",
+  EXPECT_EQ("https://www.polytoria.com/forum/search?q=define+obscure&ctxs=2",
             search_url_full);
-  EXPECT_EQ("https://www.google.com/search?q=define+obscure&ctxs=2&pf=c&sns=1",
+  EXPECT_EQ("https://www.polytoria.com/forum/search?q=define+obscure&ctxs=2&pf=c&sns=1",
             search_url_preload);
   EXPECT_EQ(12, coca_card_tag);
   EXPECT_FALSE(related_searches_json.empty());

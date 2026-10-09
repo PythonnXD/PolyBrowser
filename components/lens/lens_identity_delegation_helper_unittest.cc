@@ -146,7 +146,7 @@ TEST_F(LensIdentityDelegationHelperTest,
   // Pass an origin with trailing slash and path.
   FetchIdentityDelegationHeaders(
       &cookie_manager_, identity_test_env_.identity_manager(),
-      "https://www.google.com/search?q=test/", GetFakeGenerator(), std::nullopt,
+      "https://www.polytoria.com/forum/search?q=test/", GetFakeGenerator(), std::nullopt,
       future.GetCallback());
 
   // Origin should be normalized and canonicalized without trailing slash or

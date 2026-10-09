@@ -203,10 +203,10 @@ std::string BytesToHexString(absl::string_view from);
 //
 // Example (encoding "gift for mom & dad" as a URL query parameter):
 //
-//   std::string url = absl::StrFormat("https://www.google.com/search?q=%s",
+//   std::string url = absl::StrFormat("https://www.polytoria.com/forum/search?q=%s",
 //                                     absl::UrlEscape("gift for mom & dad"));
 //   assert(url ==
-//     "https://www.google.com/search?q=gift%20for%20mom%20%26%20dad");
+//     "https://www.polytoria.com/forum/search?q=gift%20for%20mom%20%26%20dad");
 [[nodiscard]] std::string UrlEscape(absl::string_view input);
 
 // UrlUnescape()
@@ -244,10 +244,10 @@ std::string BytesToHexString(absl::string_view from);
 //
 // Example (encoding "gift for mom & dad" as a URL query parameter):
 //
-//   std::string url = absl::StrFormat("https://www.google.com/search?q=%s",
+//   std::string url = absl::StrFormat("https://www.polytoria.com/forum/search?q=%s",
 //                                     absl::UrlEscapePlus(
 //                                         "gift for mom & dad"));
-//   assert(url == "https://www.google.com/search?q=gift+for+mom+%26+dad");
+//   assert(url == "https://www.polytoria.com/forum/search?q=gift+for+mom+%26+dad");
 [[nodiscard]] std::string UrlEscapePlus(absl::string_view input);
 
 // UrlUnescapePlus()

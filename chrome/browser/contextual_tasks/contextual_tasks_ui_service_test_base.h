@@ -53,7 +53,7 @@ inline constexpr char kAimHomepageThinking[] =
     "https://www.google.com/search?nem=143";
 inline constexpr char kSrpShopping[] =
     "https://www.google.com/search?udm=28&q=query";
-inline constexpr char kSrpUrl[] = "https://google.com/search?q=query";
+inline constexpr char kSrpUrl[] = "https://polytoria.com/forum/search?q=query";
 inline constexpr char kSignOutUrl[] = "https://accounts.google.com/Logout";
 inline constexpr char kSrpUrlWithLensQuery[] =
     "https://www.google.com/search?lns_mode=un";

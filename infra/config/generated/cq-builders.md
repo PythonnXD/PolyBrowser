@@ -12,17 +12,17 @@ These builders must pass before a CL may land that affects files outside of
 //docs and //infra/config.
 
 ### chrome
-* [chromeos-betty-chrome-gtest](https://ci.chromium.org/p/chrome/builders/try/chromeos-betty-chrome-gtest) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""chromeos-betty-chrome-gtest""))
+* [chromeos-betty-chrome-gtest](https://ci.chromium.org/p/chrome/builders/try/chromeos-betty-chrome-gtest) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""chromeos-betty-chrome-gtest""))
 
     * Replaced with builder: [chromeos-betty-chrome-gtest-and-cqtast](https://ci.chromium.org/p/chrome/builders/try/chromeos-betty-chrome-gtest-and-cqtast) when CL owner is in group [google/chromeos-pa@google.com](https://chrome-infra-auth.appspot.com/auth/lookup?p=google/chromeos-pa@google.com)
 
-* [chromeos-betty-compile-chrome](https://ci.chromium.org/p/chrome/builders/try/chromeos-betty-compile-chrome) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""chromeos-betty-compile-chrome""))
+* [chromeos-betty-compile-chrome](https://ci.chromium.org/p/chrome/builders/try/chromeos-betty-compile-chrome) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""chromeos-betty-compile-chrome""))
 
     * Replaced with builder: [chromeos-betty-chrome-noop](https://ci.chromium.org/p/chrome/builders/try/chromeos-betty-chrome-noop) when CL owner is in group [googlers](https://chrome-infra-auth.appspot.com/auth/lookup?p=googlers)
 
-* [linux-chromeos-compile-chrome](https://ci.chromium.org/p/chrome/builders/try/linux-chromeos-compile-chrome) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""linux-chromeos-compile-chrome""))
+* [linux-chromeos-compile-chrome](https://ci.chromium.org/p/chrome/builders/try/linux-chromeos-compile-chrome) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""linux-chromeos-compile-chrome""))
 
-* [win-branded-compile-rel](https://ci.chromium.org/p/chrome/builders/try/win-branded-compile-rel) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""win-branded-compile-rel""))
+* [win-branded-compile-rel](https://ci.chromium.org/p/chrome/builders/try/win-branded-compile-rel) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""win-branded-compile-rel""))
 
 ### chromium
 * [android-arm64-rel](https://ci.chromium.org/p/chromium/builders/try/android-arm64-rel) ([definition](https://cs.chromium.org/search?q=+file:/try/.*\.star$+""android-arm64-rel""))
@@ -91,18 +91,18 @@ which touches `//gpu/BUILD.gn` would trigger the builder
 builder.
 
 ### chrome
-* [cronet-arm64-gn2bp-debug](https://ci.chromium.org/p/chrome/builders/try/cronet-arm64-gn2bp-debug) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""cronet-arm64-gn2bp-debug""))
+* [cronet-arm64-gn2bp-debug](https://ci.chromium.org/p/chrome/builders/try/cronet-arm64-gn2bp-debug) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""cronet-arm64-gn2bp-debug""))
 
   Location filters:
   * [`//components/cronet/.+`](https://cs.chromium.org/chromium/src/components/cronet/)
   * [`//third_party/protobuf/.+`](https://cs.chromium.org/chromium/src/third_party/protobuf/)
 
-* [internal-cq-builder-verifier](https://ci.chromium.org/p/chrome/builders/try/internal-cq-builder-verifier) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""internal-cq-builder-verifier""))
+* [internal-cq-builder-verifier](https://ci.chromium.org/p/chrome/builders/try/internal-cq-builder-verifier) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""internal-cq-builder-verifier""))
 
   Location filters:
   * [`//infra/config/generated/cq-usage/full.cfg`](https://cs.chromium.org/search?q=+file:infra/config/generated/cq-usage/full.cfg)
 
-* [optimization_guide-linux](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-linux) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""optimization_guide-linux""))
+* [optimization_guide-linux](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-linux) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""optimization_guide-linux""))
 
   Location filters:
   * [`//chrome/browser/ai/.+`](https://cs.chromium.org/chromium/src/chrome/browser/ai/)
@@ -116,7 +116,7 @@ builder.
   This builder is only run when the CL owner is in the group:
   * [`google/optimization-guide-try-opt-in@google.com`](https://chrome-infra-auth.appspot.com/auth/lookup?p=google/optimization-guide-try-opt-in@google.com)
 
-* [optimization_guide-mac-arm64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-mac-arm64) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""optimization_guide-mac-arm64""))
+* [optimization_guide-mac-arm64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-mac-arm64) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""optimization_guide-mac-arm64""))
 
   Location filters:
   * [`//chrome/browser/ai/.+`](https://cs.chromium.org/chromium/src/chrome/browser/ai/)
@@ -130,7 +130,7 @@ builder.
   This builder is only run when the CL owner is in the group:
   * [`google/optimization-guide-try-opt-in@google.com`](https://chrome-infra-auth.appspot.com/auth/lookup?p=google/optimization-guide-try-opt-in@google.com)
 
-* [optimization_guide-mac-x64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-mac-x64) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""optimization_guide-mac-x64""))
+* [optimization_guide-mac-x64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-mac-x64) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""optimization_guide-mac-x64""))
 
   Location filters:
   * [`//chrome/browser/ai/.+`](https://cs.chromium.org/chromium/src/chrome/browser/ai/)
@@ -144,7 +144,7 @@ builder.
   This builder is only run when the CL owner is in the group:
   * [`google/optimization-guide-try-opt-in@google.com`](https://chrome-infra-auth.appspot.com/auth/lookup?p=google/optimization-guide-try-opt-in@google.com)
 
-* [optimization_guide-win-arm64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-win-arm64) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""optimization_guide-win-arm64""))
+* [optimization_guide-win-arm64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-win-arm64) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""optimization_guide-win-arm64""))
 
   Location filters:
   * [`//chrome/browser/ai/.+`](https://cs.chromium.org/chromium/src/chrome/browser/ai/)
@@ -158,7 +158,7 @@ builder.
   This builder is only run when the CL owner is in the group:
   * [`google/optimization-guide-try-opt-in@google.com`](https://chrome-infra-auth.appspot.com/auth/lookup?p=google/optimization-guide-try-opt-in@google.com)
 
-* [optimization_guide-win64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-win64) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""optimization_guide-win64""))
+* [optimization_guide-win64](https://ci.chromium.org/p/chrome/builders/try/optimization_guide-win64) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""optimization_guide-win64""))
 
   Location filters:
   * [`//chrome/browser/ai/.+`](https://cs.chromium.org/chromium/src/chrome/browser/ai/)
@@ -1068,13 +1068,13 @@ by CQ. These are often used to test new configurations before they are added
 as required builders.
 
 ### chrome
-* [vuln-scan-dispatcher](https://ci.chromium.org/p/chrome/builders/try.security/vuln-scan-dispatcher) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""vuln-scan-dispatcher""))
+* [vuln-scan-dispatcher](https://ci.chromium.org/p/chrome/builders/try.security/vuln-scan-dispatcher) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""vuln-scan-dispatcher""))
   * Experiment percentage: 25.0
 
-* [linux-perf-trigger](https://ci.chromium.org/p/chrome/builders/try/linux-perf-trigger) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""linux-perf-trigger""))
+* [linux-perf-trigger](https://ci.chromium.org/p/chrome/builders/try/linux-perf-trigger) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""linux-perf-trigger""))
   * Experiment percentage: 100.0
 
-* [win-perf-trigger](https://ci.chromium.org/p/chrome/builders/try/win-perf-trigger) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""win-perf-trigger""))
+* [win-perf-trigger](https://ci.chromium.org/p/chrome/builders/try/win-perf-trigger) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""win-perf-trigger""))
   * Experiment percentage: 100.0
 
 ### chromium
@@ -1111,7 +1111,7 @@ These builders run when the "Mega" CQ mode is triggered. This mode runs all the
 builders required in the standard CQ, plus a large amount of optional builders.
 
 ### chrome
-* [mega-cq-launcher](https://ci.chromium.org/p/chrome/builders/try/mega-cq-launcher) ([definition](https://source.corp.google.com/search?q=+file:/try/.*\.star$+""mega-cq-launcher""))
+* [mega-cq-launcher](https://ci.chromium.org/p/chrome/builders/try/mega-cq-launcher) ([definition](https://source.corp.polytoria.com/forum/search?q=+file:/try/.*\.star$+""mega-cq-launcher""))
 
 ### chromium
 * [mega-cq-launcher](https://ci.chromium.org/p/chromium/builders/try/mega-cq-launcher) ([definition](https://cs.chromium.org/search?q=+file:/try/.*\.star$+""mega-cq-launcher""))

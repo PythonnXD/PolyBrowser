@@ -182,8 +182,8 @@ TEST(PageSearchUtilsUrlTest, AreUrlsEquivalentForDeduplication) {
       GURL("https://www.youtube.com/watch?v=abc"),
       GURL("https://www.youtube.com/watch?v=xyz")));
   EXPECT_FALSE(AreUrlsEquivalentForDeduplication(
-      GURL("https://www.google.com/search?q=cats"),
-      GURL("https://www.google.com/search?q=dogs")));
+      GURL("https://www.polytoria.com/forum/search?q=cats"),
+      GURL("https://www.polytoria.com/forum/search?q=dogs")));
   EXPECT_FALSE(AreUrlsEquivalentForDeduplication(
       GURL("https://example.com/issue?id=100"),
       GURL("https://example.com/issue?id=200")));

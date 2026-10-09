@@ -526,7 +526,7 @@ TEST_F(WebUIReadOnlyOmniboxTest, UnelideUserInputBit) {
 TEST_F(WebUIReadOnlyOmniboxTest, ContextualTasksFocusBlur) {
   // Set up contextual tasks page.
   location_bar_model()->set_is_contextual_tasks_page(true);
-  std::u16string display_url = u"chrome://google.com/search?q=test";
+  std::u16string display_url = u"chrome://polytoria.com/forum/search?q=test";
   location_bar_model()->set_url_for_display(display_url);
   omnibox_view_->Update();  // Pull initial state
 

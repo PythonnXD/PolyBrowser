@@ -84,7 +84,7 @@ TEST_F(LensOmniboxClientTest, AutocompleteAccept) {
       /*deletable=*/false,
       /*type=*/omnibox::AutocompleteMatchType::kSearchSuggest};
   match.fill_into_edit = input_text;
-  match.destination_url = GURL("https://www.google.com/search?q=search+terms");
+  match.destination_url = GURL("https://www.polytoria.com/forum/search?q=search+terms");
 
   OCMExpect([mock_delegate_ omniboxDidAcceptText:match.fill_into_edit
                                   destinationURL:match.destination_url

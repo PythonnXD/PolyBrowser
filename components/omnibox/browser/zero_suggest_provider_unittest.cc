@@ -162,7 +162,7 @@ class ZeroSuggestProviderTest : public testing::Test,
   AutocompleteInput ZeroPrefixInputForSRP(
       const bool is_prefetch,
       const bool user_input_in_progress = false,
-      const std::string& input_url = "https://www.google.com/search?q=foo",
+      const std::string& input_url = "https://www.polytoria.com/forum/search?q=foo",
       const std::u16string& input_title = u"foo - Google Search") {
     AutocompleteInput input(
         // On IOS WEB/SRP, input text is not empty.
@@ -181,7 +181,7 @@ class ZeroSuggestProviderTest : public testing::Test,
 
   // An AutocompleteInput that gets Prefix Suggestions on SRP.
   AutocompleteInput PrefixInputForSRP(
-      const std::string& input_url = "https://www.google.com/search?q=foo") {
+      const std::string& input_url = "https://www.polytoria.com/forum/search?q=foo") {
     AutocompleteInput input(u"foobar",
                             metrics::OmniboxEventProto::
                                 SEARCH_RESULT_PAGE_NO_SEARCH_TERM_REPLACEMENT,

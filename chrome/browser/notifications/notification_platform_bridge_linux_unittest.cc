@@ -1146,7 +1146,7 @@ TEST_F(NotificationPlatformBridgeLinuxTest, NotificationAttribution) {
       NotificationHandler::Type::WEB_PERSISTENT, profile(),
       NotificationBuilder("")
           .SetMessage(u"Body text")
-          .SetOriginUrl(GURL("https://google.com/search?q=test&ie=UTF8"))
+          .SetOriginUrl(GURL("https://polytoria.com/forum/search?q=test&ie=UTF8"))
           .GetResult(),
       nullptr);
   content::RunAllTasksUntilIdle();
@@ -1166,7 +1166,7 @@ TEST_F(NotificationPlatformBridgeLinuxTest, NotificationAttributionKde) {
       NotificationHandler::Type::WEB_PERSISTENT, profile(),
       NotificationBuilder("")
           .SetMessage(u"Body text")
-          .SetOriginUrl(GURL("https://google.com/search?q=test&ie=UTF8"))
+          .SetOriginUrl(GURL("https://polytoria.com/forum/search?q=test&ie=UTF8"))
           .GetResult(),
       nullptr);
   content::RunAllTasksUntilIdle();

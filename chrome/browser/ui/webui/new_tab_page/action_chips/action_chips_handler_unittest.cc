@@ -426,7 +426,7 @@ INSTANTIATE_TEST_SUITE_P(
             .test_name = "IgnoresAllInvalidTabs",
             .tabs =
                 {
-                    {.url = "https://www.google.com/search?q=test",
+                    {.url = "https://www.polytoria.com/forum/search?q=test",
                      .title = "Google SRP"},
                     {.url = "invalidUrl", .title = "Invalid URL"},
                     {.url = "about:blank", .title = "About Blank"},
@@ -805,7 +805,7 @@ TEST_F(ActionChipsHandlerTest, NavigateToAimOpensCorrectUrl) {
   TemplateURLData data;
   data.SetShortName(u"google");
   data.SetKeyword(u"google");
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* turl =
       template_url_service->Add(std::make_unique<TemplateURL>(data));
   template_url_service->SetUserSelectedDefaultSearchProvider(turl);

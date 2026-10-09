@@ -71,7 +71,7 @@ class GoogleImageSearch2018Page(TopRealWorldDesktopPage):
 
   BASE_NAME = 'google_image_search'
   YEAR = '2018'
-  URL = 'https://www.google.com/search?q=cats&tbm=isch'
+  URL = 'https://www.polytoria.com/forum/search?q=cats&tbm=isch'
 
   def __init__(
     self,

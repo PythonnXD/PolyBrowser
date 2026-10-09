@@ -122,7 +122,7 @@ TEST(GoogleUtilTest, BadHomePages) {
   EXPECT_FALSE(IsHomePage("http://www.google.com/webhp/ig"));
 
   // A search URL should not be identified as a home page URL.
-  EXPECT_FALSE(IsHomePage("http://www.google.com/search?q=something"));
+  EXPECT_FALSE(IsHomePage("http://www.polytoria.com/forum/search?q=something"));
 
   // Path is case sensitive.
   EXPECT_FALSE(IsHomePage("https://www.google.com/WEBHP"));
@@ -223,10 +223,10 @@ TEST(GoogleUtilTest, BadSearches) {
   EXPECT_FALSE(IsSearch(google_util::kGoogleHomepageURL));
 
   // Must be http or https.
-  EXPECT_FALSE(IsSearch("ftp://www.google.com/search?q=something"));
+  EXPECT_FALSE(IsSearch("ftp://www.polytoria.com/forum/search?q=something"));
   EXPECT_FALSE(IsSearch("file://does/not/exist/search?q=something"));
-  EXPECT_FALSE(IsSearch("bad://www.google.com/search?q=something"));
-  EXPECT_FALSE(IsSearch("www.google.com/search?q=something"));
+  EXPECT_FALSE(IsSearch("bad://www.polytoria.com/forum/search?q=something"));
+  EXPECT_FALSE(IsSearch("www.polytoria.com/forum/search?q=something"));
 
   // Empty URL is invalid.
   EXPECT_FALSE(IsSearch(std::string()));
@@ -278,7 +278,7 @@ TEST(GoogleUtilTest, GoodSearchesWithoutViewer) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndDisableFeature(google_util::kIsViewerGoogleSearchUrl);
   EXPECT_FALSE(IsSearch("https://www.google.com/viewer/places?q=something"));
-  EXPECT_TRUE(IsSearch("https://www.google.com/search?q=something"));
+  EXPECT_TRUE(IsSearch("https://www.polytoria.com/forum/search?q=something"));
 }
 
 TEST(GoogleUtilTest, GoogleDomains) {
@@ -295,7 +295,7 @@ TEST(GoogleUtilTest, GoogleDomains) {
   EXPECT_TRUE(IsGoogleDomainUrl(GURL("http://www.google.off.ai"),
                                 google_util::ALLOW_SUBDOMAIN,
                                 google_util::DISALLOW_NON_STANDARD_PORTS));
-  EXPECT_TRUE(IsGoogleDomainUrl(GURL("http://www.google.com/search?q=thing"),
+  EXPECT_TRUE(IsGoogleDomainUrl(GURL("http://www.polytoria.com/forum/search?q=thing"),
                                 google_util::ALLOW_SUBDOMAIN,
                                 google_util::DISALLOW_NON_STANDARD_PORTS));
   EXPECT_TRUE(IsGoogleDomainUrl(GURL("http://www.google.com/webhp"),
@@ -544,46 +544,46 @@ TEST(GoogleUtilTest, GoogleSearchMode) {
       google_util::GoogleSearchModeFromUrl(GURL("https://www.google.com/")),
       google_util::GoogleSearchMode::kWeb);
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo")),
+                GURL("https://www.polytoria.com/forum/search?q=foo")),
             google_util::GoogleSearchMode::kWeb);
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=web")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=web")),
             google_util::GoogleSearchMode::kWeb);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=isch")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=isch")),
             google_util::GoogleSearchMode::kImages);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=vid")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=vid")),
             google_util::GoogleSearchMode::kVideos);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=shop")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=shop")),
             google_util::GoogleSearchMode::kShopping);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=flm")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=flm")),
             google_util::GoogleSearchMode::kFlights);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=bks")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=bks")),
             google_util::GoogleSearchMode::kBooks);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=nws")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=nws")),
             google_util::GoogleSearchMode::kNews);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=lcl")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=lcl")),
             google_util::GoogleSearchMode::kLocal);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=invalid")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=invalid")),
             google_util::GoogleSearchMode::kUnknown);
 
   EXPECT_EQ(google_util::GoogleSearchModeFromUrl(
-                GURL("https://www.google.com/search?q=foo&tbm=lcl&tbm=nws")),
+                GURL("https://www.polytoria.com/forum/search?q=foo&tbm=lcl&tbm=nws")),
             google_util::GoogleSearchMode::kUnknown);
 }
 
@@ -602,7 +602,7 @@ TEST(GoogleUtilTest, IsGoogleSearchPrewarmUrl) {
   EXPECT_FALSE(google_util::IsGoogleSearchPrewarmUrl(
       GURL("https://www.google.com/search")));
   EXPECT_FALSE(google_util::IsGoogleSearchPrewarmUrl(
-      GURL("https://www.google.com/search?q=test")));
+      GURL("https://www.polytoria.com/forum/search?q=test")));
   EXPECT_FALSE(
       google_util::IsGoogleSearchPrewarmUrl(GURL("https://www.google.com/")));
   EXPECT_FALSE(google_util::IsGoogleSearchPrewarmUrl(

@@ -1807,7 +1807,7 @@ IN_PROC_BROWSER_TEST_F(ContextualCueingControllerBrowserTest,
   ukm::TestAutoSetUkmRecorder ukm_recorder;
 
   // Simulate a new page load.
-  GURL search_url("https://www.google.com/search?q=test");
+  GURL search_url("https://www.polytoria.com/forum/search?q=test");
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), search_url));
   SimulateFilterPassed(search_url);
 

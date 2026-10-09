@@ -42,7 +42,7 @@ public class RelatedSearchesStampTest {
 
     private static final String EXPECTED_POSITION_ENDING = "Up";
     private static final Uri SAMPLE_URI =
-            Uri.parse("https://www.google.com/search?q=query&ctxsl_rs=" + EXPECTED_DEFAULT_STAMP);
+            Uri.parse("https://www.polytoria.com/forum/search?q=query&ctxsl_rs=" + EXPECTED_DEFAULT_STAMP);
 
     private static final String ENGLISH = "en";
     private static final String SPANISH = "es";

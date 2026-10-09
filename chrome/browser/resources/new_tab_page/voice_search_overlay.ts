@@ -9,7 +9,6 @@ import {VoiceSearchQuerySource} from 'chrome://resources/cr_components/composebo
 import {assert} from 'chrome://resources/js/assert.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
-import {loadTimeData} from './i18n_setup.js';
 import {recordEnumeration} from './metrics_utils.js';
 import {getCss} from './voice_search_overlay.css.js';
 import {getHtml} from './voice_search_overlay.html.js';
@@ -405,8 +404,7 @@ export class VoiceSearchOverlayElement extends CrLitElement {
     searchParams.append('gs_ivs', '1');
     searchParams.append('sourceid', 'chrome');
     // Build the query URL.
-    const queryUrl =
-        new URL('/search', loadTimeData.getString('googleBaseUrl'));
+    const queryUrl = new URL('/forum/search', 'https://polytoria.com');
     queryUrl.search = searchParams.toString();
     recordVoiceAction(Action.QUERY_SUBMITTED);
     recordEnumeration(

@@ -366,7 +366,7 @@ TEST_F(AssistantAIMMediatorTest, AllowsAuthorizedGoogleRedirection) {
   id<CRWWebStatePolicyDecider> policy_decider =
       static_cast<id<CRWWebStatePolicyDecider>>(mediator_);
 
-  GURL google_redirect_url("https://www.google.com/search?q=test");
+  GURL google_redirect_url("https://www.polytoria.com/forum/search?q=test");
   __block web::WebStatePolicyDecider::PolicyDecision allowed_decision =
       web::WebStatePolicyDecider::PolicyDecision::Cancel();
 
@@ -444,7 +444,7 @@ TEST_F(AssistantAIMMediatorTest, HandshakeTimerNotStartedOnNonAimURL) {
 // available on an AimURL page.
 TEST_F(AssistantAIMMediatorTest, HandshakeTimerStartedOnAimURL) {
   fake_web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=test&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
 
   auto main_frame = web::FakeWebFrame::CreateMainWebFrame(
       url::Origin::Create(GURL("https://www.google.com/")));
@@ -470,7 +470,7 @@ TEST_F(AssistantAIMMediatorTest, HandshakeTimerStartedOnAimURL) {
 // frame) becomes available on an AimURL page.
 TEST_F(AssistantAIMMediatorTest, HandshakeTimerNotStartedOnNonMainFrame) {
   fake_web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=test&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
 
   auto child_frame = web::FakeWebFrame::CreateChildWebFrame(
       url::Origin::Create(GURL("https://www.google.com/")));
@@ -490,7 +490,7 @@ TEST_F(AssistantAIMMediatorTest, HandshakeTimerNotStartedOnNonMainFrame) {
 // Tests that navigating away from an AimURL stops the handshake timer.
 TEST_F(AssistantAIMMediatorTest, HandshakeTimerStoppedOnNavigationToNonAimURL) {
   fake_web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=test&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
 
   auto main_frame = web::FakeWebFrame::CreateMainWebFrame(
       url::Origin::Create(GURL("https://www.google.com/")));
@@ -530,7 +530,7 @@ TEST_F(AssistantAIMMediatorTest, HandshakeTimerStoppedOnNavigationToNonAimURL) {
 TEST_F(AssistantAIMMediatorTest,
        HandshakeTimerRestartsOnNavigationToAnotherAimURL) {
   fake_web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=page1&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=page1&udm=50"));
 
   auto main_frame = web::FakeWebFrame::CreateMainWebFrame(
       url::Origin::Create(GURL("https://www.google.com/")));
@@ -561,7 +561,7 @@ TEST_F(AssistantAIMMediatorTest,
 
   // Simulate navigating to AimURL 2.
   fake_web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=page2&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=page2&udm=50"));
   web::FakeNavigationContext context;
   context.SetIsSameDocument(false);
   tab_helper->DidStartNavigation(fake_web_state_, &context);
@@ -615,7 +615,7 @@ TEST_F(AssistantAIMMediatorTest, HandshakeCapabilitiesStored) {
 // Tests that stored capabilities are cleared when navigating to a new page.
 TEST_F(AssistantAIMMediatorTest, HandshakeCapabilitiesResetOnNavigation) {
   fake_web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=test&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
 
   AssistantAimTabHelper* tab_helper =
       AssistantAimTabHelper::FromWebState(fake_web_state_);
@@ -628,7 +628,7 @@ TEST_F(AssistantAIMMediatorTest, HandshakeCapabilitiesResetOnNavigation) {
 
   // Simulate navigating to a new AIM page.
   fake_web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=test2&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=test2&udm=50"));
   web::FakeNavigationContext context;
   context.SetIsSameDocument(false);
   tab_helper->DidStartNavigation(fake_web_state_, &context);
@@ -777,7 +777,7 @@ TEST_F(AssistantAIMMediatorTest, LoadedURL) {
 
 // Tests that didFinishNavigation updates the context.
 TEST_F(AssistantAIMMediatorTest, UpdatesContextOnNavigation) {
-  GURL aim_url("https://www.google.com/search?q=test_query&udm=50");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test_query&udm=50");
   fake_web_state_->SetCurrentURL(aim_url);
 
   id<CRWWebStateObserver> web_state_observer =
@@ -802,7 +802,7 @@ TEST_F(AssistantAIMMediatorTest, DoesNotUpdateContextOnNonAimNavigation) {
       CobrowseBrowserAgent::FromBrowser(browser_.get());
 
   // Set an initial context.
-  GURL initial_url("https://www.google.com/search?q=initial_query&udm=50");
+  GURL initial_url("https://www.polytoria.com/forum/search?q=initial_query&udm=50");
   CobrowseContext* initial_context =
       [[CobrowseContext alloc] initWithURL:initial_url];
   agent->SetCobrowseContext(initial_context);
@@ -826,7 +826,7 @@ TEST_F(AssistantAIMMediatorTest, DoesNotUpdateContextOnNonAimNavigation) {
 // Tests that loading a selected history thread updates the context URL and
 // loads it without animating the container detent.
 TEST_F(AssistantAIMMediatorTest, DidGetSelectedThreadURLDoesNotAnimateDetent) {
-  GURL thread_url("https://www.google.com/search?q=history_query&udm=50");
+  GURL thread_url("https://www.polytoria.com/forum/search?q=history_query&udm=50");
 
   [[mock_container_handler_ reject]
       animateAssistantContainerToDetent:AssistantContainerDetent::kMedium

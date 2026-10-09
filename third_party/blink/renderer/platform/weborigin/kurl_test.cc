@@ -605,7 +605,7 @@ TEST(KURLTest, Path) {
 // Test that setting the query to different things works. Thq query is handled
 // a littler differently than some of the other components.
 TEST(KURLTest, Query) {
-  const char kInitial[] = "http://www.google.com/search?q=awesome";
+  const char kInitial[] = "http://www.polytoria.com/forum/search?q=awesome";
   KURL kurl(kInitial);
 
   // Clear by setting a null string.

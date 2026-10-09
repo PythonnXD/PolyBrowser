@@ -119,7 +119,7 @@ class FakeProfileManagerWithSearchUtil : public FakeProfileManager {
           template_url_data.SetShortName(u"Google");
           template_url_data.SetKeyword(u"google.com");
           template_url_data.SetURL(
-              "https://www.google.com/search?q={searchTerms}");
+              "https://www.polytoria.com/forum/search?q={searchTerms}");
           auto template_url = std::make_unique<TemplateURL>(template_url_data);
           TemplateURL* default_turl =
               turl_service->Add(std::move(template_url));
@@ -168,7 +168,7 @@ class OmniboxEverywhereControllerTest : public ChromeViewsTestBase {
     if (is_google) {
       template_url_data.SetShortName(u"Google");
       template_url_data.SetKeyword(u"google.com");
-      template_url_data.SetURL("https://www.google.com/search?q={searchTerms}");
+      template_url_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     } else {
       template_url_data.SetShortName(u"Other");
       template_url_data.SetKeyword(u"other.com");
@@ -328,7 +328,7 @@ TEST_F(OmniboxEverywhereControllerTest,
   TemplateURLServiceFactoryTestUtil util2(&profile2);
   util2.VerifyLoad();
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   util2.model()->SetUserSelectedDefaultSearchProvider(
       util2.model()->Add(std::make_unique<TemplateURL>(data)));
 
@@ -757,7 +757,7 @@ TEST_F(OmniboxEverywhereControllerTest,
   TemplateURLServiceFactoryTestUtil util2(&profile2);
   util2.VerifyLoad();
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   util2.model()->SetUserSelectedDefaultSearchProvider(
       util2.model()->Add(std::make_unique<TemplateURL>(data)));
 
@@ -1184,7 +1184,7 @@ TEST_F(OmniboxEverywhereControllerTest,
   TemplateURLData template_url_data;
   template_url_data.SetShortName(u"Google");
   template_url_data.SetKeyword(u"google.com");
-  template_url_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  template_url_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* default_turl = factory_util.model()->Add(
       std::make_unique<TemplateURL>(template_url_data));
   factory_util.model()->SetUserSelectedDefaultSearchProvider(default_turl);

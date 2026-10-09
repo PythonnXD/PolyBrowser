@@ -696,7 +696,7 @@ TEST_F(ContextualTasksUiServiceTest, IsGoogleCaptchaUrl) {
   EXPECT_TRUE(service_for_nav_->IsGoogleCaptchaUrl(
       GURL("https://ipv4.google.com/sorry/index?continue=foo")));
   EXPECT_FALSE(service_for_nav_->IsGoogleCaptchaUrl(
-      GURL("https://www.google.com/search?q=test")));
+      GURL("https://www.polytoria.com/forum/search?q=test")));
   EXPECT_FALSE(service_for_nav_->IsGoogleCaptchaUrl(
       GURL("https://example.com/sorry/index")));
 }
@@ -3039,7 +3039,7 @@ TEST_F(ContextualTasksUiServiceTest,
   contextual_tasks::SetForcedEmbeddedPageHostOverride(
       contextual_tasks::HostOverride{"test.google.com", std::nullopt});
 
-  GURL url("https://www.google.com/search?q=test");
+  GURL url("https://www.polytoria.com/forum/search?q=test");
   GURL new_url = ContextualTasksUiService::AddRequiredSidePanelUrlChanges(
       url, web_contents.get());
 
@@ -3062,7 +3062,7 @@ TEST_F(ContextualTasksUiServiceTest,
   contextual_tasks::SetForcedEmbeddedPageHostOverride(
       contextual_tasks::HostOverride{"localhost.corp.google.com", 8888});
 
-  GURL url("https://www.google.com/search?q=test");
+  GURL url("https://www.polytoria.com/forum/search?q=test");
   GURL new_url = ContextualTasksUiService::AddRequiredSidePanelUrlChanges(
       url, web_contents.get());
 
@@ -3128,7 +3128,7 @@ TEST_F(ContextualTasksUiServiceTest,
   auto web_contents = content::WebContentsTester::CreateTestWebContents(
       profile_.get(), content::SiteInstance::Create(profile_.get()));
 
-  GURL url("https://www.google.com/search?q=test");
+  GURL url("https://www.polytoria.com/forum/search?q=test");
   service_for_nav_->SetIsWebContentsInSidePanelForTesting(true);
   EXPECT_TRUE(service_for_nav_->HandleNavigation(
       CreateOpenUrlParams(url, /*is_renderer_initiated=*/false),
@@ -3178,7 +3178,7 @@ TEST_F(ContextualTasksUiServiceTest, IsAllowedSidePanelUrl) {
 
   // Valid search results page is allowed.
   EXPECT_TRUE(service_for_nav_->IsAllowedSidePanelUrl(
-      GURL("https://www.google.com/search?q=query")));
+      GURL("https://www.polytoria.com/forum/search?q=query")));
   EXPECT_TRUE(service_for_nav_->IsAllowedSidePanelUrl(
       GURL("https://www.google.com/search?lns_mode=un")));
 
@@ -3349,7 +3349,7 @@ TEST_F(
 
   // Generate an allowed search URL that already contains all required side
   // panel parameters.
-  GURL raw_search_url("https://www.google.com/search?q=test");
+  GURL raw_search_url("https://www.polytoria.com/forum/search?q=test");
   GURL allowed_url_with_params =
       ContextualTasksUiService::AddRequiredSidePanelUrlChanges(
           raw_search_url, web_contents.get());
@@ -3396,7 +3396,7 @@ TEST_F(ContextualTasksUiServiceTest,
 
   service_for_nav_->SetIsWebContentsInSidePanelForTesting(true);
 
-  GURL srp_url("https://www.google.com/search?q=test");
+  GURL srp_url("https://www.polytoria.com/forum/search?q=test");
   EXPECT_FALSE(
       service_for_nav_->ShouldHandleCitationClick(srp_url, web_contents.get()));
 }
@@ -3648,7 +3648,7 @@ TEST_F(ContextualTasksUiServiceTest, ShouldHandleLensNavigation_TargetIsSrp) {
 
   service_for_nav_->SetIsWebContentsInSidePanelForTesting(true);
 
-  GURL srp_url("https://www.google.com/search?q=test");
+  GURL srp_url("https://www.polytoria.com/forum/search?q=test");
   EXPECT_TRUE(service_for_nav_->ShouldHandleLensNavigation(srp_url,
                                                            web_contents.get()));
 }
@@ -3664,7 +3664,7 @@ TEST_F(ContextualTasksUiServiceTest,
   auto web_contents = content::WebContentsTester::CreateTestWebContents(
       profile_.get(), content::SiteInstance::Create(profile_.get()));
   content::WebContentsTester::For(web_contents.get())
-      ->SetLastCommittedURL(GURL("https://www.google.com/search?q=test"));
+      ->SetLastCommittedURL(GURL("https://www.polytoria.com/forum/search?q=test"));
 
   service_for_nav_->SetIsWebContentsInSidePanelForTesting(true);
 
@@ -3701,7 +3701,7 @@ TEST_F(ContextualTasksUiServiceTest,
 
   service_for_nav_->SetIsWebContentsInSidePanelForTesting(false);
 
-  GURL srp_url("https://www.google.com/search?q=test");
+  GURL srp_url("https://www.polytoria.com/forum/search?q=test");
   EXPECT_FALSE(service_for_nav_->ShouldHandleLensNavigation(
       srp_url, web_contents.get()));
 }
@@ -3721,7 +3721,7 @@ TEST_F(
   service_for_nav_->SetIsWebContentsInSidePanelForTesting(true);
 
   GURL srp_refinement(
-      "https://www.google.com/search?q=refined_query&gsc=2&cs=0&hl=en&gl=us");
+      "https://www.polytoria.com/forum/search?q=refined_query&gsc=2&cs=0&hl=en&gl=us");
 
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _)).Times(0);
 
@@ -3811,7 +3811,7 @@ TEST_F(
   auto web_contents = content::WebContentsTester::CreateTestWebContents(
       profile_.get(), content::SiteInstance::Create(profile_.get()));
   content::WebContentsTester::For(web_contents.get())
-      ->SetLastCommittedURL(GURL("https://www.google.com/search?q=test"));
+      ->SetLastCommittedURL(GURL("https://www.polytoria.com/forum/search?q=test"));
 
   service_for_nav_->SetIsWebContentsInSidePanelForTesting(true);
 
@@ -3853,7 +3853,7 @@ TEST_F(
   auto panel_contents = content::WebContentsTester::CreateTestWebContents(
       profile_.get(), content::SiteInstance::Create(profile_.get()));
   content::WebContentsTester::For(panel_contents.get())
-      ->SetLastCommittedURL(GURL("https://www.google.com/search?q=test"));
+      ->SetLastCommittedURL(GURL("https://www.polytoria.com/forum/search?q=test"));
 
   auto active_tab_contents = content::WebContentsTester::CreateTestWebContents(
       profile_.get(), content::SiteInstance::Create(profile_.get()));

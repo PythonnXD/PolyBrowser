@@ -156,7 +156,7 @@ TEST_F(QuickInsertSearchControllerTest, DoesNotPublishResultsDuringBurnIn) {
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
   task_environment().FastForwardBy(base::Milliseconds(99));
 }
@@ -177,7 +177,7 @@ TEST_F(QuickInsertSearchControllerTest, ShowsResultsFromOmniboxSearch) {
               ElementsAre(VariantWith<QuickInsertBrowsingHistoryResult>(
                   Field("url", &QuickInsertBrowsingHistoryResult::url,
                         Property("spec", &GURL::spec,
-                                 "https://www.google.com/search?q=cat")))))))))
+                                 "https://www.polytoria.com/forum/search?q=cat")))))))))
       .Times(AtLeast(1));
   QuickInsertSearchController controller(kBurnInPeriod);
 
@@ -189,7 +189,7 @@ TEST_F(QuickInsertSearchControllerTest, ShowsResultsFromOmniboxSearch) {
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
   task_environment().FastForwardBy(kBurnInPeriod);
 }
@@ -260,7 +260,7 @@ TEST_F(QuickInsertSearchControllerTest,
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
   controller.StartSearch(
       &client(), u"dog", std::nullopt, kAllCategories, false, false,
@@ -281,7 +281,7 @@ TEST_F(QuickInsertSearchControllerTest, RecordsOmniboxMetricsBeforeBurnIn) {
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
 
   histogram.ExpectUniqueTimeSample(
@@ -301,7 +301,7 @@ TEST_F(QuickInsertSearchControllerTest, RecordsOmniboxMetricsAfterBurnIn) {
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
 
   histogram.ExpectUniqueTimeSample(
@@ -423,7 +423,7 @@ TEST_F(
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
   controller.StopSearch();
 
@@ -562,7 +562,7 @@ TEST_F(QuickInsertSearchControllerTest,
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
   controller.StopSearch();
 
@@ -701,7 +701,7 @@ TEST_F(QuickInsertSearchControllerTest,
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
   controller.StopSearch();
 

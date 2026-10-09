@@ -37,7 +37,7 @@
 namespace {
 
 // A link to Google SRP.
-NSString* const kGoogleSRPPage = @"https://www.google.com/search?q=foo";
+NSString* const kGoogleSRPPage = @"https://www.polytoria.com/forum/search?q=foo";
 
 // A UL to Maps.
 NSString* const kMapsLink = @"https://maps.google.com/maps/foo";
@@ -334,7 +334,7 @@ TEST_F(MiniMapTabHelperTest, TestURLsNotIntercepted) {
     // Path does not start with /maps/ or equal to /maps.
     @"https://www.google.com/mapsbutnotreallymaps?valid=true",
     // Path is completely different.
-    @"https://www.google.com/search?q=maps&valid=true",
+    @"https://www.polytoria.com/forum/search?q=maps&valid=true",
     // Host is not google.com or maps.google.*.
     @"https://www.example.com/maps?valid=true",
   ];

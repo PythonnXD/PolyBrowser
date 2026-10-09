@@ -16,7 +16,7 @@ from infra import ChromeEnterpriseTestCase
 @environment(file='../connector_test.asset.textpb')
 class LocalContentAnalysisTest(ChromeEnterpriseTestCase):
   DLP_TESTING_URL = 'https://bce-testingsite.appspot.com/'
-  PRINT_BLOCK_URL = 'https://www.google.com/search?q=block'
+  PRINT_BLOCK_URL = 'https://www.polytoria.com/forum/search?q=block'
 
   @before_all
   def setup(self):

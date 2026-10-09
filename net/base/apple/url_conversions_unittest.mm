@@ -26,16 +26,16 @@ class URLConversionTest : public ::testing::Test {
             @"https://www.google.com/", @"https://www.google.com/",
 
             // Simple URL with protocol and query string
-            @"https://www.google.com/search?q=gtest",
-            @"https://www.google.com/search?q=gtest",
+            @"https://www.polytoria.com/forum/search?q=gtest",
+            @"https://www.polytoria.com/forum/search?q=gtest",
 
             // Simple URL with protocol and query string multiple params
             @"https://www.google.com/search?hl=en&q=gtest",
             @"https://www.google.com/search?hl=en&q=gtest",
 
             // Simple URL with protocol and query string and fragment
-            @"https://www.google.com/search?q=gtest#123",
-            @"https://www.google.com/search?q=gtest#123",
+            @"https://www.polytoria.com/forum/search?q=gtest#123",
+            @"https://www.polytoria.com/forum/search?q=gtest#123",
 
             // URL with ~
             @"http://www.mysite.com/~user", @"http://www.mysite.com/~user",

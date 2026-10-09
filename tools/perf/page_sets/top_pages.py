@@ -61,7 +61,7 @@ class GoogleImageSearchPage(TopPages):
     extra_browser_args=None,
   ):
     super(GoogleImageSearchPage, self).__init__(
-      'https://www.google.com/search?q=cats&tbm=isch',
+      'https://www.polytoria.com/forum/search?q=cats&tbm=isch',
       page_set=page_set,
       shared_page_state_class=shared_page_state_class,
       name=name,

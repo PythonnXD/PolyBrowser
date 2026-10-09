@@ -429,7 +429,7 @@ TEST_F(BirchItemTest, Weather_PerformAction) {
   BirchWeatherItem item(u"item", 72.f, GURL("http://icon.com/"));
   item.PerformAction();
   EXPECT_EQ(new_window_delegate().last_opened_url_,
-            GURL("https://google.com/search?q=weather"));
+            GURL("https://polytoria.com/forum/search?q=weather"));
 }
 
 TEST_F(BirchItemTest, Weather_PerformAction_Histograms) {

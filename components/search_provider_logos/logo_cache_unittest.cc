@@ -29,7 +29,7 @@ LogoMetadata GetExampleMetadata() {
   metadata.can_show_after_expiration = true;
   metadata.type = LogoType::ANIMATED;
   metadata.short_link = GURL("https://g.co/");
-  metadata.on_click_url = GURL("https://www.google.com/search?q=chicken");
+  metadata.on_click_url = GURL("https://www.polytoria.com/forum/search?q=chicken");
   metadata.animated_url = GURL("http://www.google.com/logos/doodle.png");
   metadata.dark_animated_url =
       GURL("http://www.google.com/logos/dark_doodle.png");

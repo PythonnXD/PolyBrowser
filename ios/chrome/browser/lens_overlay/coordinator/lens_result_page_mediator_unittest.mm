@@ -335,7 +335,7 @@ TEST_F(LensResultPageMediatorTest,
   // Simulate navigation to AIM overlay (same-document with aimos=1).
   web::FakeNavigationContext aim_context;
   aim_context.SetUrl(GURL(
-      "https://www.google.com/search?q=test&lns_surface=4&vsrid=1#aimos=1"));
+      "https://www.polytoria.com/forum/search?q=test&lns_surface=4&vsrid=1#aimos=1"));
   aim_context.SetIsSameDocument(YES);
 
   [[mock_bottom_sheet_commands expect] requestMaximizeBottomSheet];
@@ -348,7 +348,7 @@ TEST_F(LensResultPageMediatorTest,
   // URL).
   web::FakeNavigationContext region_search_context;
   region_search_context.SetUrl(
-      GURL("https://www.google.com/search?q=region&lns_surface=4"));
+      GURL("https://www.polytoria.com/forum/search?q=region&lns_surface=4"));
   region_search_context.SetIsSameDocument(NO);
 
   [[mock_bottom_sheet_commands expect] showSearchBar];

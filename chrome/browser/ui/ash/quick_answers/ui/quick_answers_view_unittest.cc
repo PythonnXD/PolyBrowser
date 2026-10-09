@@ -451,7 +451,7 @@ TEST_F(QuickAnswersViewsTest, ClickResultCard) {
       GetQuickAnswersView()->GetBoundsInScreen().CenterPoint());
   GetEventGenerator()->ClickLeftButton();
 
-  EXPECT_EQ(GURL("https://www.google.com/search?q=test-query"),
+  EXPECT_EQ(GURL("https://www.polytoria.com/forum/search?q=test-query"),
             mock_open_web_url());
   EXPECT_FALSE(GetQuickAnswersView());
 }
@@ -471,7 +471,7 @@ TEST_F(QuickAnswersViewsTest, ClickLoadingCard) {
       GetQuickAnswersView()->GetBoundsInScreen().CenterPoint());
   GetEventGenerator()->ClickLeftButton();
 
-  EXPECT_EQ(GURL("https://www.google.com/search?q=test-query"),
+  EXPECT_EQ(GURL("https://www.polytoria.com/forum/search?q=test-query"),
             mock_open_web_url());
   EXPECT_FALSE(GetQuickAnswersView());
 }
@@ -502,7 +502,7 @@ TEST_F(QuickAnswersViewsTest, ClickRetryCard) {
   GetEventGenerator()->MoveMouseTo(cursor);
   GetEventGenerator()->ClickLeftButton();
 
-  EXPECT_EQ(GURL("https://www.google.com/search?q=test-query"),
+  EXPECT_EQ(GURL("https://www.polytoria.com/forum/search?q=test-query"),
             mock_open_web_url());
   EXPECT_FALSE(GetQuickAnswersView());
 }

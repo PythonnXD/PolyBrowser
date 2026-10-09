@@ -203,7 +203,7 @@ IN_PROC_BROWSER_TEST_P(
   ASSERT_TRUE(service);
   ASSERT_TRUE(contextual_tasks_service);
 
-  const GURL initial_search_url("https://www.google.com/search?q=test");
+  const GURL initial_search_url("https://www.polytoria.com/forum/search?q=test");
   int initial_tab_count = TabListInterface::From(browser())->GetTabCount();
   const GURL external_url("https://example.com/article");
 
@@ -751,7 +751,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUiServiceInteractiveUiTest,
         base::Uuid initial_task_id = task->GetTaskId();
 
         // Call StartTaskUiInSidePanel again.
-        const GURL search_url2("https://google.com/search?q=foo");
+        const GURL search_url2("https://polytoria.com/forum/search?q=foo");
         service->StartTaskUiInSidePanel(browser(),
                                         browser()->GetActiveTabInterface(),
                                         search_url2, nullptr);

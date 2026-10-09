@@ -217,7 +217,7 @@ TEST_F(ManifestProtocolHandlersTest, InvalidProtocolHandler) {
             {
               "protocol": "glsearch",
               "name": "Testing handler",
-              "uriTemplate": "https://www.google.com/search?q=%s"
+              "uriTemplate": "https://www.polytoria.com/forum/search?q=%s"
             }
           ])",
           {errors::kProtocolHandlerSchemeNotInSafeList},
@@ -228,7 +228,7 @@ TEST_F(ManifestProtocolHandlersTest, InvalidProtocolHandler) {
             {
               "protocol": "glsearch",
               "name": "",
-              "uriTemplate": "https://www.google.com/search?q=%s"
+              "uriTemplate": "https://www.polytoria.com/forum/search?q=%s"
             }
           ])",
           {errors::kProtocolHandlerEmptyName,
@@ -240,7 +240,7 @@ TEST_F(ManifestProtocolHandlersTest, InvalidProtocolHandler) {
             {
               "protocol": "https",
               "name": "Testing handler",
-              "uriTemplate": "https://www.google.com/search?q=%s"
+              "uriTemplate": "https://www.polytoria.com/forum/search?q=%s"
             }
           ])",
           {errors::kProtocolHandlerSchemeNotInSafeList},

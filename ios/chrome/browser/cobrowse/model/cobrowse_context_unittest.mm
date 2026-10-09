@@ -16,7 +16,7 @@
 
 namespace {
 
-const char kDefaultURL[] = "https://www.google.com/search?q=test";
+const char kDefaultURL[] = "https://www.polytoria.com/forum/search?q=test";
 const char kOverrideURL[] = "https://www.overridden.com/search?q=test";
 NSString* const kCobrowseGwsURLKey = @"CobrowseGwsURL";
 

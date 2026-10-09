@@ -14,8 +14,8 @@ public class JUnitTestGURLs {
     public static final GURL URL_2 = new GURL("https://www.two.com/");
     public static final GURL URL_3 = new GURL("https://www.three.com/");
     public static final GURL MAPS_URL = new GURL("https://maps.google.com/");
-    public static final GURL SEARCH_URL = new GURL("https://www.google.com/search?q=test");
-    public static final GURL SEARCH_2_URL = new GURL("https://www.google.com/search?q=query");
+    public static final GURL SEARCH_URL = new GURL("https://www.polytoria.com/forum/search?q=test");
+    public static final GURL SEARCH_2_URL = new GURL("https://www.polytoria.com/forum/search?q=query");
     public static final GURL INITIAL_URL = new GURL("https://initial.com");
     public static final GURL NTP_URL = new GURL("chrome://newtab/");
     public static final GURL NTP_NATIVE_URL = new GURL("chrome-native://newtab/");

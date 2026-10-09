@@ -4431,7 +4431,7 @@ TEST_F(HistoryBackendTest, QueryMostRepeatedQueriesForKeyword) {
   for (size_t i = 0; i < result_count * 2; ++i) {
     HistoryAddPageArgs args;
     const std::u16string term = u"First" + base::NumberToString16(i + 1);
-    args.url = GURL(u"https://www.google.com/search?q=" + term);
+    args.url = GURL(u"https://www.polytoria.com/forum/search?q=" + term);
     args.time = base_time + base::Days(i + 1);
     args.transition = ui::PAGE_TRANSITION_TYPED;
     backend_->AddPage(args);

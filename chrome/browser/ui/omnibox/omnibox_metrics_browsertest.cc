@@ -110,7 +110,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxMetricsTest, LogSearchEngineUsed_PostNavigation) {
   data.SetURL(
       embedded_test_server()
           ->GetURL(
-              "/server-redirect?https://www.google.com/search?q={searchTerms}")
+              "/server-redirect?https://www.polytoria.com/forum/search?q={searchTerms}")
           .spec());
   TemplateURL* template_url =
       template_url_service->Add(std::make_unique<TemplateURL>(data));

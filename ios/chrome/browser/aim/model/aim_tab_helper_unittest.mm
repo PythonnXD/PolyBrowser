@@ -60,7 +60,7 @@ class AimTabHelperTest : public PlatformTest {
     TemplateURLData data;
     data.SetShortName(u"Test");
     data.SetKeyword(u"test");
-    data.SetURL("https://www.google.com/search?q={searchTerms}");
+    data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     TemplateURL* template_url =
         template_url_service_->Add(std::make_unique<TemplateURL>(data));
     template_url_service_->SetUserSelectedDefaultSearchProvider(template_url);
@@ -92,7 +92,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_SameDocument) {
   EXPECT_CALL(*aim_eligibility_service_, FetchEligibility(testing::_)).Times(0);
 
   web::FakeNavigationContext context;
-  context.SetUrl(GURL("https://www.google.com/search?q=test"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test"));
   context.SetHasCommitted(true);
   context.SetIsSameDocument(true);
 
@@ -105,7 +105,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_NotCommitted) {
   EXPECT_CALL(*aim_eligibility_service_, FetchEligibility(testing::_)).Times(0);
 
   web::FakeNavigationContext context;
-  context.SetUrl(GURL("https://www.google.com/search?q=test"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test"));
   context.SetHasCommitted(false);
   context.SetIsSameDocument(false);
 
@@ -122,7 +122,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_FeatureDisabled) {
   EXPECT_CALL(*aim_eligibility_service_, FetchEligibility(testing::_)).Times(0);
 
   web::FakeNavigationContext context;
-  context.SetUrl(GURL("https://www.google.com/search?q=test"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test"));
   context.SetHasCommitted(true);
   context.SetIsSameDocument(false);
 
@@ -137,7 +137,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_NotAimEligible) {
   EXPECT_CALL(*aim_eligibility_service_, FetchEligibility(testing::_)).Times(0);
 
   web::FakeNavigationContext context;
-  context.SetUrl(GURL("https://www.google.com/search?q=test"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test"));
   context.SetHasCommitted(true);
   context.SetIsSameDocument(false);
 
@@ -169,7 +169,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_NoAimUrlParams) {
   EXPECT_CALL(*aim_eligibility_service_, FetchEligibility(testing::_)).Times(0);
 
   web::FakeNavigationContext context;
-  context.SetUrl(GURL("https://www.google.com/search?q=test"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test"));
   context.SetHasCommitted(true);
   context.SetIsSameDocument(false);
 
@@ -189,7 +189,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_FetchesEligibility) {
       .Times(1);
 
   web::FakeNavigationContext context;
-  context.SetUrl(GURL("https://www.google.com/search?q=test"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test"));
   context.SetHasCommitted(true);
   context.SetIsSameDocument(false);
 
@@ -203,7 +203,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_RecordsActionForAimUrl) {
   base::UserActionTester user_action_tester;
 
   web::FakeNavigationContext context;
-  context.SetUrl(GURL("https://www.google.com/search?q=test&udm=50"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
   context.SetHasCommitted(true);
   context.SetIsSameDocument(false);
 
@@ -213,7 +213,7 @@ TEST_F(AimTabHelperTest, DidFinishNavigation_RecordsActionForAimUrl) {
             user_action_tester.GetActionCount("MobileAIModeSearchPerformed"));
 
   // Navigating to the same URL with a fragment should not record again.
-  context.SetUrl(GURL("https://www.google.com/search?q=test&udm=50#section"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test&udm=50#section"));
   context.SetIsSameDocument(true);
   AimTabHelper::FromWebState(&web_state_)
       ->DidFinishNavigation(&web_state_, &context);
@@ -239,7 +239,7 @@ TEST_F(AimTabHelperTest,
 
   // Submitting a query on the AIM page via same-document navigation should
   // record the action.
-  context.SetUrl(GURL("https://www.google.com/search?q=test&udm=50"));
+  context.SetUrl(GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
   context.SetIsSameDocument(true);
   AimTabHelper::FromWebState(&web_state_)
       ->DidFinishNavigation(&web_state_, &context);

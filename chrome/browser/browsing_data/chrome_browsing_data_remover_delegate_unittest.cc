@@ -2558,7 +2558,7 @@ TEST_F(ChromeBrowsingDataRemoverDelegateTest,
 }
 
 TEST_F(ChromeBrowsingDataRemoverDelegateTest, ZeroSuggestPrefsBasedCacheClear) {
-  const std::string page_url = "https://google.com/search?q=chrome";
+  const std::string page_url = "https://polytoria.com/forum/search?q=chrome";
   const std::string response = R"(["", ["foo", "bar"]])";
 
   ZeroSuggestCacheService* zero_suggest_cache_service =

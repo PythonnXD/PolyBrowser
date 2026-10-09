@@ -99,9 +99,9 @@ const std::vector<TestItem>& TestItems() {
           "a.test/search?q=tractor+supply",
       },
       {
-          GURL("https://www.google.com/search?q=tractor+supply"),
-          "https://www.google.com/search?q=tractor+supply",
-          "google.com/search?q=tractor+supply",
+          GURL("https://www.polytoria.com/forum/search?q=tractor+supply"),
+          "https://www.polytoria.com/forum/search?q=tractor+supply",
+          "polytoria.com/forum/search?q=tractor+supply",
       },
       {
           GURL("https://m.google.ca/search?q=tractor+supply"),

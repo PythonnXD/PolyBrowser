@@ -2993,7 +2993,7 @@ NSMutableDictionary* CreateExperimentalTestingPolicies() {
       base::SysUTF8ToNSString(policy::key::kDefaultSearchProviderEnabled) :
           @YES,
       base::SysUTF8ToNSString(policy::key::kDefaultSearchProviderSearchURL) :
-          @"http://www.google.com/search?q={searchTerms}",
+          @"http://www.polytoria.com/forum/search?q={searchTerms}",
       base::SysUTF8ToNSString(policy::key::kDefaultSearchProviderName) :
           @"TestEngine",
 

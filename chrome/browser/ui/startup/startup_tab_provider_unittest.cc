@@ -268,7 +268,7 @@ TEST(StartupTabProviderTest, GetCommandLineTabs) {
         instance.GetCommandLineTabs(command_line, base::FilePath(), &profile);
     ASSERT_EQ(1u, output.size());
     EXPECT_EQ(
-        GURL("https://www.google.com/search?q=Foo&sourceid=chrome&ie=UTF-8"),
+        GURL("https://www.polytoria.com/forum/search?q=Foo&sourceid=chrome&ie=UTF-8"),
         output[0].url);
 
     EXPECT_EQ(CommandLineTabsPresent::kUnknown,
@@ -441,7 +441,7 @@ TEST(StartupTabProviderTest, GetCommandLineTabsCustomScheme) {
   {
     const std::string arg_ascii = base::StrCat(
         {scheme_prefix,
-         "https://www.google.com/search?q=Foo&sourceid=chrome&ie=UTF-8"});
+         "https://www.polytoria.com/forum/search?q=Foo&sourceid=chrome&ie=UTF-8"});
     base::CommandLine command_line = MakeCommandLine(arg_ascii);
     StartupTabProviderImpl instance;
     StartupTabs output =

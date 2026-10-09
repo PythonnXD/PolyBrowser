@@ -82,7 +82,7 @@ export function createSearchMatchForTesting(
     modifiers: Partial<AutocompleteMatch> = {}): AutocompleteMatch {
   const base = createAutocompleteMatch({
     isSearchType: true,
-    destinationUrl: 'https://www.google.com/search?q=hello+world',
+    destinationUrl: 'https://www.polytoria.com/forum/search?q=hello+world',
     fillIntoEdit: 'hello world',
     type: 'search-what-you-typed',
     suggestTemplate: createSuggestTemplateInfo({

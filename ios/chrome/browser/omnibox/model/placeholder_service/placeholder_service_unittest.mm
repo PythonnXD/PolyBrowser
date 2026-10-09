@@ -120,7 +120,7 @@ TEST_F(PlaceholderServiceTest, TestFetchingBundledIcon) {
   TemplateURLData google_data;
   google_data.SetShortName(u"Google");
   google_data.SetKeyword(u"google.com");
-  google_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  google_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   google_data.prepopulate_id = 1;  // Indicates Google
   template_url_service().SetUserSelectedDefaultSearchProvider(
       template_url_service().Add(std::make_unique<TemplateURL>(google_data)));

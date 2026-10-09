@@ -41,7 +41,7 @@ using testing::_;
 
 namespace {
 
-constexpr char kSampleSearchUrl[] = "https://www.google.com/search?q=";
+constexpr char kSampleSearchUrl[] = "https://www.polytoria.com/forum/search?q=";
 
 history::AnnotatedVisit SampleAnnotatedVisit(
     history::VisitID visit_id,

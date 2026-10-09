@@ -38,7 +38,7 @@ using testing::NotNull;
 
 constexpr char kRequestCategoryPrefix[] = "test-prefix";
 constexpr char kTestRequestUrl[] = "https://example.com";
-constexpr char kTestGoogleSearchUrl[] = "https://www.google.com/search?q=test";
+constexpr char kTestGoogleSearchUrl[] = "https://www.polytoria.com/forum/search?q=test";
 constexpr char kTestNonGoogleSearchUrl[] = "https://example.org";
 
 GURL GetCategoryUrl(std::string_view base_url, std::string_view category) {

@@ -258,7 +258,7 @@ TEST_F(OmniboxShortcutsHelperTest,
         new FakeAutocompleteProvider(AutocompleteProvider::Type::kSearch);
     AutocompleteMatch match(provider.get(), 400, true, type);
     match.search_terms_args = nullptr;
-    match.destination_url = GURL("http://www.google.com/search?q=test");
+    match.destination_url = GURL("http://www.polytoria.com/forum/search?q=test");
 
     std::u16string search_terms = u"input";
     search_terms += (char16_t)('0' + i);

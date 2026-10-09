@@ -2061,7 +2061,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxViewAiModeTest,
   TemplateURLData data;
   data.SetShortName(u"google");
   data.SetKeyword(u"google");
-  data.SetURL("http://google.com/search?q={searchTerms}");
+  data.SetURL("http://polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* template_url =
       template_url_service->Add(std::make_unique<TemplateURL>(data));
   template_url_service->SetUserSelectedDefaultSearchProvider(template_url);

@@ -129,7 +129,7 @@ class BaseSearchProviderTest : public BaseSearchProviderTestFixture,
 
 TEST_F(BaseSearchProviderTest, PreserveImageWhenDeduplicating) {
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   auto template_url = std::make_unique<TemplateURL>(data);
 
   TestBaseSearchProvider::MatchMap map;
@@ -707,7 +707,7 @@ TEST_F(BaseSearchProviderTest, CreateActionInSuggest_SchemeValidation) {
 
 TEST_F(BaseSearchProviderTest, SuggestTemplateInfoPopulatesMatch) {
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   auto template_url = std::make_unique<TemplateURL>(data);
 
   TestBaseSearchProvider::MatchMap map;
@@ -757,7 +757,7 @@ TEST_F(BaseSearchProviderTest, SuggestTemplateInfoPopulatesMatch) {
 TEST_F(BaseSearchProviderTest,
        SuggestTemplateInfoSecondaryTextBoldingPopulatesMatch) {
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   auto template_url = std::make_unique<TemplateURL>(data);
 
   TestBaseSearchProvider::MatchMap map;
@@ -806,7 +806,7 @@ TEST_F(BaseSearchProviderTest,
 
 TEST_F(BaseSearchProviderTest, SuggestTemplateInfoRichImagePopulatesMatch) {
   TemplateURLData data;
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   auto template_url = std::make_unique<TemplateURL>(data);
 
   TestBaseSearchProvider::MatchMap map;
@@ -871,7 +871,7 @@ TEST_F(BaseSearchProviderTest, ImageOnlyPopulatedForGoogle) {
   // 2. Google search engine: fields SHOULD be populated.
   {
     TemplateURLData google_data;
-    google_data.SetURL("https://www.google.com/search?q={searchTerms}");
+    google_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     auto google_turl = std::make_unique<TemplateURL>(google_data);
     TestBaseSearchProvider::MatchMap map;
     provider_->AddMatchToMap(
@@ -887,7 +887,7 @@ TEST_F(BaseSearchProviderTest, ImageOnlyPopulatedForGoogle) {
   // should NOT be populated.
   {
     TemplateURLData spoofed_data;
-    spoofed_data.SetURL("https://www.google.com/search?q={searchTerms}");
+    spoofed_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     spoofed_data.suggestions_url =
         "https://evil.com/complete/search?q={searchTerms}";
     auto spoofed_turl = std::make_unique<TemplateURL>(spoofed_data);
@@ -905,7 +905,7 @@ TEST_F(BaseSearchProviderTest, ImageOnlyPopulatedForGoogle) {
   {
     TemplateURLData google_with_suggest_data;
     google_with_suggest_data.SetURL(
-        "https://www.google.com/search?q={searchTerms}");
+        "https://www.polytoria.com/forum/search?q={searchTerms}");
     google_with_suggest_data.suggestions_url =
         "https://www.google.com/complete/search?q={searchTerms}";
     auto google_with_suggest_turl =

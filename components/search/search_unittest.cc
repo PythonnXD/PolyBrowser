@@ -21,7 +21,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
 
   // Google search URL + Google suggestion URL returns true.
   TemplateURLData google_data;
-  google_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  google_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   google_data.suggestions_url =
       "https://www.google.com/complete/search?q={searchTerms}";
   TemplateURL google_turl(google_data);
@@ -30,14 +30,14 @@ TEST(SearchTest, TemplateURLIsGoogle) {
   // Google search URL + empty suggestion URL returns true.
   TemplateURLData google_no_suggest_data;
   google_no_suggest_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL google_no_suggest_turl(google_no_suggest_data);
   EXPECT_TRUE(TemplateURLIsGoogle(&google_no_suggest_turl, search_terms_data));
 
   // Google search URL + non-Google suggestion URL (spoofed engine) returns
   // false.
   TemplateURLData spoofed_data;
-  spoofed_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  spoofed_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   spoofed_data.suggestions_url =
       "https://attacker.com/complete/search?q={searchTerms}";
   TemplateURL spoofed_turl(spoofed_data);
@@ -53,7 +53,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
 
   // Google search URL + invalid suggestion URL returns false.
   TemplateURLData invalid_suggest_data;
-  invalid_suggest_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  invalid_suggest_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   invalid_suggest_data.suggestions_url = "invalid url with spaces";
   TemplateURL invalid_suggest_turl(invalid_suggest_data);
   EXPECT_FALSE(TemplateURLIsGoogle(&invalid_suggest_turl, search_terms_data));
@@ -62,7 +62,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
   // returns true.
   TemplateURLData google_placeholder_data;
   google_placeholder_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   google_placeholder_data.suggestions_url =
       "{google:baseSuggestURL}search?q={searchTerms}";
   TemplateURL google_placeholder_turl(google_placeholder_data);
@@ -71,7 +71,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
   // Google search URL + spoofed Google subdomain returns false (subdomains
   // disallowed).
   TemplateURLData subdomain_data;
-  subdomain_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  subdomain_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   subdomain_data.suggestions_url =
       "https://attacker.google.com/complete/search?q={searchTerms}";
   TemplateURL subdomain_turl(subdomain_data);
@@ -79,7 +79,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
 
   // Google search URL + non-cryptographic (HTTP) suggestion URL returns false.
   TemplateURLData http_data;
-  http_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  http_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   http_data.suggestions_url =
       "http://www.google.com/complete/search?q={searchTerms}";
   TemplateURL http_turl(http_data);
@@ -87,7 +87,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
 
   // Non-cryptographic (HTTP) search URL + Google suggestion URL returns false.
   TemplateURLData http_search_data;
-  http_search_data.SetURL("http://www.google.com/search?q={searchTerms}");
+  http_search_data.SetURL("http://www.polytoria.com/forum/search?q={searchTerms}");
   http_search_data.suggestions_url =
       "https://www.google.com/complete/search?q={searchTerms}";
   TemplateURL http_search_turl(http_search_data);
@@ -96,7 +96,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
   // Non-cryptographic (HTTP) search URL + empty suggestion URL returns false.
   TemplateURLData http_search_no_suggest_data;
   http_search_no_suggest_data.SetURL(
-      "http://www.google.com/search?q={searchTerms}");
+      "http://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL http_search_no_suggest_turl(http_search_no_suggest_data);
   EXPECT_FALSE(
       TemplateURLIsGoogle(&http_search_no_suggest_turl, search_terms_data));
@@ -144,7 +144,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
   // Prepopulated Google engine returns true (fast path).
   TemplateURLData prepopulated_google_data;
   prepopulated_google_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   prepopulated_google_data.suggestions_url =
       "https://www.google.com/complete/search?q={searchTerms}";
   prepopulated_google_data.prepopulate_id = 1;
@@ -159,7 +159,7 @@ TEST(SearchTest, TemplateURLIsGoogle) {
   // that the slow validation path is short-circuited.
   TemplateURLData prepopulated_google_spoofed_suggest_data;
   prepopulated_google_spoofed_suggest_data.SetURL(
-      "https://www.google.com/search?q={searchTerms}");
+      "https://www.polytoria.com/forum/search?q={searchTerms}");
   prepopulated_google_spoofed_suggest_data.suggestions_url =
       "https://attacker.com/complete/search?q={searchTerms}";
   prepopulated_google_spoofed_suggest_data.prepopulate_id = 1;

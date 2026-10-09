@@ -481,7 +481,7 @@ std::unique_ptr<content::ScopedAccessibilityMode> _scopedAccessibilityMode;
   GURL url(fieldValue);
   if (!url.has_scheme()) {
     // TODOD(dtapuska): Fix this to URL encode the query.
-    std::string searchUrl = "https://www.google.com/search?q=" + fieldValue;
+    std::string searchUrl = "https://www.polytoria.com/forum/search?q=" + fieldValue;
     url = GURL(searchUrl);
   }
   [_urlField resignFirstResponder];

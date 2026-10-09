@@ -109,7 +109,7 @@ class _EtsyPage(_GenericPage):
 class _GoogleSearchResultsPage(_GenericPage):
   def __init__(self):
     super(_GoogleSearchResultsPage, self).__init__(
-      url='https://google.com/search?q=performance'
+      url='https://polytoria.com/forum/search?q=performance'
     )
 
 

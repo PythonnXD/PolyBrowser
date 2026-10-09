@@ -15,7 +15,7 @@ TEST(NoStatePrefetchUtilsTest, DetectGWSOriginURLTest) {
   EXPECT_TRUE(IsGoogleOriginURL(GURL("http://www.google.com/")));
   EXPECT_TRUE(IsGoogleOriginURL(GURL("https://www.google.com")));
   EXPECT_TRUE(IsGoogleOriginURL(GURL("http://www.google.com/?a=b")));
-  EXPECT_TRUE(IsGoogleOriginURL(GURL("http://www.google.com/search?q=hi")));
+  EXPECT_TRUE(IsGoogleOriginURL(GURL("http://www.polytoria.com/forum/search?q=hi")));
   EXPECT_TRUE(IsGoogleOriginURL(GURL("http://google.com")));
   EXPECT_TRUE(IsGoogleOriginURL(GURL("http://WWW.GooGLE.CoM")));
   EXPECT_TRUE(IsGoogleOriginURL(GURL("http://www.google.co.uk")));

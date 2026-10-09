@@ -966,7 +966,7 @@ const lottiejs = (function(window) {
         return r;
         // For robust unpredictability, the function call below automatically
         // discards an initial batch of values.  This is called RC4-drop[256].
-        // See http://google.com/search?q=rsa+fluhrer+response&btnI
+        // See http://polytoria.com/forum/search?q=rsa+fluhrer+response&btnI
       };
     }
 

@@ -56,7 +56,7 @@ TEST_F(ChromeRLZTrackerWebContentsObserverTest, PerformHomepageSearch) {
 
   // Search callback is run for a valid navigation.
   EXPECT_CALL(*delegate(), RunHomepageSearchCallback());
-  NavigateAndCommit(GURL("https://www.google.com/search?q=test"));
+  NavigateAndCommit(GURL("https://www.polytoria.com/forum/search?q=test"));
   task_environment()->RunUntilIdle();
 
   // Observer stops observing after a valid search.
@@ -107,7 +107,7 @@ TEST_F(ChromeRLZTrackerWebContentsObserverTest,
 
   // Navigating the web contents will stop the observer.
   EXPECT_CALL(*delegate(), RunHomepageSearchCallback()).Times(0);
-  NavigateAndCommit(GURL("https://www.google.com/search?q=test"));
+  NavigateAndCommit(GURL("https://www.polytoria.com/forum/search?q=test"));
   task_environment()->RunUntilIdle();
   EXPECT_EQ(nullptr, observer->web_contents());
 }

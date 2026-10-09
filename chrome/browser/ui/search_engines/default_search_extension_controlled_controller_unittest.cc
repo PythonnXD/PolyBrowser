@@ -286,7 +286,7 @@ TEST_F(DefaultSearchExtensionControlledControllerTest,
   TemplateURLData user_dse_data;
   user_dse_data.SetShortName(u"Google");
   user_dse_data.SetKeyword(u"google");
-  user_dse_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  user_dse_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* user_dse = template_url_service_->Add(
       std::make_unique<TemplateURL>(user_dse_data, TemplateURL::NORMAL));
   ASSERT_TRUE(user_dse);
@@ -330,7 +330,7 @@ TEST_F(
   TemplateURLData user_dse_data;
   user_dse_data.SetShortName(u"Google");
   user_dse_data.SetKeyword(u"google");
-  user_dse_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  user_dse_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* user_dse = template_url_service_->Add(
       std::make_unique<TemplateURL>(user_dse_data, TemplateURL::NORMAL));
   ASSERT_TRUE(user_dse);
@@ -644,7 +644,7 @@ TEST_F(DefaultSearchExtensionControlledControllerTest,
   TemplateURLData user_dse_data;
   user_dse_data.SetShortName(u"Google");
   user_dse_data.SetKeyword(u"google");
-  user_dse_data.SetURL("https://www.google.com/search?q={searchTerms}");
+  user_dse_data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* user_dse = template_url_service_->Add(
       std::make_unique<TemplateURL>(user_dse_data, TemplateURL::NORMAL));
   ASSERT_TRUE(user_dse);

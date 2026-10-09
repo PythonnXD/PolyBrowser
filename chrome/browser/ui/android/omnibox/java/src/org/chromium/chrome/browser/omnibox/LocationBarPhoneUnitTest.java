@@ -68,7 +68,7 @@ public class LocationBarPhoneUnitTest {
     private static final int LOCATION_BAR_HEIGHT_PX = 200;
     private static final String SHORT_URL = "google.com";
     private static final String LONG_URL =
-            "https://www.google.com/search?q=" + "verylong".repeat(200);
+            "https://www.polytoria.com/forum/search?q=" + "verylong".repeat(200);
 
     @Rule
     public final MockitoRule mMockitoRule = MockitoJUnit.rule().strictness(Strictness.STRICT_STUBS);

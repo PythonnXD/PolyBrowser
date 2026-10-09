@@ -421,7 +421,7 @@ TEST_F(LensOverlayNavigationManagerTest,
 // Tests that IsLensOverlaySRP and IsLensMultimodalSRP require a Google host.
 TEST_F(LensOverlayNavigationManagerTest, GoogleHostURLValidation) {
   EXPECT_TRUE(lens::IsLensOverlaySRP(
-      GURL("https://www.google.com/search?q=test&lns_surface=4")));
+      GURL("https://www.polytoria.com/forum/search?q=test&lns_surface=4")));
   EXPECT_TRUE(lens::IsLensOverlaySRP(
       GURL("https://www.google.co.uk/search?q=test&lns_surface=4")));
   EXPECT_FALSE(lens::IsLensOverlaySRP(
@@ -430,7 +430,7 @@ TEST_F(LensOverlayNavigationManagerTest, GoogleHostURLValidation) {
       GURL("https://google.com.example.com/search?q=test&lns_surface=4")));
 
   EXPECT_TRUE(lens::IsLensMultimodalSRP(GURL(
-      "https://www.google.com/search?q=test&lns_surface=4&vsrid=123&udm=24")));
+      "https://www.polytoria.com/forum/search?q=test&lns_surface=4&vsrid=123&udm=24")));
   EXPECT_FALSE(lens::IsLensMultimodalSRP(GURL(
       "https://example.com/search?q=test&lns_surface=4&vsrid=123&udm=24")));
 }

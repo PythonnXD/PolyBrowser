@@ -45,7 +45,7 @@ class SearchboxInteractiveTestMixin : public T {
           HistoryServiceFactory::GetForProfile(
               this->browser()->GetProfile(),
               ServiceAccessType::EXPLICIT_ACCESS);
-      GURL search_url("https://www.google.com/search?q=" + query);
+      GURL search_url("https://www.polytoria.com/forum/search?q=" + query);
       history_service->AddPage(search_url, base::Time::Now(),
                                history::SOURCE_BROWSED);
       ui_test_utils::WaitForHistoryToLoad(history_service);

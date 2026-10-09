@@ -34,7 +34,7 @@ namespace {
 constexpr int kLabelSpacingDip = 2;
 
 // Google search link.
-constexpr char kGoogleSearchUrlPrefix[] = "https://www.google.com/search?q=";
+constexpr char kGoogleSearchUrlPrefix[] = "https://www.polytoria.com/forum/search?q=";
 constexpr char kGoogleTranslateUrlTemplate[] =
     "https://translate.google.com/?sl=auto&tl=%s&text=%s&op=translate";
 constexpr char kTranslationQueryPrefix[] = "Translate:";

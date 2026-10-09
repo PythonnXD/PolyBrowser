@@ -215,7 +215,7 @@ TEST_F(ChromeHintsManagerFetchingTest, HintsFetched_AtSRP_DuplicatesRemoved) {
   sorted_predicted_urls.emplace_back("https://foo.com/page3.html");
   sorted_predicted_urls.emplace_back("https://bar.com/");
 
-  GURL url("https://www.google.com/search?q=a");
+  GURL url("https://www.polytoria.com/forum/search?q=a");
   content::WebContents* web_contents = Navigate(url);
   NavigationPredictorKeyedService::Prediction prediction(
       web_contents, url,
@@ -270,7 +270,7 @@ TEST_F(ChromeHintsManagerFetchingTest,
   sorted_predicted_urls.emplace_back("file://non-web-bar.com/");
   sorted_predicted_urls.emplace_back("http://httppage.com/");
 
-  GURL url("https://www.google.com/search?q=a");
+  GURL url("https://www.polytoria.com/forum/search?q=a");
   content::WebContents* web_contents = Navigate(url);
   NavigationPredictorKeyedService::Prediction prediction(
       web_contents, url,
@@ -303,7 +303,7 @@ TEST_F(ChromeHintsManagerFetchingTest, HintsFetched_AtSRP) {
   base::HistogramTester histogram_tester;
   std::vector<GURL> sorted_predicted_urls;
   sorted_predicted_urls.emplace_back("https://foo.com/");
-  GURL url("https://www.google.com/search?q=a");
+  GURL url("https://www.polytoria.com/forum/search?q=a");
   content::WebContents* web_contents = Navigate(url);
   NavigationPredictorKeyedService::Prediction prediction(
       web_contents, url,
@@ -334,7 +334,7 @@ TEST_F(ChromeHintsManagerFetchingTest, HintsFetched_AtSRP_GoogleLinksIgnored) {
   std::vector<GURL> sorted_predicted_urls;
   sorted_predicted_urls.emplace_back("https://foo.com/");
   sorted_predicted_urls.emplace_back("https://google.com/bar");
-  GURL url("https://www.google.com/search?q=a");
+  GURL url("https://www.polytoria.com/forum/search?q=a");
   content::WebContents* web_contents = Navigate(url);
   NavigationPredictorKeyedService::Prediction prediction(
       web_contents, url,
@@ -402,7 +402,7 @@ TEST_F(ChromeHintsManagerFetchingTest, NoOptimizationGuideWebContentsObserver) {
   std::vector<GURL> sorted_predicted_urls;
   sorted_predicted_urls.emplace_back("https://foo.com/page1.html");
 
-  GURL url("https://www.google.com/search?q=a");
+  GURL url("https://www.polytoria.com/forum/search?q=a");
   auto navigation_handle = CreateMockNavigationHandle(url);
   content::WebContents* web_contents = navigation_handle->GetWebContents();
 

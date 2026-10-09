@@ -44,7 +44,7 @@ class GeolocationNavigationThrottleTest
     TemplateURLData data;
     data.SetShortName(u"Test");
     data.SetKeyword(u"test");
-    data.SetURL("https://www.google.com/search?q={searchTerms}");
+    data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     data.send_x_geo_header = true;
     TemplateURL* template_url =
         template_url_service->Add(std::make_unique<TemplateURL>(data));
@@ -94,7 +94,7 @@ TEST_F(GeolocationNavigationThrottleTest, FeatureDisabled) {
   disabled_feature_list.InitAndDisableFeature(omnibox::kPlatformAgnosticXGeo);
 
   content::MockNavigationHandle handle(
-      GURL("https://www.google.com/search?q=test"), main_rfh());
+      GURL("https://www.polytoria.com/forum/search?q=test"), main_rfh());
   handle.set_page_transition(static_cast<ui::PageTransition>(
       ui::PAGE_TRANSITION_TYPED | ui::PAGE_TRANSITION_FROM_ADDRESS_BAR));
 
@@ -168,7 +168,7 @@ TEST_F(GeolocationNavigationThrottleTest, RedirectFromNonDseToDse) {
   histogram_tester_.ExpectTotalCount("Omnibox.Search.XGeoHeaderAttached", 0);
 
   // Redirect to DSE URL should attach the header.
-  handle.set_url(GURL("https://www.google.com/search?q=test"));
+  handle.set_url(GURL("https://www.polytoria.com/forum/search?q=test"));
   EXPECT_CALL(handle, WasServerRedirect())
       .WillRepeatedly(testing::Return(true));
 
@@ -192,7 +192,7 @@ TEST_F(GeolocationNavigationThrottleTest, RedirectFromDseToNonDse) {
       base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
 
   content::MockNavigationHandle handle(
-      GURL("https://www.google.com/search?q=test"), main_rfh());
+      GURL("https://www.polytoria.com/forum/search?q=test"), main_rfh());
   handle.set_page_transition(static_cast<ui::PageTransition>(
       ui::PAGE_TRANSITION_TYPED | ui::PAGE_TRANSITION_FROM_ADDRESS_BAR));
   SetMockHandleHeaders(handle);
@@ -236,7 +236,7 @@ TEST_F(GeolocationNavigationThrottleTest, HeaderSentForAllowedDse) {
       base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
 
   content::MockNavigationHandle handle(
-      GURL("https://www.google.com/search?q=test"), main_rfh());
+      GURL("https://www.polytoria.com/forum/search?q=test"), main_rfh());
   handle.set_page_transition(static_cast<ui::PageTransition>(
       ui::PAGE_TRANSITION_TYPED | ui::PAGE_TRANSITION_FROM_ADDRESS_BAR));
   SetMockHandleHeaders(handle);
@@ -266,7 +266,7 @@ TEST_F(GeolocationNavigationThrottleTest, HeaderNotSentForDeniedDse) {
   EXPECT_FALSE(service->HasCachedLocation());
 
   content::MockNavigationHandle handle(
-      GURL("https://www.google.com/search?q=test"), main_rfh());
+      GURL("https://www.polytoria.com/forum/search?q=test"), main_rfh());
   handle.set_page_transition(static_cast<ui::PageTransition>(
       ui::PAGE_TRANSITION_TYPED | ui::PAGE_TRANSITION_FROM_ADDRESS_BAR));
 
@@ -296,7 +296,7 @@ TEST_F(GeolocationNavigationThrottleTest,
       base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
 
   content::MockNavigationHandle handle(
-      GURL("https://www.google.com/search?q=test"), main_rfh());
+      GURL("https://www.polytoria.com/forum/search?q=test"), main_rfh());
   handle.set_page_transition(ui::PAGE_TRANSITION_LINK);
 
   content::MockNavigationThrottleRegistry registry(&handle);

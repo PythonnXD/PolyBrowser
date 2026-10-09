@@ -198,7 +198,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_Prefix) {
   base::Time local_midnight = Time::Now().LocalMidnight() - base::Days(1);
 
   // First search for "foo".
-  URLRow foo_url_1(GURL("https://www.google.com/search?q=Foo&num=1"));
+  URLRow foo_url_1(GURL("https://www.polytoria.com/forum/search?q=Foo&num=1"));
   foo_url_1.set_visit_count(1);
   foo_url_1.set_last_visit(local_midnight + base::Hours(1));
   URLID foo_url_1_id = AddURL(foo_url_1);
@@ -206,7 +206,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_Prefix) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_1_id, keyword_id, u"Foo"));
 
   // Second search for "foo".
-  URLRow foo_url_2(GURL("https://www.google.com/search?q=FOo&num=2"));
+  URLRow foo_url_2(GURL("https://www.polytoria.com/forum/search?q=FOo&num=2"));
   foo_url_2.set_visit_count(1);
   foo_url_2.set_last_visit(local_midnight + base::Hours(2));
   URLID foo_url_2_id = AddURL(foo_url_2);
@@ -214,7 +214,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_Prefix) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_2_id, keyword_id, u"FOo"));
 
   // Third search for "foo".
-  URLRow foo_url_3(GURL("https://www.google.com/search?q=FOO&num=3"));
+  URLRow foo_url_3(GURL("https://www.polytoria.com/forum/search?q=FOO&num=3"));
   foo_url_3.set_visit_count(1);
   foo_url_3.set_last_visit(local_midnight + base::Hours(3));
   URLID foo_url_3_id = AddURL(foo_url_3);
@@ -222,7 +222,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_Prefix) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_3_id, keyword_id, u"FOO"));
 
   // First search for "bar".
-  URLRow bar_url_1(GURL("https://www.google.com/search?q=BAR&num=4"));
+  URLRow bar_url_1(GURL("https://www.polytoria.com/forum/search?q=BAR&num=4"));
   bar_url_1.set_visit_count(1);
   bar_url_1.set_last_visit(local_midnight + base::Hours(4));
   URLID bar_url_1_id = AddURL(bar_url_1);
@@ -230,7 +230,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_Prefix) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(bar_url_1_id, keyword_id, u"BAR"));
 
   // First search for "food".
-  URLRow food_url_1(GURL("https://www.google.com/search?q=Food&num=1"));
+  URLRow food_url_1(GURL("https://www.polytoria.com/forum/search?q=Food&num=1"));
   food_url_1.set_visit_count(1);
   food_url_1.set_last_visit(local_midnight + base::Hours(5));
   URLID food_url_1_id = AddURL(food_url_1);
@@ -301,7 +301,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_ZeroPrefix) {
   base::Time local_midnight = Time::Now().LocalMidnight() - base::Days(1);
 
   // First search for "foo".
-  URLRow foo_url_1(GURL("https://www.google.com/search?q=Foo&num=1"));
+  URLRow foo_url_1(GURL("https://www.polytoria.com/forum/search?q=Foo&num=1"));
   foo_url_1.set_visit_count(1);
   foo_url_1.set_last_visit(local_midnight + base::Hours(1));
   URLID foo_url_1_id = AddURL(foo_url_1);
@@ -309,7 +309,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_ZeroPrefix) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_1_id, keyword_id, u"Foo"));
 
   // Second search for "foo".
-  URLRow foo_url_2(GURL("https://www.google.com/search?q=FOo&num=2"));
+  URLRow foo_url_2(GURL("https://www.polytoria.com/forum/search?q=FOo&num=2"));
   foo_url_2.set_visit_count(1);
   foo_url_2.set_last_visit(local_midnight + base::Hours(2));
   URLID foo_url_2_id = AddURL(foo_url_2);
@@ -317,7 +317,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_ZeroPrefix) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_2_id, keyword_id, u"FOo"));
 
   // Third search for "foo".
-  URLRow foo_url_3(GURL("https://www.google.com/search?q=FOO&num=3"));
+  URLRow foo_url_3(GURL("https://www.polytoria.com/forum/search?q=FOO&num=3"));
   foo_url_3.set_visit_count(1);
   foo_url_3.set_last_visit(local_midnight + base::Hours(3));
   URLID foo_url_3_id = AddURL(foo_url_3);
@@ -325,7 +325,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_ZeroPrefix) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_3_id, keyword_id, u"FOO"));
 
   // First search for "bar".
-  URLRow bar_url_1(GURL("https://www.google.com/search?q=BAR&num=4"));
+  URLRow bar_url_1(GURL("https://www.polytoria.com/forum/search?q=BAR&num=4"));
   bar_url_1.set_visit_count(1);
   bar_url_1.set_last_visit(local_midnight + base::Hours(4));
   URLID bar_url_1_id = AddURL(bar_url_1);
@@ -334,7 +334,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_ZeroPrefix) {
 
   // Fourth search for "foo".
   // This search will be ignored for being too close to previous search.
-  URLRow foo_url_4(GURL("https://www.google.com/search?q=foo&num=4"));
+  URLRow foo_url_4(GURL("https://www.polytoria.com/forum/search?q=foo&num=4"));
   foo_url_4.set_visit_count(1);
   foo_url_4.set_last_visit(local_midnight + base::Hours(3));
   URLID foo_url_4_id = AddURL(foo_url_4);
@@ -410,7 +410,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
   base::Time local_midnight = Time::Now().LocalMidnight() - base::Days(1);
 
   // First search for "foo" - yesterday.
-  URLRow foo_url_1(GURL("https://www.google.com/search?q=foo&num=1"));
+  URLRow foo_url_1(GURL("https://www.polytoria.com/forum/search?q=foo&num=1"));
   foo_url_1.set_visit_count(1);
   foo_url_1.set_last_visit(local_midnight - base::Days(1) + base::Hours(1));
   URLID foo_url_1_id = AddURL(foo_url_1);
@@ -418,7 +418,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_1_id, keyword_id, u"foo"));
 
   // First search for "bar" - yesterday.
-  URLRow bar_url_1(GURL("https://www.google.com/search?q=bar&num=1"));
+  URLRow bar_url_1(GURL("https://www.polytoria.com/forum/search?q=bar&num=1"));
   bar_url_1.set_visit_count(1);
   bar_url_1.set_last_visit(local_midnight - base::Days(1) + base::Hours(2));
   URLID bar_url_1_id = AddURL(bar_url_1);
@@ -426,7 +426,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(bar_url_1_id, keyword_id, u"bar"));
 
   // Second search for "bar" - yesterday.
-  URLRow bar_url_2(GURL("https://www.google.com/search?q=Bar&num=2"));
+  URLRow bar_url_2(GURL("https://www.polytoria.com/forum/search?q=Bar&num=2"));
   bar_url_2.set_visit_count(1);
   bar_url_2.set_last_visit(local_midnight - base::Days(1) + base::Hours(3));
   URLID bar_url_2_id = AddURL(bar_url_2);
@@ -434,7 +434,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(bar_url_2_id, keyword_id, u"Bar"));
 
   // Second search for "foo" - yesterday.
-  URLRow foo_url_2(GURL("https://www.google.com/search?q=Foo&num=2"));
+  URLRow foo_url_2(GURL("https://www.polytoria.com/forum/search?q=Foo&num=2"));
   foo_url_2.set_visit_count(1);
   foo_url_2.set_last_visit(local_midnight - base::Days(1) + base::Hours(4));
   URLID foo_url_2_id = AddURL(foo_url_2);
@@ -443,7 +443,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
 
   // Third search for "bar" - today.
   // This search will be ignored for having a visit count of 0.
-  URLRow bar_url_3(GURL("https://www.google.com/search?q=BAr&num=3"));
+  URLRow bar_url_3(GURL("https://www.polytoria.com/forum/search?q=BAr&num=3"));
   bar_url_3.set_visit_count(0);
   bar_url_3.set_last_visit(local_midnight + base::Hours(1));
   URLID bar_url_3_id = AddURL(bar_url_3);
@@ -452,7 +452,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
 
   // Third search for "foo" - today.
   // This search will be ignored for having a visit count of 0.
-  URLRow foo_url_3(GURL("https://www.google.com/search?q=FOo&num=3"));
+  URLRow foo_url_3(GURL("https://www.polytoria.com/forum/search?q=FOo&num=3"));
   foo_url_3.set_visit_count(0);
   foo_url_3.set_last_visit(local_midnight + base::Hours(2));
   URLID foo_url_3_id = AddURL(foo_url_3);
@@ -460,7 +460,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_url_3_id, keyword_id, u"FOo"));
 
   // Fourth search for "bar" - today.
-  URLRow bar_url_4(GURL("https://www.google.com/search?q=BAR&num=4"));
+  URLRow bar_url_4(GURL("https://www.polytoria.com/forum/search?q=BAR&num=4"));
   bar_url_4.set_visit_count(1);
   bar_url_4.set_last_visit(local_midnight + base::Hours(3));
   URLID bar_url_4_id = AddURL(bar_url_4);
@@ -468,7 +468,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTerms_MostRepeated) {
   ASSERT_TRUE(SetKeywordSearchTermsForURL(bar_url_4_id, keyword_id, u"BAR"));
 
   // Fourth search for "foo" - today.
-  URLRow foo_url_4(GURL("https://www.google.com/search?q=FOO&num=4"));
+  URLRow foo_url_4(GURL("https://www.polytoria.com/forum/search?q=FOO&num=4"));
   foo_url_4.set_visit_count(1);
   foo_url_4.set_last_visit(local_midnight + base::Hours(4));
   URLID foo_url_4_id = AddURL(foo_url_4);
@@ -621,7 +621,7 @@ TEST_F(URLDatabaseTest, EnumeratorForTypedOrSearched) {
   ASSERT_NE(0, hidden_typed_id);
 
   const URLID searched_id =
-      AddURL(URLRow(GURL("https://www.google.com/search?q=foo")));
+      AddURL(URLRow(GURL("https://www.polytoria.com/forum/search?q=foo")));
   ASSERT_NE(0, searched_id);
   ASSERT_TRUE(SetKeywordSearchTermsForURL(searched_id, KeywordID(1), u"foo"));
 
@@ -641,7 +641,7 @@ TEST_F(URLDatabaseTest, EnumeratorForTypedOrSearched) {
 
 TEST_F(URLDatabaseTest, KeywordSearchTermRowEnumerator) {
   const URLID foo_id =
-      AddURL(URLRow(GURL("https://www.google.com/search?q=Foo")));
+      AddURL(URLRow(GURL("https://www.polytoria.com/forum/search?q=Foo")));
   ASSERT_NE(0, foo_id);
   ASSERT_TRUE(SetKeywordSearchTermsForURL(foo_id, KeywordID(1), u"Foo"));
   const URLID bar_id =
@@ -664,7 +664,7 @@ TEST_F(URLDatabaseTest, KeywordSearchTermRowEnumerator) {
 
 TEST_F(URLDatabaseTest, InsertKeywordSearchTermRow) {
   const URLID url_id =
-      AddURL(URLRow(GURL("https://www.google.com/search?q=Foo")));
+      AddURL(URLRow(GURL("https://www.polytoria.com/forum/search?q=Foo")));
   ASSERT_NE(0, url_id);
 
   // The row is stored as given, without normalizing the term.

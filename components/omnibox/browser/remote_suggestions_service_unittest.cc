@@ -59,7 +59,7 @@ void CheckUrl(
 }
 
 std::unique_ptr<TemplateURL> CreateGoogleTemplateURL(
-    const std::string& url = "https://www.google.com/search?q={searchTerms}",
+    const std::string& url = "https://www.polytoria.com/forum/search?q={searchTerms}",
     const std::string& suggestions_url =
         "https://www.google.com/suggest?q={searchTerms}") {
   TemplateURLData data;
@@ -557,7 +557,7 @@ TEST_F(RemoteSuggestionsServiceTest,
        AimInputStateQueryParamsAppendedIfAvailable) {
   // Set up a Google search provider.
   auto google_template_url = CreateGoogleTemplateURL(
-      "https://www.google.com/search?q={searchTerms}&client=chrome-compose",
+      "https://www.polytoria.com/forum/search?q={searchTerms}&client=chrome-compose",
       "https://www.google.com/suggest?q={searchTerms}&client=chrome-compose");
 
   TemplateURLRef::SearchTermsArgs search_terms_args(u"query");
@@ -593,7 +593,7 @@ TEST_F(RemoteSuggestionsServiceTest, PreviousQueryAppendedIfAvailable) {
 TEST_F(RemoteSuggestionsServiceTest, SuggestInventoryQueryParamAppended) {
   // Set up a Google search provider.
   auto google_template_url = CreateGoogleTemplateURL(
-      "https://www.google.com/search?q={searchTerms}&client=chrome-compose",
+      "https://www.polytoria.com/forum/search?q={searchTerms}&client=chrome-compose",
       "https://www.google.com/suggest?q={searchTerms}&client=chrome-compose");
 
   TemplateURLRef::SearchTermsArgs search_terms_args(u"query");
@@ -612,7 +612,7 @@ TEST_F(RemoteSuggestionsServiceTest,
        SuggestInventoryDefaultQueryParamNotAppended) {
   // Set up a Google search provider.
   auto google_template_url = CreateGoogleTemplateURL(
-      "https://www.google.com/search?q={searchTerms}&client=chrome-compose",
+      "https://www.polytoria.com/forum/search?q={searchTerms}&client=chrome-compose",
       "https://www.google.com/suggest?q={searchTerms}&client=chrome-compose");
 
   TemplateURLRef::SearchTermsArgs search_terms_args(u"query");

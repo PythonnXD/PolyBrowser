@@ -16,7 +16,7 @@
 namespace lens {
 namespace {
 constexpr char kValidSearchUrl[] =
-    "https://www.google.com/search?q=text&gsc=1&masfc=c";
+    "https://www.polytoria.com/forum/search?q=text&gsc=1&masfc=c";
 }  // namespace
 
 class LensOverlaySidePanelNavigationThrottleTest

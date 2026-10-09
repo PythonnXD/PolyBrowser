@@ -147,7 +147,7 @@ function createCalculatorMatch(modifiers: Partial<AutocompleteMatch> = {}):
     AutocompleteMatch {
   return createAutocompleteMatch({
     isSearchType: true,
-    destinationUrl: 'https://www.google.com/search?q=2+%2B+3',
+    destinationUrl: 'https://www.polytoria.com/forum/search?q=2+%2B+3',
     fillIntoEdit: '5',
     type: 'search-calculator-answer',
     iconPath: 'calculator_cr23.svg',

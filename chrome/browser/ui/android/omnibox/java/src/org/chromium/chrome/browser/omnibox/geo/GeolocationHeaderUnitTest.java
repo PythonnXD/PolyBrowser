@@ -62,7 +62,7 @@ import org.chromium.content_public.browser.BrowserContextHandle;
 @DisableFeatures({OmniboxFeatureList.PLATFORM_AGNOSTIC_X_GEO})
 @EnableFeatures(PermissionsAndroidFeatureList.APPROXIMATE_GEOLOCATION_PERMISSION)
 public class GeolocationHeaderUnitTest {
-    private static final String SEARCH_URL = "https://www.google.com/search?q=potatoes";
+    private static final String SEARCH_URL = "https://www.polytoria.com/forum/search?q=potatoes";
 
     private static final double LOCATION_LAT = 20.3;
     private static final double LOCATION_LONG = 155.8;
@@ -137,7 +137,7 @@ public class GeolocationHeaderUnitTest {
         lenient().when(mProfileMock.isOffTheRecord()).thenReturn(false);
         lenient()
                 .when(mTemplateUrlServiceMock.getUrlForSearchQuery(anyString()))
-                .thenReturn("https://www.google.com/search?q=a");
+                .thenReturn("https://www.polytoria.com/forum/search?q=a");
         lenient().when(mTemplateUrlServiceMock.isDefaultSearchEngineGoogle()).thenReturn(true);
         mRefreshLastKnownLocationCount = 0;
         GeolocationTracker.setRefreshLastKnownLocationRunnableForTesting(
@@ -193,7 +193,7 @@ public class GeolocationHeaderUnitTest {
     public void testConsistentHeader_ReturnsNullForHttpUrl() {
         String header =
                 GeolocationHeader.getGeoHeader(
-                        "http://www.google.com/search?q=potatoes",
+                        "http://www.polytoria.com/forum/search?q=potatoes",
                         mProfileMock,
                         mTemplateUrlServiceMock);
         assertNull(header);

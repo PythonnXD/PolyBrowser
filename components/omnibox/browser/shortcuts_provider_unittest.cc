@@ -152,11 +152,11 @@ struct TestShortcutData shortcut_test_db[] = {
      AutocompleteMatch::DocumentType::NONE, "Abcdef", "0,1,4,0", "Abcdef",
      "0,3,4,1", ui::PAGE_TRANSITION_TYPED,
      omnibox::AutocompleteMatchType::kHistoryUrl, "", 1, 100},
-    {GetGuid(), "query", "query", "https://www.google.com/search?q=query",
+    {GetGuid(), "query", "query", "https://www.polytoria.com/forum/search?q=query",
      AutocompleteMatch::DocumentType::NONE, "query", "0,0", "Google Search",
      "0,4", ui::PAGE_TRANSITION_GENERATED,
      omnibox::AutocompleteMatchType::kSearchHistory, "google.com", 1, 100},
-    {GetGuid(), "word", "www.word", "https://www.google.com/search?q=www.word",
+    {GetGuid(), "word", "www.word", "https://www.polytoria.com/forum/search?q=www.word",
      AutocompleteMatch::DocumentType::NONE, "www.word", "0,0", "Google Search",
      "0,4", ui::PAGE_TRANSITION_GENERATED,
      omnibox::AutocompleteMatchType::kSearchHistory, "google.com", 1, 100},
@@ -386,7 +386,7 @@ TEST_F(ShortcutsProviderTest, SimpleSingleMatch) {
   // Another test, simply for a query match type, not a navigation URL match
   // type.
   text = u"que";
-  expected_url = "https://www.google.com/search?q=query";
+  expected_url = "https://www.polytoria.com/forum/search?q=query";
   expected_urls.clear();
   expected_urls.push_back(ExpectedURLAndAllowedToBeDefault(expected_url, true));
   RunShortcutsProviderTest(provider_, text, false, expected_urls, expected_url,
@@ -418,7 +418,7 @@ TEST_F(ShortcutsProviderTest, SimpleSingleMatch) {
   // non-droppable prefix.  ("www.", for instance, is not droppable for
   // queries.)
   text = u"word";
-  expected_url = "https://www.google.com/search?q=www.word";
+  expected_url = "https://www.polytoria.com/forum/search?q=www.word";
   expected_urls.clear();
   expected_urls.push_back(
       ExpectedURLAndAllowedToBeDefault(expected_url, false));

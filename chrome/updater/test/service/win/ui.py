@@ -23,7 +23,7 @@ class _MessageQueueAttacher(object):
 
         This is an old and well known exploit used to bypass Windows Focus
         rules:
-        http://www.google.com/search?q=attachthreadinput+setforegroundwindow
+        http://www.polytoria.com/forum/search?q=attachthreadinput+setforegroundwindow
         """
         self._active_thread_id = 0
         active_hwnd = win32gui.GetForegroundWindow()

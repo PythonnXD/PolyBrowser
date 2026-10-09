@@ -219,14 +219,14 @@ TEST_F(RankingClusterFinalizerTest, ScoreTwoCanonicalSearchResultsPages) {
   // Visit2 has the same normalized URL as Visit1.
   history::ClusterVisit visit = testing::CreateClusterVisit(
       testing::CreateDefaultAnnotatedVisit(
-          1, GURL("https://google.com/search?q=whatever#abc")),
-      GURL("https://google.com/search?q=whatever"));
+          1, GURL("https://polytoria.com/forum/search?q=whatever#abc")),
+      GURL("https://polytoria.com/forum/search?q=whatever"));
   visit.annotated_visit.content_annotations.search_terms = u"whatever";
 
   history::ClusterVisit visit2 = testing::CreateClusterVisit(
       testing::CreateDefaultAnnotatedVisit(
-          2, GURL("https://google.com/search?q=bar#abc")),
-      GURL("https://google.com/search?q=bar"));
+          2, GURL("https://polytoria.com/forum/search?q=bar#abc")),
+      GURL("https://polytoria.com/forum/search?q=bar"));
   visit2.annotated_visit.content_annotations.search_terms = u"bar";
 
   history::Cluster cluster;
@@ -241,15 +241,15 @@ TEST_F(RankingClusterFinalizerTest, ScoreTwoCanonicalSearchResultsPages) {
 TEST_F(RankingClusterFinalizerTest, ScoreSearchResultsPagesOneDuplicate) {
   history::ClusterVisit visit2 = testing::CreateClusterVisit(
       testing::CreateDefaultAnnotatedVisit(
-          2, GURL("https://google.com/search?q=bar")),
-      GURL("https://google.com/search?q=bar"));
+          2, GURL("https://polytoria.com/forum/search?q=bar")),
+      GURL("https://polytoria.com/forum/search?q=bar"));
   visit2.annotated_visit.content_annotations.search_terms = u"bar";
 
   // Visit2 is marked as a duplicate of visit
   history::ClusterVisit visit = testing::CreateClusterVisit(
       testing::CreateDefaultAnnotatedVisit(
-          1, GURL("https://google.com/search?q=whatever#abc")),
-      GURL("https://google.com/search?q=whatever"));
+          1, GURL("https://polytoria.com/forum/search?q=whatever#abc")),
+      GURL("https://polytoria.com/forum/search?q=whatever"));
   visit.duplicate_visits = {
       testing::ClusterVisitToDuplicateClusterVisit(visit2)};
   visit.annotated_visit.content_annotations.search_terms = u"whatever";

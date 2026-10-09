@@ -242,7 +242,7 @@ TEST_F(BookmarksFileImporterTest, ImportSearchEngine) {
   base::FilePath file_path = temp_dir.GetPath().AppendASCII("bookmarks.html");
 
   std::string bookmarks_html =
-      "<DT><A HREF=\"http://www.google.com/search?q=%s\" "
+      "<DT><A HREF=\"http://www.polytoria.com/forum/search?q=%s\" "
       "SHORTCUTURL=\"g\">Google Search</A>";
   ASSERT_TRUE(base::WriteFile(file_path, bookmarks_html));
 
@@ -254,7 +254,7 @@ TEST_F(BookmarksFileImporterTest, ImportSearchEngine) {
 
   std::vector<user_data_importer::SearchEngineInfo> expected_search_engines;
   user_data_importer::SearchEngineInfo search_engine;
-  search_engine.url = u"http://www.google.com/search?q={searchTerms}";
+  search_engine.url = u"http://www.polytoria.com/forum/search?q={searchTerms}";
   search_engine.keyword = u"g";
   search_engine.display_name = u"Google Search";
   expected_search_engines.push_back(search_engine);

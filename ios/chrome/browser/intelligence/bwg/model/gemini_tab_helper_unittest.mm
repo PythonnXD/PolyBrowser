@@ -313,7 +313,7 @@ TEST_F(GeminiTabHelperTest,
 
 // TODO(crbug.com/430313339): Add a test for the last interaction case.
 TEST_F(GeminiTabHelperTest, TestShouldShowSuggestionChips) {
-  web_state_->SetCurrentURL(GURL("https://www.google.com/search?q=test"));
+  web_state_->SetCurrentURL(GURL("https://www.polytoria.com/forum/search?q=test"));
   ASSERT_FALSE(tab_helper_->ShouldShowSuggestionChips());
 
   web_state_->SetCurrentURL(GURL("https://www.not-google.com"));
@@ -705,7 +705,7 @@ TEST_F(GeminiTabHelperTest, IsGeminiAvailableForWebState_WhenUrlIsAimUrl) {
   web_state_->SetBrowserState(profile_.get());
   web_state_->WasShown();
   web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=test&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
   web_state_->SetContentsMimeType("text/html");
   GeminiTabHelper::CreateForWebState(web_state_.get());
   tab_helper_ = GeminiTabHelper::FromWebState(web_state_.get());
@@ -739,7 +739,7 @@ TEST_F(GeminiTabHelperTest,
   web_state_ = std::make_unique<web::FakeWebState>();
   web_state_->SetBrowserState(profile_.get());
   web_state_->WasShown();
-  web_state_->SetCurrentURL(GURL("https://www.google.com/search?q=test"));
+  web_state_->SetCurrentURL(GURL("https://www.polytoria.com/forum/search?q=test"));
   web_state_->SetContentsMimeType("text/html");
   GeminiTabHelper::CreateForWebState(web_state_.get());
   tab_helper_ = GeminiTabHelper::FromWebState(web_state_.get());
@@ -836,7 +836,7 @@ TEST_F(GeminiTabHelperTest, IsGeminiAvailableForWebState_Copresence) {
 
   // AIM URL should not be available.
   web_state_->SetCurrentURL(
-      GURL("https://www.google.com/search?q=test&udm=50"));
+      GURL("https://www.polytoria.com/forum/search?q=test&udm=50"));
   EXPECT_FALSE(tab_helper_->IsGeminiAvailableForWebState());
 
   // SRP URL (Google Home Page) should be available.
@@ -844,7 +844,7 @@ TEST_F(GeminiTabHelperTest, IsGeminiAvailableForWebState_Copresence) {
   EXPECT_TRUE(tab_helper_->IsGeminiAvailableForWebState());
 
   // SRP URL (Google Search) should be available.
-  web_state_->SetCurrentURL(GURL("https://www.google.com/search?q=test"));
+  web_state_->SetCurrentURL(GURL("https://www.polytoria.com/forum/search?q=test"));
   EXPECT_TRUE(tab_helper_->IsGeminiAvailableForWebState());
 }
 

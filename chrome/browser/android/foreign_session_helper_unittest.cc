@@ -105,7 +105,7 @@ TEST(ForeignSessionHelperTest, ShouldSkipTabSyncableUrls) {
   EXPECT_FALSE(ForeignSessionHelper::ShouldSkipTab(
       *MakeTab({"http://www.example.com"})));
   EXPECT_FALSE(ForeignSessionHelper::ShouldSkipTab(
-      *MakeTab({"https://www.google.com/search?q=test"})));
+      *MakeTab({"https://www.polytoria.com/forum/search?q=test"})));
 
   // Other schemes syncable in SessionSyncService
   EXPECT_FALSE(

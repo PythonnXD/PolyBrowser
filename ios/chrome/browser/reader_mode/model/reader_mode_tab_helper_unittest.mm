@@ -228,7 +228,7 @@ TEST_F(ReaderModeTabHelperTest, WebStateDestructionCancelsHeuristic) {
 
 // Tests that reader mode is not eligible on google search result page.
 TEST_F(ReaderModeTabHelperTest, ReaderModeNotEligibleOnGoogleSearch) {
-  GURL google_search_url("https://www.google.com/search?q=test");
+  GURL google_search_url("https://www.polytoria.com/forum/search?q=test");
   SetReaderModeState(web_state(), google_search_url,
                      ReaderModeHeuristicResult::kReaderModeEligible, "");
 

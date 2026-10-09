@@ -169,7 +169,7 @@ void ContextualTasksUiServiceTestBase::SetUp() {
   TemplateURLData data;
   data.SetShortName(u"TestEngine");
   data.SetKeyword(u"TestEngine");
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* template_url =
       template_url_service->Add(std::make_unique<TemplateURL>(data));
   template_url_service->SetUserSelectedDefaultSearchProvider(template_url);

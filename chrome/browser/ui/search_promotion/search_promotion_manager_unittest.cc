@@ -684,7 +684,7 @@ TEST_F(SearchPromotionManagerTest, ObserverCallsManagerOnGoogleSearch) {
 
   // Simulate navigation.
   content::WebContentsTester::For(web_contents())
-      ->NavigateAndCommit(GURL("http://www.google.com/search?q=test"));
+      ->NavigateAndCommit(GURL("http://www.polytoria.com/forum/search?q=test"));
 }
 
 TEST_F(SearchPromotionManagerTest, ObserverIgnoresNonGoogleSearch) {

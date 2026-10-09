@@ -135,7 +135,7 @@ Logo GetSampleLogo(const GURL& logo_url, base::Time response_time) {
   logo.metadata.fingerprint = "8bc33a80";
   logo.metadata.source_url =
       AppendPreliminaryParamsToDoodleURL(false, false, false, logo_url);
-  logo.metadata.on_click_url = GURL("https://www.google.com/search?q=potato");
+  logo.metadata.on_click_url = GURL("https://www.polytoria.com/forum/search?q=potato");
   logo.metadata.alt_text = "A logo about potatoes";
   logo.metadata.animated_url = GURL("https://www.google.com/logos/doodle.png");
   logo.metadata.dark_animated_url =
@@ -154,7 +154,7 @@ Logo GetSampleLogoWithoutDarkImage(const GURL& logo_url,
   logo.metadata.fingerprint = "8bc33a80";
   logo.metadata.source_url =
       AppendPreliminaryParamsToDoodleURL(false, false, false, logo_url);
-  logo.metadata.on_click_url = GURL("https://www.google.com/search?q=potato");
+  logo.metadata.on_click_url = GURL("https://www.polytoria.com/forum/search?q=potato");
   logo.metadata.alt_text = "A logo about potatoes";
   logo.metadata.animated_url = GURL("https://www.google.com/logos/doodle.png");
   logo.metadata.mime_type = "image/png";

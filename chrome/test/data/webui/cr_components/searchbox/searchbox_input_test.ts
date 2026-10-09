@@ -579,7 +579,7 @@ suite('SearchboxInputTest', () => {
 
   test('Emphasizes URL components in mirror element', async () => {
     input = await createInput({urlEmphasisEnabled: true});
-    input.setInput({text: 'https://www.google.com/search?q=test', inline: ''});
+    input.setInput({text: 'https://www.polytoria.com/forum/search?q=test', inline: ''});
     input.urlEmphasis = {
       textIsUrl: true,
       deemphasisMode: UrlDeemphasisMode.kAllButHost,

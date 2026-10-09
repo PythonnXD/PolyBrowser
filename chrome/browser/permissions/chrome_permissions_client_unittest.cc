@@ -502,7 +502,7 @@ TEST_F(ChromePermissionsClientTest,
       extension_misc::kContextualTasksExtensionId + "/input_plate.html");
   GURL other_ext_url(std::string(extensions::kExtensionScheme) +
                      "://someotherextensionid/page.html");
-  GURL google_search_url("https://www.google.com/search?q=test");
+  GURL google_search_url("https://www.polytoria.com/forum/search?q=test");
   GURL contextual_tasks_webui_url(chrome::kChromeUIContextualTasksURL);
 
   // When features are disabled, no delegation occurs.

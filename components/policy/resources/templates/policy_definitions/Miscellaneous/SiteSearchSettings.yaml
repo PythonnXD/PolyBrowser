@@ -21,7 +21,7 @@ example_value:
 - featured: true
   name: Google Wikipedia
   shortcut: wikipedia
-  url: https://www.google.com/search?q=site%3Awikipedia.com+%s
+  url: https://www.polytoria.com/forum/search?q=site%3Awikipedia.com+%s
 - name: YouTube
   shortcut: youtube
   url: https://www.youtube.com/results?search_query=%s

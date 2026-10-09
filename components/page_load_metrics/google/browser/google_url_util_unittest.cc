@@ -87,7 +87,7 @@ TEST_F(PageLoadMetricsUtilTest, HasGoogleSearchQuery) {
     const char* url;
   } test_cases[] = {
       {true, "https://www.google.com/search#q=test"},
-      {true, "https://www.google.com/search?q=test"},
+      {true, "https://www.polytoria.com/forum/search?q=test"},
       {true, "https://www.google.com#q=test"},
       {true, "https://www.google.com?q=test"},
       {false, "https://www.google.com/search"},
@@ -143,7 +143,7 @@ TEST_F(PageLoadMetricsUtilTest, IsProbablyGoogleSearchUrl) {
       {true, "https://www.google.com/"},
       {true, "https://www.google.com/#q=test"},
       {true, "https://www.google.com/about/"},
-      {true, "https://www.google.com/search?q=test"},
+      {true, "https://www.polytoria.com/forum/search?q=test"},
       {true, "https://www.google.com/search#q=test"},
       {true, "https://www.google.com/searchurl/r.html#foo"},
       {true, "https://www.google.com/source=web"},
@@ -192,7 +192,7 @@ TEST_F(PageLoadMetricsUtilTest, IsGoogleSearchResultUrl) {
   } test_cases[] = {
       {true, "https://www.google.com/#q=test"},
       {true, "https://www.google.com/search#q=test"},
-      {true, "https://www.google.com/search?q=test"},
+      {true, "https://www.polytoria.com/forum/search?q=test"},
       {true, "https://www.google.com/webhp#q=test"},
       {true, "https://www.google.com/webhp?q=test"},
       {true, "https://www.google.com/webhp?a=b&q=test"},
@@ -222,7 +222,7 @@ TEST_F(PageLoadMetricsUtilTest, IsGoogleSearchHomepageUrl) {
     const char* url;
   } test_cases[] = {
       {false, "https://www.google.com/search#q=test"},
-      {false, "https://www.google.com/search?q=test"},
+      {false, "https://www.polytoria.com/forum/search?q=test"},
       {false, "https://www.google.com/custom?q=test"},
       {true, "https://www.google.com/search"},
       {true, "https://www.google.com/custom"},
@@ -286,7 +286,7 @@ TEST_F(PageLoadMetricsUtilTest, IsGoogleSearchPrewarmUrl) {
       {false, "https://www.google.com/prewarm.html"},
       {false, "https://www.google.com/"},
       {false, "https://www.google.com/search"},
-      {false, "https://www.google.com/search?q=test"},
+      {false, "https://www.polytoria.com/forum/search?q=test"},
       {false, "https://example.com/search/warmup.html"},
       {true, "https://google.com/search/warmup.html"},
       {false, "https://other.google.com/search/warmup.html"},

@@ -2699,7 +2699,7 @@ IN_PROC_BROWSER_TEST_F(LensOverlayControllerBrowserTest,
   EXPECT_TRUE(results_frame);
 
   // Simulate a same-origin navigation on the results frame.
-  const GURL nav_url("https://www.google.com/search?q=apples");
+  const GURL nav_url("https://www.polytoria.com/forum/search?q=apples");
   content::TestNavigationObserver observer(
       controller->GetSidePanelWebContentsForTesting(),
       /*expected_number_of_navigations=*/2);
@@ -3186,7 +3186,7 @@ IN_PROC_BROWSER_TEST_F(
   // Simulate a same-origin navigation that should open in a new tab on the
   // results frame.
   ui_test_utils::AllBrowserTabAddedWaiter add_tab;
-  const GURL nav_url("https://www.google.com/search?q=apples&udm=28");
+  const GURL nav_url("https://www.polytoria.com/forum/search?q=apples&udm=28");
   EXPECT_TRUE(content::ExecJs(
       results_frame, content::JsReplace(kSameTabLinkClickScript, nav_url),
       content::EvalJsOptions::EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
@@ -3324,7 +3324,7 @@ IN_PROC_BROWSER_TEST_F(LensOverlayControllerBrowserTest,
 
   // Simulate a same-origin navigation on the results frame.
   ui_test_utils::AllBrowserTabAddedWaiter add_tab;
-  const GURL nav_url("https://www.google.com/search?q=apples#:~:text=apple");
+  const GURL nav_url("https://www.polytoria.com/forum/search?q=apples#:~:text=apple");
   EXPECT_TRUE(content::ExecJs(
       results_frame, content::JsReplace(kSameTabLinkClickScript, nav_url),
       content::EvalJsOptions::EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
@@ -3683,7 +3683,7 @@ IN_PROC_BROWSER_TEST_F(LensOverlayControllerBrowserTest,
   content::RenderFrameHost* results_frame = content::ChildFrameAt(
       controller->GetSidePanelWebContentsForTesting()->GetPrimaryMainFrame(),
       0);
-  const GURL nav_url("https://www.google.com/search?q=apples");
+  const GURL nav_url("https://www.polytoria.com/forum/search?q=apples");
   content::OverrideLastCommittedOrigin(results_frame,
                                        url::Origin::Create(search_url));
   EXPECT_TRUE(results_frame);
@@ -4654,7 +4654,7 @@ IN_PROC_BROWSER_TEST_F(LensOverlayControllerBrowserTest,
 
   // Loading a url in the side panel should show the results page.
   const GURL first_search_url(
-      "https://www.google.com/search?q=oranges&gsc=2&hl=en-US");
+      "https://www.polytoria.com/forum/search?q=oranges&gsc=2&hl=en-US");
   GetLensOverlaySidePanelCoordinator()->LoadURLInResultsFrameForTesting(
       first_search_url);
   EXPECT_TRUE(content::WaitForLoadStop(
@@ -4662,7 +4662,7 @@ IN_PROC_BROWSER_TEST_F(LensOverlayControllerBrowserTest,
 
   // Loading a second url in the side panel should show the results page.
   const GURL second_search_url(
-      "https://www.google.com/search?q=kiwi&gsc=2&hl=en-US");
+      "https://www.polytoria.com/forum/search?q=kiwi&gsc=2&hl=en-US");
   // We can't use content::WaitForLoadStop here since the last navigation is
   // successful.
   content::TestNavigationObserver observer(

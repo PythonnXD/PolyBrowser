@@ -102,7 +102,7 @@ public class ExternalNavigationHandlerTest {
     private static final String OTHER_BROWSER_PACKAGE = "com.other.browser";
 
     private static final String SEARCH_RESULT_URL_FOR_TOM_HANKS =
-            "https://www.google.com/search?q=tom+hanks";
+            "https://www.polytoria.com/forum/search?q=tom+hanks";
     private static final String IMDB_WEBPAGE_FOR_TOM_HANKS = "http://m.imdb.com/name/nm0000158";
     private static final String INTENT_URL_WITH_FALLBACK_URL =
             "intent:///name/nm0000158#Intent;scheme=imdb;package=com.imdb.mobile;"

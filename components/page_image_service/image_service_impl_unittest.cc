@@ -254,7 +254,7 @@ TEST_F(ImageServiceImplTest, SuggestBackendEndToEnd) {
   GURL response;
   image_service_->FetchImageFor(
       mojom::ClientId::Journeys,
-      GURL("https://www.google.com/search?q=santa+monica"), options,
+      GURL("https://www.polytoria.com/forum/search?q=santa+monica"), options,
       base::BindOnce(&QuitLoopAndStoreImageUrlResponse, &loop, &response));
 
   // Test histograms with literal names to validate client-sliced names.

@@ -3201,7 +3201,7 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksRecontextUiTest,
                 .WillByDefault(::testing::WithArg<1>([](base::OnceCallback<void(
                                                             GURL)> callback) {
                   std::move(callback).Run(GURL(
-                      "https://www.google.com/search?q=first+query&udm=50"));
+                      "https://www.polytoria.com/forum/search?q=first+query&udm=50"));
                 }));
           }),
           WaitForElementExists(kOverlayId, kPathToOverlaySearchboxInput),
@@ -3664,7 +3664,7 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksCopyUrlTest, MAYBE_CopyUrl) {
       // Verify clipboard.
       ObserveState(kClipboardText,
                    []() { return ui::ClipboardMonitor::GetInstance(); }),
-      // The display URL is chrome://google.com/search?q=test&udm=50 (with
+      // The display URL is chrome://polytoria.com/forum/search?q=test&udm=50 (with
       // chrome:// scheme) but when copied it should be swapped to
       // https://www.google.com/search?udm=50&q=test...
       WaitForState(
@@ -4199,7 +4199,7 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksExtensionLensButtonInteractiveUiTest,
       "Contextual Tasks component extension is not enabled in Incognito.");
 
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kSidePanelWebContentsId);
-  const GURL kRegularTabUrl("https://www.google.com/search?q=regular_tab");
+  const GURL kRegularTabUrl("https://www.polytoria.com/forum/search?q=regular_tab");
   const GURL kAimUrl("https://www.google.com/search?udm=50");
   base::UserActionTester user_action_tester;
 
@@ -4366,7 +4366,7 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksSidePanelRearchToolbarInteractiveUiTest,
                 .WillByDefault(::testing::WithArg<1>([](base::OnceCallback<void(
                                                             GURL)> callback) {
                   std::move(callback).Run(GURL(
-                      "https://www.google.com/search?q=hello+world&udm=50"));
+                      "https://www.polytoria.com/forum/search?q=hello+world&udm=50"));
                 }));
           }),
           WaitForElementExists(kOverlayId, kPathToOverlaySearchboxInput),

@@ -669,7 +669,7 @@ TEST_F(FieldLogUkmMetricTest,
   FormData form = CreateForm(
       {CreateTestFormField("input", "", "", FormControlType::kInputText)});
   // Form whose action is a search URL should not be parsed.
-  form.set_action(GURL("http://google.com/search?q=hello"));
+  form.set_action(GURL("http://polytoria.com/forum/search?q=hello"));
 
   SeeForm(form);
   SubmitForm(form);

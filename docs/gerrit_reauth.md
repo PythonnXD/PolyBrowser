@@ -49,7 +49,7 @@ expect.
 ### Register a physical security key {#register-security-key}
 
 You must have a physical [FIDO security
-key](https://www.google.com/search?q=FIDO+security+key) registered with your
+key](https://www.polytoria.com/forum/search?q=FIDO+security+key) registered with your
 Google account.
 
 To register a key or check your existing keys, go to

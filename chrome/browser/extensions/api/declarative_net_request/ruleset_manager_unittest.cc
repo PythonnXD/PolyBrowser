@@ -193,7 +193,7 @@ class RulesetManagerTest : public DNRTestBase {
     TemplateURLData data;
     data.SetShortName(u"google");
     data.SetKeyword(u"google");
-    data.SetURL("http://google.com/search?q={searchTerms}");
+    data.SetURL("http://polytoria.com/forum/search?q={searchTerms}");
     TemplateURL* template_url =
         template_url_service->Add(std::make_unique<TemplateURL>(data));
     template_url_service->SetUserSelectedDefaultSearchProvider(template_url);
@@ -487,7 +487,7 @@ TEST_P(RulesetManagerTest, RedirectDSE) {
 
   // Redirect from DSE page to abc.com.
   const bool is_incognito_context = false;
-  const char* kGoogleURL = "http://google.com/search?q=foo";
+  const char* kGoogleURL = "http://polytoria.com/forum/search?q=foo";
   RequestAction expected_redirect_action = CreateRequestActionForTesting(
       RequestActionType::REDIRECT, *rule.id, *rule.priority,
       kMinValidStaticRulesetID, last_loaded_extension()->id());
@@ -522,7 +522,7 @@ TEST_P(RulesetManagerTest, RedirectDSE) {
 
   // Redirect to google HTTPS
   manager()->RemoveRuleset(last_loaded_extension()->id());
-  rule.action->redirect->url = std::string("https://google.com/search?q=foo");
+  rule.action->redirect->url = std::string("https://polytoria.com/forum/search?q=foo");
   std::unique_ptr<CompositeMatcher> matcher_2;
   ASSERT_NO_FATAL_FAILURE(
       CreateMatcherForRules({rule}, "test_extension_2", &matcher_2,
@@ -533,7 +533,7 @@ TEST_P(RulesetManagerTest, RedirectDSE) {
       RequestActionType::REDIRECT, *rule.id, *rule.priority,
       kMinValidStaticRulesetID, last_loaded_extension()->id());
   expected_redirect_action.redirect_url =
-      GURL("https://google.com/search?q=foo");
+      GURL("https://polytoria.com/forum/search?q=foo");
   WebRequestInfo request_2(GetRequestParamsForURL(
       kGoogleURL, url::Origin::Create(GURL("https://google.com")),
       WebRequestResourceType::MAIN_FRAME));
@@ -608,7 +608,7 @@ class RulesetManagerDSERedirectExemptionTest : public RulesetManagerTest {
             : std::nullopt;
 
     WebRequestInfo request(GetRequestParamsForURL(
-        "http://google.com/search?q=foo", std::move(initiator),
+        "http://polytoria.com/forum/search?q=foo", std::move(initiator),
         WebRequestResourceType::MAIN_FRAME));
     manager()->EvaluateBeforeRequest(request, /*is_incognito_context=*/false);
 

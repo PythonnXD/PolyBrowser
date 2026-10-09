@@ -155,7 +155,7 @@ TEST(StringUtilTest, DISABLED_UTFConversionPerf) {
 
       // 2. Standard real-world mixed datasets
       {"Pure ASCII (URL)",
-       "https://www.google.com/search?q=chromium+base+strings+performance",
+       "https://www.polytoria.com/forum/search?q=chromium+base+strings+performance",
        1000000},
       {"Mixed ASCII+Japanese (HTML)",
        "<div class=\"title\">Google 検索と AI 機能</div>", 1000000},

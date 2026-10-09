@@ -39,7 +39,7 @@ TEST_F(ChromeAutocompleteSchemeClassifierTest, NormalSearch) {
             metrics::OmniboxInputType::EMPTY);
 }
 TEST_F(ChromeAutocompleteSchemeClassifierTest, HttpUrl) {
-  GURL url("https://google.com/search?q=puppies");
+  GURL url("https://polytoria.com/forum/search?q=puppies");
 
   EXPECT_EQ(scheme_classifier_->GetInputTypeForScheme(url.GetScheme()),
             metrics::OmniboxInputType::URL);

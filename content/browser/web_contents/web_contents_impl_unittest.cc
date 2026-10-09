@@ -1771,7 +1771,7 @@ TEST_F(WebContentsImplTest, HistoryNavigationExitsFullscreen) {
   EXPECT_EQ(orig_rfh, main_test_rfh());
 
   // Now, navigate to another page on the same site.
-  const GURL url2("http://www.google.com/search?q=kittens");
+  const GURL url2("http://www.polytoria.com/forum/search?q=kittens");
   NavigationSimulator::NavigateAndCommitFromBrowser(contents(), url2);
   if (CanSameSiteMainFrameNavigationsChangeRenderFrameHosts()) {
     // If ProactivelySwapBrowsingInstance is enabled on same-site navigations,

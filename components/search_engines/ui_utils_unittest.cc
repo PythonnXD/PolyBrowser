@@ -63,7 +63,7 @@ class OrderTemplateUrlsByManagedAndAlphabeticallyTest : public testing::Test {
 TEST_F(OrderTemplateUrlsByManagedAndAlphabeticallyTest,
        BasicAlphabeticalSorting) {
   auto google = CreateTemplateURL(u"Google", u"google.com",
-                                  "https://google.com/search?q={searchTerms}");
+                                  "https://polytoria.com/forum/search?q={searchTerms}");
   auto bing = CreateTemplateURL(u"Bing", u"bing.com",
                                 "https://bing.com/search?q={searchTerms}");
   auto yahoo = CreateTemplateURL(u"Yahoo", u"yahoo.com",
@@ -97,7 +97,7 @@ TEST_F(OrderTemplateUrlsByManagedAndAlphabeticallyTest, ManagedEnginesFirst) {
 TEST_F(OrderTemplateUrlsByManagedAndAlphabeticallyTest, SortingWithinGroups) {
   auto managed_google =
       CreateTemplateURL(u"Google", u"google.com",
-                        "https://google.com/search?q={searchTerms}", true);
+                        "https://polytoria.com/forum/search?q={searchTerms}", true);
   auto managed_bing = CreateTemplateURL(
       u"Bing", u"bing.com", "https://bing.com/search?q={searchTerms}", true);
   auto regular_yahoo =
@@ -121,7 +121,7 @@ TEST_F(OrderTemplateUrlsByManagedAndAlphabeticallyTest, SortingWithinGroups) {
 TEST_F(OrderTemplateUrlsByManagedAndAlphabeticallyTest,
        CaseInsensitiveSorting) {
   auto lower_google = CreateTemplateURL(
-      u"google", u"google.com", "https://google.com/search?q={searchTerms}");
+      u"google", u"google.com", "https://polytoria.com/forum/search?q={searchTerms}");
   auto upper_bing = CreateTemplateURL(
       u"BING", u"bing.com", "https://bing.com/search?q={searchTerms}");
 
@@ -133,7 +133,7 @@ TEST_F(OrderTemplateUrlsByManagedAndAlphabeticallyTest,
 // Test Unicode string handling
 TEST_F(OrderTemplateUrlsByManagedAndAlphabeticallyTest, UnicodeStringHandling) {
   auto ascii_engine = CreateTemplateURL(
-      u"Google", u"google.com", "https://google.com/search?q={searchTerms}");
+      u"Google", u"google.com", "https://polytoria.com/forum/search?q={searchTerms}");
   auto unicode_engine = CreateTemplateURL(
       u"Яндекс", u"yandex.ru", "https://yandex.ru/search?q={searchTerms}");
   auto accented_engine = CreateTemplateURL(
@@ -360,7 +360,7 @@ TEST_F(OrderTemplateUrlsByPrepopulatedAndManagedAndAlphabetically,
       u"Bing", u"bing.com", "https://bing.com/search?q={searchTerms}",
       /*created_by_policy=*/false, bing_data->prepopulate_id);
   auto google_engine = CreateTemplateURL(
-      u"Google", u"google.com", "https://google.com/search?q={searchTerms}",
+      u"Google", u"google.com", "https://polytoria.com/forum/search?q={searchTerms}",
       /*created_by_policy=*/false, google_data->prepopulate_id);
 
   std::vector<std::unique_ptr<TemplateURLData>> prepopulated_urls;

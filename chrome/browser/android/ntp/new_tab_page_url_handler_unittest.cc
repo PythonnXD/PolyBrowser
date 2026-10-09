@@ -66,7 +66,7 @@ TEST_F(NewTabPageUrlHandlerTest, TestWebUiNtpRedirection_Enabled_DseGoogle) {
 
   // Mock Google DSE setup
   std::unique_ptr<TemplateURL> google_turl = CreateTestTemplateURL(
-      u"google", "https://www.google.com/search?q={searchTerms}");
+      u"google", "https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* added_turl = model()->Add(std::move(google_turl));
   model()->SetUserSelectedDefaultSearchProvider(added_turl);
   test_util_->ChangeModelToLoadState();
@@ -160,7 +160,7 @@ TEST_F(NewTabPageUrlHandlerTest, TestWebUiNtpRedirection_Disabled) {
 
   // Set DSE to Google.
   std::unique_ptr<TemplateURL> google_turl = CreateTestTemplateURL(
-      u"google", "https://www.google.com/search?q={searchTerms}");
+      u"google", "https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* added_turl = model()->Add(std::move(google_turl));
   model()->SetUserSelectedDefaultSearchProvider(added_turl);
   test_util_->ChangeModelToLoadState();
@@ -181,7 +181,7 @@ TEST_F(NewTabPageUrlHandlerTest, TestWebUiNtpRedirection_Enabled_DseGoogle_Mobil
 
   // Set DSE to Google.
   std::unique_ptr<TemplateURL> google_turl = CreateTestTemplateURL(
-      u"google", "https://www.google.com/search?q={searchTerms}");
+      u"google", "https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* added_turl = model()->Add(std::move(google_turl));
   model()->SetUserSelectedDefaultSearchProvider(added_turl);
   test_util_->ChangeModelToLoadState();

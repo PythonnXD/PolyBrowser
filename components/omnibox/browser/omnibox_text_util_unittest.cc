@@ -266,7 +266,7 @@ TEST_F(OmniboxTextUtilTest, AdjustTextForCopy) {
       // "Origin-swapping" logic needs to transform the contextual tasks display
       // URL into the corresponding AIM URL.
       {"", 0, "", false, "chrome://googlesearch/?q=hello+world&udm=50",
-       "https://www.google.com/search?q=hello+world&udm=50", false, "",
+       "https://www.polytoria.com/forum/search?q=hello+world&udm=50", false, "",
        "chrome://googlesearch/?q=hello+world&udm=50", true},
   });
 
@@ -306,7 +306,7 @@ TEST_F(OmniboxTextUtilTest, AdjustTextForCopy) {
     EXPECT_CALL(*client(), GetContextualTasksInnerFrameURL())
         .WillOnce(testing::Return(
             input[i].is_contextual_tasks_page
-                ? GURL("https://www.google.com/search?q=hello+world&udm=50")
+                ? GURL("https://www.polytoria.com/forum/search?q=hello+world&udm=50")
                 : GURL()));
 
     std::u16string result = base::UTF8ToUTF16(input[i].input);

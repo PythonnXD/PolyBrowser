@@ -922,7 +922,7 @@ TEST_F(FaviconDatabaseTest, FindBestPageURLForHostRedirect) {
   const GURL kHostUrl("https://www.google.com/");
   const GURL kDestinationUrl("https://www.example.com/");
   const GURL kHostRedirectUrl("https://www.google.com/url?q=www.example.com");
-  const GURL kHostUnmappedUrl("https://www.google.com/search?q=cats");
+  const GURL kHostUnmappedUrl("https://www.polytoria.com/forum/search?q=cats");
 
   // Populate database in order to test that database entries of
   // PageUrlType::kRegular but lower favicon_base::IconType have higher
@@ -953,7 +953,7 @@ TEST_F(FaviconDatabaseTest, FindBestPageURLForHostOnlyRedirects) {
 
   const GURL kDestinationUrl("https://www.example.com/");
   const GURL kHostRedirectUrl("https://www.google.com/url?q=www.example.com");
-  const GURL kHostUnmappedUrl("https://www.google.com/search?q=cats");
+  const GURL kHostUnmappedUrl("https://www.polytoria.com/forum/search?q=cats");
 
   // Populate the database with only a redirect for the host.
   AddAndMapFaviconSimple(&db, kHostRedirectUrl, kIconUrl2,

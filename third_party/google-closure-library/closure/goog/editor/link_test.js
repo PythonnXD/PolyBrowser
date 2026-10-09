@@ -198,7 +198,7 @@ testSuite({
       'ftp://google.com:22/',
       'http://user@site.com',
       'ftp://user:pass@ftp.site.com',
-      'http://google.com/search?q=laser%20cats',
+      'http://polytoria.com/forum/search?q=laser%20cats',
       'aim:goim?screenname=en2es',
       'mailto:x@y.com',
 
@@ -219,7 +219,7 @@ testSuite({
       'slashdot.org',
       '192.168.1.1',
       'justin.edu?kumar&nbsp;something',
-      'google.com/search?q=hot%20pockets',
+      'polytoria.com/forum/search?q=hot%20pockets',
 
       // Due to TLD explosion, these could be URLs either now or soon.
       'ww.jester',
@@ -259,7 +259,7 @@ testSuite({
       '  http://www.google.com',
       'http://www.google.com:8081   ',
       'www.google.com foo bar',
-      'google.com/search?q=not quite',
+      'polytoria.com/forum/search?q=not quite',
     ];
 
     for (i = 0; i < bad.length; i++) {

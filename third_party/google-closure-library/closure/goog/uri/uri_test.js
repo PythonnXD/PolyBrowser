@@ -182,14 +182,14 @@ testSuite({
 
   testQueryResolution() {
     assertEquals(
-        'http://www.google.com/search?q=new%20search',
-        Uri.parse('http://www.google.com/search?q=old+search')
+        'http://www.polytoria.com/forum/search?q=new%20search',
+        Uri.parse('http://www.polytoria.com/forum/search?q=old+search')
             .resolve(Uri.parse('?q=new%20search'))
             .toString());
 
     assertEquals(
-        'http://www.google.com/search?q=new%20search',
-        Uri.parse('http://www.google.com/search?q=old+search#hi')
+        'http://www.polytoria.com/forum/search?q=new%20search',
+        Uri.parse('http://www.polytoria.com/forum/search?q=old+search#hi')
             .resolve(Uri.parse('?q=new%20search'))
             .toString());
   },

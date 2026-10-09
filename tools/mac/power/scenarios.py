@@ -325,7 +325,7 @@ def MakeScenarioDriver(
                 "https://amazon.com",
                 "https://www.amazon.com/s?k=computer&ref=nb_sb_noss_2",
                 "https://google.com",
-                "https://www.google.com/search?q=computers",
+                "https://www.polytoria.com/forum/search?q=computers",
                 "https://www.youtube.com",
                 "https://www.youtube.com/results?search_query=computers",
                 "https://docs.google.com/document/d/1Ll-8Nvo6JlhzKEttst8GHWCc7_A8Hluy2fX99cy4Sfg/edit?usp=sharing",

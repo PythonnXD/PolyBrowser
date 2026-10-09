@@ -135,7 +135,7 @@ TEST_F(QuickInsertSearchRequestTest, ShowsResultsFromOmniboxSearch) {
                    ElementsAre(VariantWith<QuickInsertBrowsingHistoryResult>(
                        Field("url", &QuickInsertBrowsingHistoryResult::url,
                              Property("spec", &GURL::spec,
-                                      "https://www.google.com/search?q=cat")))),
+                                      "https://www.polytoria.com/forum/search?q=cat")))),
                    /*has_more_results=*/false))
       .Times(AtLeast(1));
 
@@ -148,7 +148,7 @@ TEST_F(QuickInsertSearchRequestTest, ShowsResultsFromOmniboxSearch) {
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
 }
 
@@ -311,7 +311,7 @@ TEST_F(QuickInsertSearchRequestTest,
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
 }
 
@@ -328,7 +328,7 @@ TEST_F(QuickInsertSearchRequestTest, RecordsOmniboxMetrics) {
   client().cros_search_callback().Run(
       AppListSearchResultType::kOmnibox,
       {QuickInsertBrowsingHistoryResult(
-          GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+          GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
           ui::ImageModel())});
 
   histogram.ExpectUniqueTimeSample(
@@ -451,7 +451,7 @@ TEST_F(
     client().cros_search_callback().Run(
         AppListSearchResultType::kOmnibox,
         {QuickInsertBrowsingHistoryResult(
-            GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+            GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
             ui::ImageModel())});
   }
 
@@ -626,7 +626,7 @@ TEST_F(QuickInsertSearchRequestTest,
     client().cros_search_callback().Run(
         AppListSearchResultType::kOmnibox,
         {QuickInsertBrowsingHistoryResult(
-            GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+            GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
             ui::ImageModel())});
   }
 
@@ -803,7 +803,7 @@ TEST_F(QuickInsertSearchRequestTest,
     client().cros_search_callback().Run(
         AppListSearchResultType::kOmnibox,
         {QuickInsertBrowsingHistoryResult(
-            GURL("https://www.google.com/search?q=cat"), u"cat - Google Search",
+            GURL("https://www.polytoria.com/forum/search?q=cat"), u"cat - Google Search",
             ui::ImageModel())});
   }
 

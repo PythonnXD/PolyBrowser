@@ -691,8 +691,8 @@ public class BasicSuggestionProcessorUnitTest {
         mSuggestion =
                 createSuggestionBuilder(OmniboxSuggestionType.HISTORY_URL, "Google")
                         .setIsSearch(false)
-                        .setUrl(new GURL("https://www.google.com/search?q=test"))
-                        .setDisplayText("google.com/search?q=test")
+                        .setUrl(new GURL("https://www.polytoria.com/forum/search?q=test"))
+                        .setDisplayText("polytoria.com/forum/search?q=test")
                         .build();
 
         // 1. For a standard URL suggestion, desktop platform forces a single-line layout.
@@ -705,7 +705,7 @@ public class BasicSuggestionProcessorUnitTest {
         assertTrue(
                 mModel.get(SuggestionViewProperties.TEXT_LINE_1_TEXT)
                         .toString()
-                        .contains("google.com/search?q=test"));
+                        .contains("polytoria.com/forum/search?q=test"));
 
         // 2. For Tab Search suggestion, it is exempt and maintains a 2-line layout.
         mInput.setPageClassification(PageClassification.ANDROID_TAB_SEARCH_OVERLAY);
@@ -715,7 +715,7 @@ public class BasicSuggestionProcessorUnitTest {
         // TEXT_LINE_2_TEXT is NOT null and matches the URL text.
         assertNotNull(mModel.get(SuggestionViewProperties.TEXT_LINE_2_TEXT));
         assertEquals(
-                "google.com/search?q=test",
+                "polytoria.com/forum/search?q=test",
                 mModel.get(SuggestionViewProperties.TEXT_LINE_2_TEXT).toString());
     }
 }

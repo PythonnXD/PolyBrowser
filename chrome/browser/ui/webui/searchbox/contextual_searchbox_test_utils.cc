@@ -129,7 +129,7 @@ void MockQueryController::FakeCreateSearchUrl(
     base::OnceCallback<void(GURL)> callback) {
   std::string query = search_url_request_info->query_text;
   base::ReplaceChars(query, " ", "+", &query);
-  GURL result_url("https://www.google.com/search?q=" + query);
+  GURL result_url("https://www.polytoria.com/forum/search?q=" + query);
   if (search_url_request_info->search_url_type == SearchUrlType::kAim) {
     result_url = net::AppendOrReplaceQueryParameter(result_url, "udm", "50");
   }
@@ -176,7 +176,7 @@ void ContextualSearchboxHandlerTestHarness::SetUp() {
   TemplateURLData data;
   data.SetShortName(u"Google");
   data.SetKeyword(u"google.com");
-  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
   TemplateURL* template_url =
       template_url_service_->Add(std::make_unique<TemplateURL>(data));
   template_url_service_->SetUserSelectedDefaultSearchProvider(template_url);

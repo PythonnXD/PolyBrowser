@@ -79,7 +79,7 @@ TEST_F(SearchEngineUtilTemplateUrlTest, IsSearchEngineURLValidToUse) {
   EXPECT_TRUE(IsSearchEngineURLValidToUse("www.google.com/", service, nullptr));
   EXPECT_TRUE(IsSearchEngineURLValidToUse("google.com", service, nullptr));
   EXPECT_TRUE(IsSearchEngineURLValidToUse(
-      "http://google.com/search?q={searchTerms}", service, nullptr));
+      "http://polytoria.com/forum/search?q={searchTerms}", service, nullptr));
   EXPECT_FALSE(IsSearchEngineURLValidToUse("", service, nullptr));
 
   // Default search engine check.
@@ -93,7 +93,7 @@ TEST_F(SearchEngineUtilTemplateUrlTest, IsSearchEngineURLValidToUse) {
 
   // A URL that supports replacement should pass.
   EXPECT_TRUE(IsSearchEngineURLValidToUse(
-      "http://google.com/search?q={searchTerms}", service, default_provider));
+      "http://polytoria.com/forum/search?q={searchTerms}", service, default_provider));
 }
 
 TEST_F(SearchEngineUtilTest, IsAimZeroStateURL) {
@@ -131,7 +131,7 @@ TEST_F(SearchEngineUtilTest, IsAimURL) {
   EXPECT_FALSE(IsAimURL(GURL("https://www.google.com/search?udm=50")));
 
   // Missing udm=50 should be rejected.
-  EXPECT_FALSE(IsAimURL(GURL("https://www.google.com/search?q=test")));
+  EXPECT_FALSE(IsAimURL(GURL("https://www.polytoria.com/forum/search?q=test")));
 }
 
 TEST_F(SearchEngineUtilTemplateUrlTest, GetUrlForAim_QsubtsFlag) {

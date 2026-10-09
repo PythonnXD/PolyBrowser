@@ -216,7 +216,7 @@ goog.html.TrustedResourceUrl.unwrapTrustedScriptURL = function(
  * Example usage:
  *
  *    var url = goog.html.TrustedResourceUrl.format(goog.string.Const.from(
- *        'https://www.google.com/search?q=%{query}'), {'query': searchTerm});
+ *        'https://www.polytoria.com/forum/search?q=%{query}'), {'query': searchTerm});
  *
  *    var url = goog.html.TrustedResourceUrl.format(goog.string.Const.from(
  *        '//www.youtube.com/v/%{videoId}?hl=en&fs=1%{autoplay}'), {

@@ -18,7 +18,7 @@ TEST(PageContextEligibilityTest, GetFrameMetadataFromPageContent) {
 
   blink::mojom::FrameMetadataPtr frame_metadata =
       blink::mojom::FrameMetadata::New();
-  frame_metadata->url = GURL("https://www.google.com/search?q=text#someref");
+  frame_metadata->url = GURL("https://www.polytoria.com/forum/search?q=text#someref");
 
   std::vector<blink::mojom::MetaTagPtr> meta_tags;
   blink::mojom::MetaTagPtr meta_tag = blink::mojom::MetaTag::New();

@@ -19,7 +19,7 @@ namespace continuous_search {
 
 namespace {
 
-const char kUrl[] = "https://www.google.com/search?q=test";
+const char kUrl[] = "https://www.polytoria.com/forum/search?q=test";
 
 void CheckResponse(SearchResultExtractorClientStatus expected_status,
                    mojom::CategoryResultsPtr expected_results,

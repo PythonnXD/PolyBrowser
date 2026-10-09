@@ -66,7 +66,7 @@ class ChromeWebContentsViewDelegateAndroidTest
   }
 
  protected:
-  const GURL kSrpUrl{"https://www.google.com/search?q=test"};
+  const GURL kSrpUrl{"https://www.polytoria.com/forum/search?q=test"};
   const GURL kNonSrpUrl{"https://www.example.com"};
   const GURL kReaderModeUrl{"chrome-distiller://example-id"};
 

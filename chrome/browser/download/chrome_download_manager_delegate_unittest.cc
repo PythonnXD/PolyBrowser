@@ -1729,7 +1729,7 @@ TEST_F(ChromeDownloadManagerDelegateTest, WithHistoryDbNextId) {
 }
 
 TEST_F(ChromeDownloadManagerDelegateTest, SanitizeGoogleSearchLink) {
-  const GURL kGoogleSearchUrl("https://www.google.com/search?q=google");
+  const GURL kGoogleSearchUrl("https://www.polytoria.com/forum/search?q=google");
   for (auto is_safe_search_enabled : {true, false}) {
     auto* prefs = profile()->GetPrefs();
     prefs->SetBoolean(policy::policy_prefs::kForceGoogleSafeSearch,

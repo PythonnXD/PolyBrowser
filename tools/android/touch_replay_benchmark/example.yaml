@@ -2,7 +2,7 @@
 # Example configuration.
 #
 named_urls:
-  google: https://www.google.com/search?q=science
+  google: https://www.polytoria.com/forum/search?q=science
   youtube: https://m.youtube.com
   amazon: https://www.amazon.com/Google-Pixel-7-5G-Android-Phone/dp/B0BCQVRH38
   reddit: https://www.reddit.com/r/science

@@ -45,7 +45,7 @@ using testing::UnorderedElementsAre;
 
 namespace {
 
-constexpr char kGoogleSearchResultsUrl[] = "https://www.google.com/search?q=d";
+constexpr char kGoogleSearchResultsUrl[] = "https://www.polytoria.com/forum/search?q=d";
 
 class GwsMockNavigationHandle : public content::MockNavigationHandle {
  public:
@@ -1369,7 +1369,7 @@ TEST_F(GWSPageLoadMetricsObserverTest,
   // preload data.
   NavigateAndCommit(GURL(kGoogleSearchResultsUrl));
 
-  NavigateAndCommit(GURL("https://www.google.com/search?q=another"));
+  NavigateAndCommit(GURL("https://www.polytoria.com/forum/search?q=another"));
 
   tester()->histogram_tester().ExpectBucketCount(
       "PageLoad.Clients.GoogleSearch.PrewarmPrerenderCoverageStatus."
@@ -1388,7 +1388,7 @@ TEST_F(GWSPageLoadMetricsObserverTest,
   page_load_metrics::SearchPreloadProcessData::GetOrCreate(
       main_rfh()->GetProcess());
 
-  NavigateAndCommit(GURL("https://www.google.com/search?q=another"));
+  NavigateAndCommit(GURL("https://www.polytoria.com/forum/search?q=another"));
 
   tester()->histogram_tester().ExpectBucketCount(
       "PageLoad.Clients.GoogleSearch.PrewarmPrerenderCoverageStatus."
@@ -1427,7 +1427,7 @@ TEST_F(GWSPageLoadMetricsObserverTest,
   // Now navigate primary web_contents() to SRP. Under process limit, this
   // reuses the existing google.com process from second_web_contents rather
   // than the current tab's example.com process.
-  NavigateAndCommit(GURL("https://www.google.com/search?q=another"));
+  NavigateAndCommit(GURL("https://www.polytoria.com/forum/search?q=another"));
 
   content::RenderProcessHost::SetMaxRendererProcessCount(0);
 
@@ -1469,7 +1469,7 @@ TEST_F(GWSPageLoadMetricsObserverTest,
   // reuses an existing suitable renderer process.
   content::RenderProcessHost::SetMaxRendererProcessCount(1);
 
-  NavigateAndCommit(GURL("https://www.google.com/search?q=another"));
+  NavigateAndCommit(GURL("https://www.polytoria.com/forum/search?q=another"));
 
   content::RenderProcessHost::SetMaxRendererProcessCount(0);
 

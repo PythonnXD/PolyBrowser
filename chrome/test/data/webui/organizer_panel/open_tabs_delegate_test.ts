@@ -395,7 +395,7 @@ suite('OpenTabsDelegateTest', () => {
     const updatedTab = createTab({
       tabId: 1,
       title: 'Google Search Updated',
-      url: 'https://www.google.com/search?q=test',
+      url: 'https://www.polytoria.com/forum/search?q=test',
       lastActiveTimeTicks: {internalValue: 100n},
       lastActiveElapsedText: 'just now',
     });

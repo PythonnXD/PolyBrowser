@@ -122,7 +122,7 @@ class FindsTabHelperTest : public ChromeRenderViewHostTestHarness {
   // threshold. This is used to ensure preferences override a state that would
   // otherwise successfully trigger.
   void SimulateSRPBackNavigations(int count) {
-    GURL srp_url("https://www.google.com/search?q=test");
+    GURL srp_url("https://www.polytoria.com/forum/search?q=test");
     for (int i = 0; i < count; ++i) {
       auto handle = CreateMockNavigationHandle(
           srp_url,
@@ -148,7 +148,7 @@ TEST_F(FindsTabHelperTest, TestSRPBackNavigationThresholdMet) {
 }
 
 TEST_F(FindsTabHelperTest, TestNonForwardBackNavToSRPDoesNotCount) {
-  GURL srp_url("https://www.google.com/search?q=test");
+  GURL srp_url("https://www.polytoria.com/forum/search?q=test");
   // Normal navigation (TYPED) to SRP does not count.
   auto handle = CreateMockNavigationHandle(srp_url, ui::PAGE_TRANSITION_TYPED);
   CallDidFinishNavigation(handle.get());
@@ -216,7 +216,7 @@ TEST_F(FindsTabHelperTest, TestOmniboxRecentSearchSuggestionCountThresholdMet) {
       {{"omnibox_recent_search_suggestion_count_threshold", "2"},
        {"enable_omnibox_recent_search_suggestion_opt_in", "true"}});
 
-  GURL srp_url("https://www.google.com/search?q=lebron");
+  GURL srp_url("https://www.polytoria.com/forum/search?q=lebron");
 
   SetPendingOmniboxRecentSearchSuggestionNavigation();
   auto handle1 =
@@ -241,7 +241,7 @@ TEST_F(FindsTabHelperTest,
       {{"enable_omnibox_recent_search_suggestion_opt_in", "false"},
        {"omnibox_recent_search_suggestion_count_threshold", "2"}});
 
-  GURL srp_url("https://www.google.com/search?q=lebron");
+  GURL srp_url("https://www.polytoria.com/forum/search?q=lebron");
 
   SetPendingOmniboxRecentSearchSuggestionNavigation();
   auto handle1 =

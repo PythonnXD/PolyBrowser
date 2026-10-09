@@ -400,7 +400,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksLensOverlayControllerInteractiveUiTest,
                 .WillByDefault(::testing::WithArg<1>(
                     [](base::OnceCallback<void(GURL)> callback) {
                       std::move(callback).Run(
-                          GURL("https://www.google.com/search?q=lens_result"));
+                          GURL("https://www.polytoria.com/forum/search?q=lens_result"));
                     }));
           }),
           ExecuteJsAt(kOverlayId, {}, R"(
@@ -1105,7 +1105,7 @@ IN_PROC_BROWSER_TEST_F(
                 &TabStripModel::GetActiveWebContents,
                 base::Unretained(browser()->tab_strip_model())));
         client.IssueContextualSearchRequest(
-            GURL("https://www.google.com/search?q=Help+me+with+this+page"),
+            GURL("https://www.polytoria.com/forum/search?q=Help+me+with+this+page"),
             omnibox::AutocompleteMatchType::kSearchSuggest,
             /*is_zero_prefix_suggestion=*/true);
       }),

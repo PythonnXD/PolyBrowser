@@ -66,7 +66,7 @@ class CobrowseTabHelperTest : public PlatformTest {
 
     // Add default search provider
     TemplateURLData data;
-    data.SetURL("https://www.google.com/search?q={searchTerms}");
+    data.SetURL("https://www.polytoria.com/forum/search?q={searchTerms}");
     TemplateURL* template_url =
         template_url_service->Add(std::make_unique<TemplateURL>(data));
     template_url_service->SetUserSelectedDefaultSearchProvider(template_url);
@@ -182,7 +182,7 @@ TEST_F(CobrowseTabHelperTest, TriggerAssistantFromOpener) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(kEnableCobrowseOnAimSrpTap);
 
-  GURL aim_url("https://www.google.com/search?q=test&udm=50");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test&udm=50");
   GURL next_url("https://www.example.com");
 
   web::FakeWebState* opener = CreateAndInsertWebState(aim_url);
@@ -203,7 +203,7 @@ TEST_F(CobrowseTabHelperTest, TriggerAssistantFromOpener) {
 // Tests that showAssistant is NOT called when navigating in a new tab if the
 // opener was an AIM URL but the flag is disabled by default.
 TEST_F(CobrowseTabHelperTest, NoTriggerFromOpenerWhenFlagDisabled) {
-  GURL aim_url("https://www.google.com/search?q=test&udm=50");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test&udm=50");
   GURL next_url("https://www.example.com");
 
   web::FakeWebState* opener = CreateAndInsertWebState(aim_url);
@@ -224,7 +224,7 @@ TEST_F(CobrowseTabHelperTest, NoTriggerFromOpenerWhenFlagDisabled) {
 // Tests that showAssistant is NOT called when navigating in a new tab if the
 // opener was NOT an AIM URL.
 TEST_F(CobrowseTabHelperTest, NoTriggerFromNonAimOpener) {
-  GURL non_aim_url("https://www.google.com/search?q=test");
+  GURL non_aim_url("https://www.polytoria.com/forum/search?q=test");
   GURL next_url("https://www.example.com");
 
   web::FakeWebState* opener = CreateAndInsertWebState(non_aim_url);
@@ -244,8 +244,8 @@ TEST_F(CobrowseTabHelperTest, NoTriggerFromNonAimOpener) {
 // Tests that showAssistant is NOT called when navigating in the same tab,
 // even if it's an AIM URL, because it doesn't have an opener.
 TEST_F(CobrowseTabHelperTest, NoTriggerInSameTab) {
-  GURL aim_url("https://www.google.com/search?q=test&udm=50");
-  GURL non_aim_url("https://www.google.com/search?q=test");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test&udm=50");
+  GURL non_aim_url("https://www.polytoria.com/forum/search?q=test");
 
   web::FakeWebState* web_state = CreateAndInsertWebState({});
   CobrowseTabHelper* tab_helper = CobrowseTabHelper::FromWebState(web_state);
@@ -265,7 +265,7 @@ TEST_F(CobrowseTabHelperTest, NoTriggerInSameTab) {
 // Tests that showAssistant is NOT called when navigating in an incognito
 // browser.
 TEST_F(CobrowseTabHelperTest, NoTriggerInIncognito) {
-  GURL aim_url("https://www.google.com/search?q=test&udm=50");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test&udm=50");
   GURL next_url("https://www.example.com");
 
   // Create an opener WebState in the incognito browser.
@@ -295,7 +295,7 @@ TEST_F(CobrowseTabHelperTest, NoTriggerInIncognito) {
 // Tests that closeAssistant is NOT called when navigating to a regular search
 // URL.
 TEST_F(CobrowseTabHelperTest, NoCloseAssistantOnRegularSearchNavigation) {
-  GURL search_url("https://www.google.com/search?q=test");
+  GURL search_url("https://www.polytoria.com/forum/search?q=test");
 
   web::FakeWebState* web_state = CreateAndInsertWebState({});
   CobrowseTabHelper* tab_helper = CobrowseTabHelper::FromWebState(web_state);
@@ -335,7 +335,7 @@ TEST_F(CobrowseTabHelperTest, NoHideAssistantOnAboutBlankNavigation) {
 // Tests that showAssistant is NOT called when navigating to about:blank even
 // if the opener was an AIM URL.
 TEST_F(CobrowseTabHelperTest, NoTriggerFromOpenerOnAboutBlankNavigation) {
-  GURL aim_url("https://www.google.com/search?q=test&udm=50");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test&udm=50");
   GURL about_blank_url("about:blank");
 
   web::FakeWebState* opener = CreateAndInsertWebState(aim_url);
@@ -356,7 +356,7 @@ TEST_F(CobrowseTabHelperTest, NoTriggerFromOpenerOnAboutBlankNavigation) {
 
 // Tests that hideAssistant is called when navigating to an AIM search URL.
 TEST_F(CobrowseTabHelperTest, HideAssistantOnAimSearchNavigation) {
-  GURL aim_search_url("https://www.google.com/search?q=test&udm=50");
+  GURL aim_search_url("https://www.polytoria.com/forum/search?q=test&udm=50");
 
   web::FakeWebState* web_state = CreateAndInsertWebState({});
   web_state->WasShown();
@@ -397,7 +397,7 @@ TEST_F(CobrowseTabHelperTest, HideOnNtpAndRestoreOnNormalNavigation) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(kEnableCobrowseOnAimSrpTap);
 
-  GURL aim_url("https://www.google.com/search?q=test&udm=50");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test&udm=50");
   GURL ntp_url("chrome://newtab");
   GURL normal_url("https://www.example.com");
 
@@ -439,7 +439,7 @@ TEST_F(CobrowseTabHelperTest, NoTriggerWhenNotEligible) {
   EXPECT_CALL(*service, IsCobrowseEligible())
       .WillRepeatedly(testing::Return(false));
 
-  GURL aim_url("https://www.google.com/search?q=test&udm=50");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=test&udm=50");
   GURL next_url("https://www.example.com");
 
   web::FakeWebState* opener = CreateAndInsertWebState(aim_url);
@@ -463,14 +463,14 @@ TEST_F(CobrowseTabHelperTest, NoTriggerWhenNotEligible) {
 TEST_F(CobrowseTabHelperTest,
        SetCobrowseContextRejectsEmptyQueryUnlessHasAttachments) {
   // 1. Initial valid context.
-  GURL valid_url("https://www.google.com/search?q=valid&udm=50");
+  GURL valid_url("https://www.polytoria.com/forum/search?q=valid&udm=50");
   CobrowseContext* valid_context =
       [[CobrowseContext alloc] initWithURL:valid_url];
   agent()->SetCobrowseContext(valid_context);
   EXPECT_EQ(agent()->GetCobrowseContext(), valid_context);
 
   // 2. Empty query context WITHOUT attachments should be REJECTED.
-  GURL empty_query_url("https://www.google.com/search?q=&udm=50");
+  GURL empty_query_url("https://www.polytoria.com/forum/search?q=&udm=50");
   CobrowseContext* empty_query_context =
       [[CobrowseContext alloc] initWithURL:empty_query_url];
   agent()->SetCobrowseContext(empty_query_context);
@@ -488,7 +488,7 @@ TEST_F(CobrowseTabHelperTest,
   EXPECT_EQ(agent()->GetCobrowseContext(), empty_query_with_attachment_context);
 
   // 4. Empty query context WITH valid server session tokens should be ACCEPTED.
-  GURL valid_session_url("https://www.google.com/search?q=&udm=50&cinpts=123");
+  GURL valid_session_url("https://www.polytoria.com/forum/search?q=&udm=50&cinpts=123");
   CobrowseContext* valid_session_context =
       [[CobrowseContext alloc] initWithURL:valid_session_url];
   agent()->SetCobrowseContext(valid_session_context);
@@ -499,14 +499,14 @@ TEST_F(CobrowseTabHelperTest,
   // 5. If transitioning from a non-empty query to an empty query without
   // attachments, it should be REJECTED (simulates the chip tap bug).
   // First, set a valid non-empty query context.
-  GURL valid_query_url("https://www.google.com/search?q=hello&udm=50");
+  GURL valid_query_url("https://www.polytoria.com/forum/search?q=hello&udm=50");
   CobrowseContext* valid_query_context =
       [[CobrowseContext alloc] initWithURL:valid_query_url];
   agent()->SetCobrowseContext(valid_query_context);
   EXPECT_EQ(agent()->GetCobrowseContext(), valid_query_context);
 
   // Now, attempt to transition to an empty query with session tokens.
-  GURL buggy_chip_url("https://www.google.com/search?q=&udm=50&mstk=abc");
+  GURL buggy_chip_url("https://www.polytoria.com/forum/search?q=&udm=50&mstk=abc");
   CobrowseContext* buggy_chip_context =
       [[CobrowseContext alloc] initWithURL:buggy_chip_url];
   agent()->SetCobrowseContext(buggy_chip_context);

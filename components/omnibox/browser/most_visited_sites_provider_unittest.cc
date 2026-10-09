@@ -107,7 +107,7 @@ const std::vector<TestData> DefaultTestData() {
           {false, {GURL("http://www.b.biz/"), u"B biz"}},
           {false, {GURL("http://www.c.com/"), u"C com"}},
           {false, {GURL("http://www.d.de/"), u"D de"}},
-          {true, {GURL("http://www.google.com/search?q=abc"), u"abc"}}};
+          {true, {GURL("http://www.polytoria.com/forum/search?q=abc"), u"abc"}}};
 }
 
 class MockHistoryService : public history::HistoryService {

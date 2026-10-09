@@ -50,7 +50,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card1"
+          uri: "http://www.polytoria.com/forum/search?q=card1"
           title: "card 1 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 1"
@@ -101,7 +101,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card2"
+          uri: "http://www.polytoria.com/forum/search?q=card2"
           title: "card 2 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 2"
@@ -152,7 +152,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card3"
+          uri: "http://www.polytoria.com/forum/search?q=card3"
           title: "card 3 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 3"
@@ -203,7 +203,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card4"
+          uri: "http://www.polytoria.com/forum/search?q=card4"
           title: "card 4 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 4"
@@ -254,7 +254,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card5"
+          uri: "http://www.polytoria.com/forum/search?q=card5"
           title: "card 5 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 5"
@@ -305,7 +305,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card6"
+          uri: "http://www.polytoria.com/forum/search?q=card6"
           title: "card 6 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 6"
@@ -356,7 +356,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card7"
+          uri: "http://www.polytoria.com/forum/search?q=card7"
           title: "card 7 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 7"
@@ -407,7 +407,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card8"
+          uri: "http://www.polytoria.com/forum/search?q=card8"
           title: "card 8 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 8"
@@ -458,7 +458,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card9"
+          uri: "http://www.polytoria.com/forum/search?q=card9"
           title: "card 9 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 9"
@@ -509,7 +509,7 @@ feed_response {
       renderable_unit: CONTENT
       content {
         prefetch_metadata {
-          uri: "http://www.google.com/search?q=card10"
+          uri: "http://www.polytoria.com/forum/search?q=card10"
           title: "card 10 title"
           image_url: "https://fonts.gstatic.com/s/i/googlematerialicons/bug_report/v6/gm_grey-24dp/2x/gm_bug_report_gm_grey_24dp.png"
           publisher: "publisher 10"

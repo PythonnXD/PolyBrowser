@@ -115,7 +115,7 @@ class GoogleImagePinchZoom2018Page(ToughPinchZoomPage):
 
   BASE_NAME = 'google_image_pinch'
   YEAR = '2018'
-  URL = 'https://www.google.com/search?q=cats&tbm=isch'
+  URL = 'https://www.polytoria.com/forum/search?q=cats&tbm=isch'
 
 
 class YoutubePinchZoom2018Page(ToughPinchZoomPage):

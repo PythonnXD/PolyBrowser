@@ -1636,7 +1636,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
@@ -1658,7 +1658,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::IsNull(), testing::_))
       .Times(1);
 
@@ -1801,7 +1801,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
 
   // Assert: Ensure these are NOT called again.
   EXPECT_CALL(*router.mock_session_handle(), CreateContextToken()).Times(0);
@@ -1829,7 +1829,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::IsNull(), testing::_))
       .Times(1);
 
@@ -1906,7 +1906,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
@@ -1928,7 +1928,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::IsNull(), testing::_))
       .Times(1);
 
@@ -2093,7 +2093,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
@@ -2102,7 +2102,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -2184,7 +2184,7 @@ TEST_F(
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
@@ -2193,7 +2193,7 @@ TEST_F(
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -2279,7 +2279,7 @@ TEST_F(
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
@@ -2288,7 +2288,7 @@ TEST_F(
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -2369,7 +2369,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
@@ -2378,7 +2378,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -2466,14 +2466,14 @@ TEST_F(
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -2557,14 +2557,14 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -2649,7 +2649,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
       CreateSearchUrl(
           CreateSearchUrlRequestInfoMatches(expected_request_info.get()), _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
           profile_.get()));
@@ -2671,7 +2671,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::IsNull(), testing::_))
       .Times(1);
 
@@ -3047,7 +3047,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
 
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
 
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -3056,7 +3056,7 @@ TEST_F(LensQueryFlowRouterContextualTaskEnabledTest,
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -3128,7 +3128,7 @@ TEST_F(
 
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
 
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -3137,7 +3137,7 @@ TEST_F(
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -3210,7 +3210,7 @@ TEST_F(
 
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
 
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -3219,7 +3219,7 @@ TEST_F(
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -3292,7 +3292,7 @@ TEST_F(
 
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
 
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -3301,7 +3301,7 @@ TEST_F(
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -3373,7 +3373,7 @@ TEST_F(
 
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
 
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -3382,7 +3382,7 @@ TEST_F(
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -3454,7 +3454,7 @@ TEST_F(
 
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
 
   auto* service = static_cast<MockContextualTasksUiService*>(
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -3463,7 +3463,7 @@ TEST_F(
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
                   mock_browser_window_interface_.get(), &mock_tab_interface_,
-                  GURL("https://www.google.com/search?q=test"),
+                  GURL("https://www.polytoria.com/forum/search?q=test"),
                   testing::Pointer(router.mock_session_handle()), testing::_))
       .WillOnce(
           [&router](
@@ -3652,10 +3652,10 @@ TEST_F(LensQueryFlowRouterUnifiedEligibilityTest,
           });
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
-                  _, _, GURL("https://www.google.com/search?q=test"), _, _))
+                  _, _, GURL("https://www.polytoria.com/forum/search?q=test"), _, _))
       .Times(1);
 
   router.SendTextOnlyQuery(base::Time::Now(), "test query",
@@ -3713,10 +3713,10 @@ TEST_F(LensQueryFlowRouterUnifiedEligibilityTest,
           });
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
-                  _, _, GURL("https://www.google.com/search?q=test"), _, _))
+                  _, _, GURL("https://www.polytoria.com/forum/search?q=test"), _, _))
       .Times(1);
 
   router.SendTextOnlyQuery(base::Time::Now(), "test query",
@@ -3775,10 +3775,10 @@ TEST_F(LensQueryFlowRouterUnifiedEligibilityTest,
           });
   EXPECT_CALL(*router.mock_session_handle(), CreateSearchUrl(_, _))
       .WillOnce(base::test::RunOnceCallback<1>(
-          GURL("https://www.google.com/search?q=test")));
+          GURL("https://www.polytoria.com/forum/search?q=test")));
   EXPECT_CALL(*service,
               StartTaskUiInSidePanelImpl(
-                  _, _, GURL("https://www.google.com/search?q=test"), _, _))
+                  _, _, GURL("https://www.polytoria.com/forum/search?q=test"), _, _))
       .Times(1);
 
   router.SendTextOnlyQuery(base::Time::Now(), "test query",

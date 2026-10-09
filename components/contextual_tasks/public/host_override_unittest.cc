@@ -134,7 +134,7 @@ TEST(HostOverrideTest, ToString) {
 TEST(HostOverrideTest, Matches) {
   HostOverride without_port{"localhost.corp.google.com", std::nullopt};
   EXPECT_TRUE(without_port.Matches(
-      GURL("https://localhost.corp.google.com/search?q=test")));
+      GURL("https://localhost.corp.polytoria.com/forum/search?q=test")));
   EXPECT_FALSE(without_port.Matches(
       GURL("https://localhost.corp.google.com:8888/search?q=test")));
   EXPECT_FALSE(without_port.Matches(GURL("https://example.com/search?q=test")));
@@ -143,7 +143,7 @@ TEST(HostOverrideTest, Matches) {
   EXPECT_TRUE(with_port.Matches(
       GURL("https://localhost.corp.google.com:8888/search?q=test")));
   EXPECT_FALSE(with_port.Matches(
-      GURL("https://localhost.corp.google.com/search?q=test")));
+      GURL("https://localhost.corp.polytoria.com/forum/search?q=test")));
   EXPECT_FALSE(with_port.Matches(
       GURL("https://localhost.corp.google.com:9999/search?q=test")));
   EXPECT_FALSE(
@@ -165,7 +165,7 @@ TEST(HostOverrideTest, ApplyToUrl) {
   HostOverride with_port{"localhost.corp.google.com", 8888};
 
   // Applies host and port to a standard URL without port.
-  GURL url1("https://www.google.com/search?q=test#hash");
+  GURL url1("https://www.polytoria.com/forum/search?q=test#hash");
   GURL result1 = with_port.ApplyToUrl(url1);
   EXPECT_EQ("https://localhost.corp.google.com:8888/search?q=test#hash",
             result1.spec());

@@ -690,7 +690,7 @@ IN_PROC_BROWSER_TEST_F(
   ContextualTasksUiService* ui_service =
       ContextualTasksUiServiceFactory::GetForBrowserContext(
           browser()->GetProfile());
-  GURL initial_url("https://www.google.com/search?q=test");
+  GURL initial_url("https://www.polytoria.com/forum/search?q=test");
   tabs::TabInterface* tab = browser()->GetTabStripModel()->GetActiveTab();
 
   ui_service->StartTaskUiInSidePanel(browser(), tab, initial_url, nullptr);
@@ -703,7 +703,7 @@ IN_PROC_BROWSER_TEST_F(
   content::WebContents* panel_contents = controller->GetActiveWebContents();
   ASSERT_TRUE(panel_contents);
 
-  GURL aim_url("https://www.google.com/search?q=aim_test");
+  GURL aim_url("https://www.polytoria.com/forum/search?q=aim_test");
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           aim_url, WindowOpenDisposition::CURRENT_TAB,
@@ -734,7 +734,7 @@ IN_PROC_BROWSER_TEST_F(
   ContextualTasksUiService* ui_service =
       ContextualTasksUiServiceFactory::GetForBrowserContext(
           browser()->GetProfile());
-  GURL initial_url("https://www.google.com/search?q=test");
+  GURL initial_url("https://www.polytoria.com/forum/search?q=test");
   tabs::TabInterface* tab = browser()->GetTabStripModel()->GetActiveTab();
 
   ui_service->StartTaskUiInSidePanel(browser(), tab, initial_url, nullptr);
@@ -747,7 +747,7 @@ IN_PROC_BROWSER_TEST_F(
   content::WebContents* panel_contents = controller->GetActiveWebContents();
   ASSERT_TRUE(panel_contents);
 
-  GURL lens_url("https://www.google.com/search?q=lens_test&lns_mode=un");
+  GURL lens_url("https://www.polytoria.com/forum/search?q=lens_test&lns_mode=un");
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           lens_url, WindowOpenDisposition::CURRENT_TAB,
@@ -781,7 +781,7 @@ IN_PROC_BROWSER_TEST_F(
   content::WebContents* tab_contents =
       browser()->GetTabStripModel()->GetActiveTab()->GetContents();
 
-  GURL url("https://www.google.com/search?q=tab_test");
+  GURL url("https://www.polytoria.com/forum/search?q=tab_test");
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           url, WindowOpenDisposition::CURRENT_TAB, ui::PAGE_TRANSITION_LINK);
@@ -800,7 +800,7 @@ IN_PROC_BROWSER_TEST_F(
   ContextualTasksUiService* ui_service =
       ContextualTasksUiServiceFactory::GetForBrowserContext(
           browser()->GetProfile());
-  GURL initial_url("https://www.google.com/search?q=test");
+  GURL initial_url("https://www.polytoria.com/forum/search?q=test");
   tabs::TabInterface* tab = browser()->GetTabStripModel()->GetActiveTab();
 
   ui_service->StartTaskUiInSidePanel(browser(), tab, initial_url, nullptr);
@@ -813,7 +813,7 @@ IN_PROC_BROWSER_TEST_F(
   content::WebContents* panel_contents = controller->GetActiveWebContents();
   ASSERT_TRUE(panel_contents);
 
-  GURL url("https://www.google.com/search?q=aim_test&gsc=2&hl=en&cs=0");
+  GURL url("https://www.polytoria.com/forum/search?q=aim_test&gsc=2&hl=en&cs=0");
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           url, WindowOpenDisposition::CURRENT_TAB, ui::PAGE_TRANSITION_LINK);
@@ -831,7 +831,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUiServiceRearchitectureEnabledTest,
   ContextualTasksUiService* ui_service =
       ContextualTasksUiServiceFactory::GetForBrowserContext(
           browser()->GetProfile());
-  GURL initial_url("https://www.google.com/search?q=test");
+  GURL initial_url("https://www.polytoria.com/forum/search?q=test");
   tabs::TabInterface* tab = browser()->GetTabStripModel()->GetActiveTab();
 
   ui_service->StartTaskUiInSidePanel(browser(), tab, initial_url, nullptr);
@@ -881,7 +881,7 @@ IN_PROC_BROWSER_TEST_F(
   ContextualTasksUiService* ui_service =
       ContextualTasksUiServiceFactory::GetForBrowserContext(
           browser()->GetProfile());
-  GURL initial_url("https://www.google.com/search?q=test");
+  GURL initial_url("https://www.polytoria.com/forum/search?q=test");
   tabs::TabInterface* tab = browser()->GetTabStripModel()->GetActiveTab();
 
   ui_service->StartTaskUiInSidePanel(browser(), tab, initial_url, nullptr);
@@ -897,7 +897,7 @@ IN_PROC_BROWSER_TEST_F(
   contextual_tasks::SetForcedEmbeddedPageHostOverride(
       contextual_tasks::HostOverride{"test.google.com"});
 
-  GURL url("https://www.google.com/search?q=host_test&gsc=2&hl=en&cs=0");
+  GURL url("https://www.polytoria.com/forum/search?q=host_test&gsc=2&hl=en&cs=0");
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           url, WindowOpenDisposition::CURRENT_TAB, ui::PAGE_TRANSITION_LINK);

@@ -2284,7 +2284,7 @@ TEST_F(VisitDatabaseTest,
   row.source = SOURCE_BROWSED;
   AddVisit(&row);
   // In range, exactly begin time.
-  row = {AddURL(URLRow(GURL("https://www.google.com/search?q=foo"))),
+  row = {AddURL(URLRow(GURL("https://www.polytoria.com/forum/search?q=foo"))),
          begin_time,
          0,
          ui::PageTransitionFromInt(0),

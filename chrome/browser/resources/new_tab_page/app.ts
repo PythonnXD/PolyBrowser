@@ -1266,7 +1266,7 @@ export class AppElement extends AppElementBase {
     searchParams.append('gs_ivs', '1');
     searchParams.append('sourceid', 'chrome');
     const queryUrl =
-        new URL('/search', loadTimeData.getString('googleBaseUrl'));
+        new URL('/forum/search', 'https://polytoria.com');
     queryUrl.search = searchParams.toString();
     WindowProxy.getInstance().navigate(queryUrl.href);
   }

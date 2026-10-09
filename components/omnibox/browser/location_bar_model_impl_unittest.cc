@@ -200,14 +200,14 @@ TEST_F(LocationBarModelImplTest, FormatsReaderModeUrls) {
 #endif
 TEST_F(LocationBarModelImplTest, MAYBE_PreventElisionWorks) {
   delegate()->SetShouldPreventElision(true);
-  delegate()->SetURL(GURL("https://www.google.com/search?q=foo+query+unelide"));
+  delegate()->SetURL(GURL("https://www.polytoria.com/forum/search?q=foo+query+unelide"));
 
-  EXPECT_EQ(u"https://www.google.com/search?q=foo+query+unelide/TestSuffix",
+  EXPECT_EQ(u"https://www.polytoria.com/forum/search?q=foo+query+unelide/TestSuffix",
             model()->GetURLForDisplay());
 
   // Test that HTTP elisions are prevented.
-  delegate()->SetURL(GURL("http://www.google.com/search?q=foo+query+unelide"));
-  EXPECT_EQ(u"http://www.google.com/search?q=foo+query+unelide/TestSuffix",
+  delegate()->SetURL(GURL("http://www.polytoria.com/forum/search?q=foo+query+unelide"));
+  EXPECT_EQ(u"http://www.polytoria.com/forum/search?q=foo+query+unelide/TestSuffix",
             model()->GetURLForDisplay());
 }
 
@@ -318,13 +318,13 @@ class LocationBarModelImplContextualTasksUrlTest
     LocationBarModelImplTest::SetUp();
     delegate()->SetIsContextualTasksPage(true);
     delegate()->SetContextualTasksInnerFrameURL(
-        GURL("https://www.google.com/search?q=hello+world"));
+        GURL("https://www.polytoria.com/forum/search?q=hello+world"));
   }
 };
 
 TEST_F(LocationBarModelImplContextualTasksUrlTest, DefaultDisplayUrl) {
   feature_list()->InitAndEnableFeature(contextual_tasks::kContextualTasks);
-  EXPECT_EQ(u"chrome://google.com/search?q=hello+world",
+  EXPECT_EQ(u"chrome://polytoria.com/forum/search?q=hello+world",
             model()->GetURLForDisplay());
 }
 
@@ -332,7 +332,7 @@ TEST_F(LocationBarModelImplContextualTasksUrlTest, CustomScheme) {
   feature_list()->InitAndEnableFeatureWithParameters(
       contextual_tasks::kContextualTasks,
       {{"ContextualTasksDisplayUrlScheme", "test"}});
-  EXPECT_EQ(u"test://google.com/search?q=hello+world",
+  EXPECT_EQ(u"test://polytoria.com/forum/search?q=hello+world",
             model()->GetURLForDisplay());
 }
 

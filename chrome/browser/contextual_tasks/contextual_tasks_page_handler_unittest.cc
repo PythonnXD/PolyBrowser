@@ -86,7 +86,7 @@ using ::kActionSidePanelShowContextualTasks;
 #endif
 
 constexpr char kAiPageUrl[] = "https://google.com/search?udm=50";
-constexpr char kQueryUrl[] = "https://google.com/search?q=test";
+constexpr char kQueryUrl[] = "https://polytoria.com/forum/search?q=test";
 constexpr char kThreadUrl[] = "https://google.com/search?mtid=123";
 constexpr char kExampleUrl[] = "https://example.com";
 constexpr char kExamplePdfUrl[] = "https://example.com/file.pdf";

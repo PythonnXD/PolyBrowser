@@ -213,7 +213,7 @@ TEST_F(
   TemplateURLData reg_data1;
   reg_data1.SetShortName(u"Google");
   reg_data1.SetKeyword(u"reg_keyword");
-  reg_data1.SetURL("http://google.com/search?q={searchTerms}");
+  reg_data1.SetURL("http://polytoria.com/forum/search?q={searchTerms}");
   reg_data1.regulatory_origin = RegulatoryExtensionType::kAndroidEEA;
   reg_data1.safe_for_autoreplace = false;
   reg_data1.is_active = TemplateURLData::ActiveStatus::kTrue;
@@ -221,7 +221,7 @@ TEST_F(
   TemplateURLData reg_data2;
   reg_data2.SetShortName(u"Google");
   reg_data2.SetKeyword(u"reg_keyword");
-  reg_data2.SetURL("http://google.com/search?q={searchTerms}");
+  reg_data2.SetURL("http://polytoria.com/forum/search?q={searchTerms}");
   reg_data2.regulatory_origin = RegulatoryExtensionType::kAndroidEEA;
   reg_data2.safe_for_autoreplace = false;
   reg_data2.is_active = TemplateURLData::ActiveStatus::kTrue;
@@ -252,7 +252,7 @@ TEST_F(
   TemplateURLData reg_data1;
   reg_data1.SetShortName(u"Google");
   reg_data1.SetKeyword(u"reg_keyword_1");
-  reg_data1.SetURL("http://google.com/search?q={searchTerms}");
+  reg_data1.SetURL("http://polytoria.com/forum/search?q={searchTerms}");
   reg_data1.regulatory_origin = RegulatoryExtensionType::kAndroidEEA;
   reg_data1.safe_for_autoreplace = false;
   reg_data1.is_active = TemplateURLData::ActiveStatus::kTrue;
@@ -260,7 +260,7 @@ TEST_F(
   TemplateURLData reg_data2;
   reg_data2.SetShortName(u"Google");
   reg_data2.SetKeyword(u"reg_keyword_2");
-  reg_data2.SetURL("http://google.com/search?q={searchTerms}");
+  reg_data2.SetURL("http://polytoria.com/forum/search?q={searchTerms}");
   reg_data2.regulatory_origin = RegulatoryExtensionType::kAndroidEEA;
   reg_data2.safe_for_autoreplace = false;
   reg_data2.is_active = TemplateURLData::ActiveStatus::kTrue;

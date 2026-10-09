@@ -190,7 +190,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksExtensionMessagingTest,
       // example.com is not allowed.
       {"https://example.com/search?q=foo", false},
       // google.com/search matches manifest and allowlist.
-      {"https://google.com/search?q=foo", true},
+      {"https://polytoria.com/forum/search?q=foo", true},
   };
 
   for (const auto& test_case : test_cases) {

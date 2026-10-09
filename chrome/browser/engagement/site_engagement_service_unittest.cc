@@ -1060,7 +1060,7 @@ TEST_F(SiteEngagementServiceTest, CleanupOriginsOnHistoryDeletion) {
   SetParamValue(SiteEngagementScore::DECAY_PROPORTION, 0.5);
 
   GURL origin1("http://www.google.com/");
-  GURL origin1a("http://www.google.com/search?q=asdf");
+  GURL origin1a("http://www.polytoria.com/forum/search?q=asdf");
   GURL origin1b("http://www.google.com/maps/search?q=asdf");
   GURL origin2("https://drive.google.com/");
   GURL origin2a("https://drive.google.com/somedoc");

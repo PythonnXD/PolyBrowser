@@ -3989,7 +3989,7 @@ suite('NewTabPageAppTest', () => {
           assertEquals(1, windowProxy.getCallCount('navigate'));
           const navigatedUrl = windowProxy.getArgs('navigate')[0];
           assertEquals(
-              'https://www.google.com/search?q=hello+world&gs_ivs=1&sourceid=chrome',
+              'https://www.polytoria.com/forum/search?q=hello+world&gs_ivs=1&sourceid=chrome',
               navigatedUrl);
         });
 

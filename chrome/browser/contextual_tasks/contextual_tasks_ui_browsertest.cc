@@ -391,7 +391,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUIBrowserTest,
     run_loop.Quit();
   });
 
-  GURL url("https://www.google.com/search?q=test");
+  GURL url("https://www.polytoria.com/forum/search?q=test");
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           url, WindowOpenDisposition::CURRENT_TAB, ui::PAGE_TRANSITION_LINK);

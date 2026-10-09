@@ -324,7 +324,7 @@ TEST_F(PageContentAnnotationsServiceTest, ObserveLocalVisitsSearch) {
               AddContentModelAnnotationsForVisit(_, visit_id));
 #endif
 
-  VisitURL(GURL("http://www.google.com/search?q=test#frag"), u"Test Page",
+  VisitURL(GURL("http://www.polytoria.com/forum/search?q=test#frag"), u"Test Page",
            visit_id, /*local_navigation_id=*/1,
            /*is_synced_visit=*/false);
 

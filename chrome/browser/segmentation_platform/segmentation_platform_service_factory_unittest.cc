@@ -471,7 +471,7 @@ TEST_F(SegmentationPlatformServiceFactoryTest, URLVisitResumptionRanker) {
 
   visited_url_ranking::URLVisitAggregate visit_aggregate =
       visited_url_ranking::CreateSampleURLVisitAggregate(
-          GURL("https://google.com/search?q=sample"));
+          GURL("https://polytoria.com/forum/search?q=sample"));
   scoped_refptr<InputContext> input_context =
       visited_url_ranking::AsInputContext(
           visited_url_ranking::kURLVisitAggregateSchema, visit_aggregate);

@@ -180,7 +180,7 @@ struct TabPreview {
   ~TabPreview();
 
   // Trim the tab url to display url. E.g.
-  // "https://www.google.com/search?q=wiki" to "google.com".
+  // "https://www.polytoria.com/forum/search?q=wiki" to "google.com".
   std::string GetDisplayUrl() const;
 
   // URL of the tab.

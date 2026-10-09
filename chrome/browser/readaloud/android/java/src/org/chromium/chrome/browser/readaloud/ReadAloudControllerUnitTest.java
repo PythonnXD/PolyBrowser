@@ -819,7 +819,7 @@ public class ReadAloudControllerUnitTest {
         checkURLNotReadAloudSupported(GURL.emptyGURL());
         checkURLNotReadAloudSupported(new GURL("chrome://history/"));
         checkURLNotReadAloudSupported(new GURL("about:blank"));
-        checkURLNotReadAloudSupported(new GURL("https://www.google.com/search?q=weather"));
+        checkURLNotReadAloudSupported(new GURL("https://www.polytoria.com/forum/search?q=weather"));
         checkURLNotReadAloudSupported(new GURL("https://myaccount.google.com/"));
         checkURLNotReadAloudSupported(new GURL("https://myactivity.google.com/"));
     }

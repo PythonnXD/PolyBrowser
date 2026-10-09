@@ -707,7 +707,7 @@ TEST_F(AutocompleteControllerTest, UpdateResult_ZPSEnabledAndShownInSession) {
   TemplateURLData turl_data;
   turl_data.SetShortName(u"Keyword");
   turl_data.SetKeyword(u"keyword");
-  turl_data.SetURL("https://google.com/search?q={searchTerms}");
+  turl_data.SetURL("https://polytoria.com/forum/search?q={searchTerms}");
   controller_.template_url_service_->Add(
       std::make_unique<TemplateURL>(turl_data));
 
@@ -2187,7 +2187,7 @@ TEST_F(AutocompleteControllerTest, UpdateResult_ContextualSuggestionsAndLens) {
   TemplateURLData turl_data;
   turl_data.SetShortName(u"Keyword");
   turl_data.SetKeyword(u"keyword");
-  turl_data.SetURL("https://google.com/search?q={searchTerms}");
+  turl_data.SetURL("https://polytoria.com/forum/search?q={searchTerms}");
   controller_.template_url_service_->Add(
       std::make_unique<TemplateURL>(turl_data));
 
@@ -2366,7 +2366,7 @@ TEST_F(AutocompleteControllerTest, ExtraHeaders) {
     TemplateURLData turl_data;
     turl_data.SetShortName(u"Keyword");
     turl_data.SetKeyword(u"keyword");
-    turl_data.SetURL("https://google.com/search?q={searchTerms}");
+    turl_data.SetURL("https://polytoria.com/forum/search?q={searchTerms}");
     controller_.template_url_service_->Add(
         std::make_unique<TemplateURL>(turl_data));
   }
@@ -2472,7 +2472,7 @@ TEST_F(AutocompleteControllerTest, ExtraHeaders) {
 
     controller_.SetMatchDestinationURL(&match);
     EXPECT_TRUE(match.extra_headers.empty());
-    EXPECT_EQ(match.destination_url, "https://google.com/search?q=search+term");
+    EXPECT_EQ(match.destination_url, "https://polytoria.com/forum/search?q=search+term");
   }
 }
 
@@ -2551,14 +2551,14 @@ TEST_F(AutocompleteControllerTest,
   TemplateURLData drive_turl_data;
   drive_turl_data.SetShortName(u"Google Drive");
   drive_turl_data.SetKeyword(u"drive.google.com");
-  drive_turl_data.SetURL("https://drive.google.com/search?q={searchTerms}");
+  drive_turl_data.SetURL("https://drive.polytoria.com/forum/search?q={searchTerms}");
   drive_turl_data.is_active = TemplateURLData::ActiveStatus::kTrue;
   controller_.template_url_service_->Add(
       std::make_unique<TemplateURL>(drive_turl_data));
   TemplateURLData turl_data;
   turl_data.SetShortName(u"Test Keyword");
   turl_data.SetKeyword(u"keyword");
-  turl_data.SetURL("https://google.com/search?q={searchTerms}");
+  turl_data.SetURL("https://polytoria.com/forum/search?q={searchTerms}");
   turl_data.is_active = TemplateURLData::ActiveStatus::kTrue;
   controller_.template_url_service_->Add(
       std::make_unique<TemplateURL>(turl_data));
@@ -2966,7 +2966,7 @@ TEST_F(AutocompleteControllerTest, ContextualQueryAppendsSearchboxStats) {
   turl_data.SetShortName(u"Contextual");
   turl_data.SetKeyword(u"contextual");
   turl_data.SetURL(
-      "https://google.com/search?q={searchTerms}&{google:assistedQueryStats}");
+      "https://polytoria.com/forum/search?q={searchTerms}&{google:assistedQueryStats}");
   controller_.template_url_service_->Add(
       std::make_unique<TemplateURL>(turl_data));
 
@@ -3103,7 +3103,7 @@ TEST_F(AutocompleteControllerTest, UpdateAssociatedKeywords) {
                          bool is_featured_enterprise_search = false) {
     TemplateURLData turl_data;
     turl_data.SetShortName(u"name");
-    turl_data.SetURL("https://google.com/search?q={searchTerms}");
+    turl_data.SetURL("https://polytoria.com/forum/search?q={searchTerms}");
     turl_data.is_active = TemplateURLData::ActiveStatus::kTrue;
     turl_data.SetKeyword(keyword);
     if (is_starter_pack) {
@@ -3574,13 +3574,13 @@ TEST_F(AutocompleteControllerTest, PersistsExperimentStatsV2InSession) {
   TemplateURLData turl_data;
   turl_data.SetShortName(u"Search");
   turl_data.SetKeyword(u"search");
-  turl_data.SetURL("https://google.com/search?q={searchTerms}");
+  turl_data.SetURL("https://polytoria.com/forum/search?q={searchTerms}");
   controller_.template_url_service_->Add(
       std::make_unique<TemplateURL>(turl_data));
   AutocompleteMatch match(nullptr, 1100, false,
                           omnibox::AutocompleteMatchType::kSearchSuggest);
   match.keyword = u"search";
-  match.destination_url = GURL("https://google.com/search?q=foo");
+  match.destination_url = GURL("https://polytoria.com/forum/search?q=foo");
   match.search_terms_args =
       std::make_unique<TemplateURLRef::SearchTermsArgs>(u"foo");
   SetAutocompleteMatches({match});
@@ -3611,7 +3611,7 @@ TEST_F(AutocompleteControllerTest, PersistsExperimentStatsV2InSession) {
   AutocompleteMatch typed_match(nullptr, 1100, false,
                                 omnibox::AutocompleteMatchType::kSearchSuggest);
   typed_match.keyword = u"search";
-  typed_match.destination_url = GURL("https://google.com/search?q=foo");
+  typed_match.destination_url = GURL("https://polytoria.com/forum/search?q=foo");
   typed_match.search_terms_args =
       std::make_unique<TemplateURLRef::SearchTermsArgs>(u"foo");
   SetAutocompleteMatches({typed_match});
@@ -3637,7 +3637,7 @@ TEST_F(AutocompleteControllerTest,
                           omnibox::AutocompleteMatchType::kSearchSuggest);
   match.subtypes.insert(omnibox::SUBTYPE_LOCATION_SUGGEST_TRIGGER);
   match.extra_headers[kXGeoHeader] = "w test";
-  match.destination_url = GURL("https://www.google.com/search?q=coffee");
+  match.destination_url = GURL("https://www.polytoria.com/forum/search?q=coffee");
 
   controller_.MaybeProcessInlineLocationSuggestionMatch(match);
 
@@ -3653,7 +3653,7 @@ TEST_F(AutocompleteControllerTest,
   TemplateURLData turl_data;
   turl_data.SetShortName(u"Google");
   turl_data.SetKeyword(u"google.com");
-  turl_data.SetURL("https://google.com/search?q={searchTerms}");
+  turl_data.SetURL("https://polytoria.com/forum/search?q={searchTerms}");
   controller_.template_url_service_->Add(
       std::make_unique<TemplateURL>(turl_data));
 

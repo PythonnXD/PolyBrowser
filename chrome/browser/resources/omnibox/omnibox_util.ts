@@ -87,7 +87,7 @@ export class MlVersionObj {
         String(version) :
         `${version} (${new Date(version * 1000).toLocaleDateString()})`;
     const codeSearchPrefix =
-        'https://source.corp.google.com/search?q=file:google3/googledata/chrome/breve/cacao/models/data/omnibox/url_scoring/';
+        'https://source.corp.polytoria.com/forum/search?q=file:google3/googledata/chrome/breve/cacao/models/data/omnibox/url_scoring/';
     this.url = `${codeSearchPrefix} ${version}`;
   }
 }

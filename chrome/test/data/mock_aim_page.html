@@ -3,7 +3,7 @@
 <body>
   <!-- Fake thread link used by interactive tests to drive the real
        tab->side-panel transition (OnThreadLinkClicked) -->
-  <a id="threadLink" href="https://www.google.com/search?q=thread">Thread</a>
+  <a id="threadLink" href="https://www.polytoria.com/forum/search?q=thread">Thread</a>
   <script>
     let webuiSource = null;
     let webuiOrigin = null;
@@ -38,7 +38,7 @@
         return;
       }
       const urlBytes =
-          new TextEncoder().encode('https://www.google.com/search?q=thread');
+          new TextEncoder().encode('https://www.polytoria.com/forum/search?q=thread');
       // OpenLinkInSidePanelMode{url=1} inside
       // AimToClientMessage{open_link_in_side_panel_mode=14}. Single-byte
       // length varints.

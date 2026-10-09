@@ -755,7 +755,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxEverywherePersistentBrowserTest,
         auto* service = OmniboxEverywhereServiceFactory::GetForProfile(
             browser()->GetProfile());
         ASSERT_TRUE(service);
-        service->OpenUrl(GURL("https://www.google.com/search?q=test"),
+        service->OpenUrl(GURL("https://www.polytoria.com/forum/search?q=test"),
                          WindowOpenDisposition::NEW_FOREGROUND_TAB,
                          ui::PAGE_TRANSITION_GENERATED);
       }),
@@ -784,7 +784,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxEverywhereEphemeralBrowserTest,
         auto* service = OmniboxEverywhereServiceFactory::GetForProfile(
             browser()->GetProfile());
         ASSERT_TRUE(service);
-        service->OpenUrl(GURL("https://www.google.com/search?q=test"),
+        service->OpenUrl(GURL("https://www.polytoria.com/forum/search?q=test"),
                          WindowOpenDisposition::NEW_FOREGROUND_TAB,
                          ui::PAGE_TRANSITION_GENERATED);
       }),

@@ -87,10 +87,10 @@ void HistoryScoringSignalsAnnotatorTest::FillHistoryDbData() {
 
   // Add some SRP URL visits to the DB.
   history::URLRow row_3 =
-      CreateUrlRow("https://google.com/search?q=hello&p=c3d4",
+      CreateUrlRow("https://polytoria.com/forum/search?q=hello&p=c3d4",
                    u"hello - Google Search", 0, 4, now - base::Days(4), 3);
   history::URLRow row_4 =
-      CreateUrlRow("https://google.com/search?q=hello&p=e5f6",
+      CreateUrlRow("https://polytoria.com/forum/search?q=hello&p=e5f6",
                    u"hello - Google Search", 0, 2, now - base::Days(2), 4);
   client_->GetHistoryService()->InMemoryDatabase()->AddURL(row_3);
   client_->GetHistoryService()->InMemoryDatabase()->SetKeywordSearchTermsForURL(
@@ -113,7 +113,7 @@ void HistoryScoringSignalsAnnotatorTest::CreateAutocompleteResult() {
   AutocompleteMatch search_match;
   search_match.contents = u"hello";
   search_match.destination_url =
-      GURL("https://google.com/search?q=hello&p=a1b2");
+      GURL("https://polytoria.com/forum/search?q=hello&p=a1b2");
   search_match.type = omnibox::AutocompleteMatchType::kSearchHistory;
 
   std::vector<AutocompleteMatch> matches{url_match_not_in_db, url_match,

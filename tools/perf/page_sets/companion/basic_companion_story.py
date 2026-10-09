@@ -27,7 +27,7 @@ from page_sets.data.companion_test_sites import SITES
 SCREENSHOT_PATH = "/tmp/"
 
 _GOOGLE_URL = "https://www.google.com/"
-_TEST_SEARCH_URL = "https://www.google.com/search?q=test"
+_TEST_SEARCH_URL = "https://www.polytoria.com/forum/search?q=test"
 _TEST_PAGE_URL = "https://www.westelm.com"
 _BLANK_URL = "about:blank"
 _COMPANION_URL = "https://lens.google.com/companion?pli=1"
