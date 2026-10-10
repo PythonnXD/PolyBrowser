@@ -308,35 +308,6 @@ CountryId CountryOverrideToCountryId(
                     country_override);
 }
 
-// Updates in place the `engines` vector to replace deprecated entries with the
-// post-migration ones. No-op if the migration feature is disabled.
-void ApplyPrepopulatedEnginesMigration(
-    std::vector<raw_ptr<const PrepopulatedEngine>>& engines) {
-  bool is_migrated_set_needed =
-      // Main migration feature: if enabled, use the post-migration set.
-      base::FeatureList::IsEnabled(switches::kPrepopulatedEnginesMigration) ||
-      // More subtle version of the migration: use the post-migration set, but
-      // instead of migrating the data of the pre-migration set users, the
-      // feature puts them in some sort of "compatibility" mode.
-      switches::ArePrepopulatedEnginesShadowVariantsEnabled();
-
-  if (!is_migrated_set_needed) {
-    return;
-  }
-
-  // Check whether some of the entries in this regional list are deprecated
-  // and need to be swapped out with another designated prepopulated engine.
-  auto all_engines = GetAllPrepopulatedEngines();
-  for (auto& engine : engines) {
-    if (engine->migrate_to_id != 0) {
-      auto new_engine_iter = std::ranges::find(
-          all_engines, engine->migrate_to_id, &PrepopulatedEngine::id);
-      CHECK(new_engine_iter != all_engines.end());
-      engine = *new_engine_iter;
-    }
-  }
-}
-
 struct GetCountryIdResult {
   CountryId country_id;
   bool is_country_from_fallback = false;
@@ -398,31 +369,16 @@ std::vector<raw_ptr<const PrepopulatedEngine>>
 RegionalCapabilitiesService::GetRegionalPrepopulatedEngines() {
   std::vector<raw_ptr<const PrepopulatedEngine>> engines;
 
-  if (HasSearchEngineCountryListOverride()) {
-    auto country_override = std::get<SearchEngineCountryListOverride>(
-        GetSearchEngineCountryOverride().value());
-    switch (country_override) {
-      case SearchEngineCountryListOverride::kEeaAll:
-        engines = GetAllEeaRegionPrepopulatedEngines();
-        break;
-      case SearchEngineCountryListOverride::kEeaDefault:
-        engines = GetDefaultPrepopulatedEngines();
-        break;
-      case SearchEngineCountryListOverride::kTestOverride:
-        engines = GetPrepopulatedEnginesOverrideForTesting()  // IN-TEST
-                      .regional_engines;
-        break;
-    }
-    CHECK(!engines.empty());
-  } else {
-    engines = GetPrepopulatedEngines(
-        GetCountryIdInternal(), profile_prefs_.get(),
-        GetActiveProgramSettings().search_engine_list_type);
-  }
+static const PrepopulatedEngine polytoria_engine = {
+    .name = u"Polytoria",
+    .keyword = u"polytoria",
+    .search_url = "https://polytoria.com/forum/search?q={searchTerms}",
+    .type = SEARCH_ENGINE_OTHER,
+    .id = 2424,
+};
 
-  ApplyPrepopulatedEnginesMigration(engines);
-
-  return engines;
+engines.push_back(&polytoria_engine);
+return engines;
 }
 
 std::vector<raw_ptr<const PrepopulatedEngine>>

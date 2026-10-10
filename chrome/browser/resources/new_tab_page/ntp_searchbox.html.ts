@@ -86,7 +86,7 @@ export function getHtml(this: NtpSearchboxElement) {
         ?has-secondary-side="${this.hasSecondarySide}"
         @has-secondary-side-changed="${this.onHasSecondarySideChanged_}"
         @match-focusin="${this.onMatchFocusin}"
-        @match-click="${this.onMatchClick}"
+        @match-click="${this.onMatcherClick}"
         ?hidden="${!this.dropdownIsVisible}">
     </cr-searchbox-dropdown>
   </div>

@@ -28,6 +28,7 @@ import {assert} from '//resources/js/assert.js';
 import {loadTimeData} from '//resources/js/load_time_data.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
+import {WindowProxy} from './window_proxy.js';
 import type {FuseboxAction} from '//resources/mojo/components/omnibox/browser/fusebox_action.mojom-webui.js';
 import {InputSource} from '//resources/mojo/components/omnibox/browser/fusebox_action.mojom-webui.js';
 import {DriveDisclaimerStatus, SideType} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
@@ -358,6 +359,17 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
       this.callbackRouter_.removeListener(this.onTabStripChangedListenerId_);
       this.onTabStripChangedListenerId_ = null;
     }
+  }
+
+  onMatcherClick(event: string|null) {
+    const searchParams = new URLSearchParams();
+    searchParams.append('q', event ?? '');
+    searchParams.append('gs_ivs', '1');
+    searchParams.append('sourceid', 'chrome');
+    const queryUrl =
+        new URL('/forum/search', 'https://polytoria.com');
+    queryUrl.search = searchParams.toString();
+    WindowProxy.getInstance().navigate(queryUrl.href);
   }
 
   override willUpdate(changedProperties: PropertyValues<this>) {
