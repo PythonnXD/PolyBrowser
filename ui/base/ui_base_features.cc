@@ -518,7 +518,7 @@ BASE_FEATURE_PARAM(int,
 
 BASE_FEATURE(kDesktopGlowUp, base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kGlassFrame, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kGlassFrame, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(bool, kGlassExpandOnHoverEnabled, &kGlassFrame, true);
 BASE_FEATURE_PARAM(bool, kGlassFrameEnabledByDefault, &kGlassFrame, true);
 
@@ -548,6 +548,8 @@ bool IsGlassFrameEnabled() {
 #if BUILDFLAG(IS_MAC)
   return base::mac::MacOSMajorVersion() >= 26 &&
          base::FeatureList::IsEnabled(kGlassFrame);
+#elif BUILDFLAG(IS_WIN)
+  return true;
 #else
   return false;
 #endif

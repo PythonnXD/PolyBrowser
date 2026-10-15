@@ -292,13 +292,12 @@ void PingRlzServer(std::string url,
 
 FinancialPing::PingResponse FinancialPing::PingServer(const char* request,
                                                       std::string* response) {
-  if (!response)
-    return PING_FAILURE;
-
-  response->clear();
-
-  std::string url =
-      base::StringPrintf("https://%s%s", kFinancialServer, request);
+  // PolyBrowser: Disable RLZ pings to Google
+  if (response) {
+    response->clear();
+  }
+  return PING_FAILURE;
+}
 
   // Use a waitable event to cause this function to block, to match the
   // wininet implementation.

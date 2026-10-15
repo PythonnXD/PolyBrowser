@@ -656,7 +656,8 @@ void BrowserFrameViewWin::PaintTitlebar(gfx::Canvas* canvas) const {
       gfx::RectF(0, y, width() * scale, titlebar_height * scale - y));
   // Paint the titlebar first so we have a background if an area isn't covered
   // by the theme image.
-  flags.setColor(titlebar_color);
+  // PolyBrowser: Frosted Mica titlebar - use translucent tint to let Windows Mica backdrop show through
+  flags.setColor(SkColorSetA(titlebar_color, 110));
   canvas->DrawRect(titlebar_rect, flags);
   const gfx::ImageSkia frame_image = GetFrameImage();
   if (!frame_image.isNull()) {

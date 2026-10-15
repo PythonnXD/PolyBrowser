@@ -106,8 +106,8 @@ bool CrashReporterClient::GetCollectStatsConsent() {
 }
 
 bool CrashReporterClient::GetCollectStatsInSample() {
-  // By default, clients don't do sampling, so everything will be "in-sample".
-  return true;
+  // PolyBrowser: Disable crash reporting uploads
+  return false;
 }
 
 bool CrashReporterClient::ReportingIsEnforcedByPolicy(bool* breakpad_enabled) {

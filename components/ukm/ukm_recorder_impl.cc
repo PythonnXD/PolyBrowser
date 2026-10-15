@@ -276,12 +276,8 @@ bool UkmRecorderImpl::IsSamplingConfigured() const {
 }
 
 bool UkmRecorderImpl::recording_enabled(ukm::UkmConsentType type) const {
-  if (ShouldUseMetricsConsentRestructure()) {
-    // TODO(heychirag): In the new model, we don't filter metrics out based on
-    // UkmConsentState. During cleanup, this method should be removed completely.
-    return recording_enabled();
-  }
-  return recording_state_.Has(type);
+  // PolyBrowser: Completely disable UKM recording
+  return false;
 }
 
 void UkmRecorderImpl::Purge() {

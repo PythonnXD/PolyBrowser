@@ -288,7 +288,8 @@ std::unique_ptr<MetricsProvider> MetricsStateManager::GetProvider() {
 }
 
 bool MetricsStateManager::IsMetricsReportingEnabled() {
-  return enabled_state_provider_->IsReportingEnabled();
+  // PolyBrowser: Completely disable telemetry and metrics reporting
+  return false;
 }
 
 bool MetricsStateManager::IsExtendedSafeModeSupported() const {

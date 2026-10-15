@@ -146,7 +146,8 @@ AccountConsistencyModeManager::~AccountConsistencyModeManager() = default;
 // static
 void AccountConsistencyModeManager::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {
-  registry->RegisterBooleanPref(prefs::kSigninAllowedOnNextStartup, true);
+  // PolyBrowser: Disable Google Sign-in on startup by default
+  registry->RegisterBooleanPref(prefs::kSigninAllowedOnNextStartup, false);
 }
 
 // static

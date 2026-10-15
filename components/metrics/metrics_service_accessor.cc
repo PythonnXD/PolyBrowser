@@ -33,18 +33,8 @@ bool IsMetricsReportingEnabledForOfficialBuild(PrefService* local_state) {
 // static
 bool MetricsServiceAccessor::IsMetricsReportingEnabled(
     PrefService* local_state) {
-  if (IsMetricsReportingForceEnabled()) {
-    LOG(WARNING) << "Metrics Reporting is force enabled, data will be sent to "
-                    "servers. Should not be used for tests.";
-    return true;
-  }
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  return IsMetricsReportingEnabledForOfficialBuild(local_state);
-#else
-  // In non-official builds, disable metrics reporting completely.
-  return g_force_official_enabled_test &&
-         IsMetricsReportingEnabledForOfficialBuild(local_state);
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  // PolyBrowser: Completely disable telemetry and metrics reporting
+  return false;
 }
 
 // static

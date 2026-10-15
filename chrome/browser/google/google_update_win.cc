@@ -525,12 +525,11 @@ void UpdateCheckDriver::BeginUpdateCheck() {
 }
 
 UpdateCheckResult UpdateCheckDriver::BeginUpdateCheckInternal() {
-  const auto simulated_error = GetSimulatedErrorForDebugging();
-  if (simulated_error.has_value()) {
-    return simulated_error.value();
-  }
-
-  HRESULT hresult = S_OK;
+  // PolyBrowser: Disable Google Update / Omaha checks completely
+  UpdateCheckResult result;
+  result.error_code = GOOGLE_UPDATE_DISABLED_BY_POLICY;
+  result.hresult = E_FAIL;
+  return result;
 
   // Instantiate GoogleUpdate3Web{Machine,User}Class.
   if (!google_update_) {

@@ -260,23 +260,31 @@ SkColor TabStyle::GetTabBackgroundColor(
   SkColor color =
       GetTabBackgroundColor(state, hovered, frame_active, color_provider);
   if (!frame_glass) {
-    return color;
+    // PolyBrowser: Apply frosted translucent styling to tabs
+    switch (state) {
+      case TabStyle::TabSelectionState::kActive:
+        return SkColorSetA(color, 210);
+      case TabStyle::TabSelectionState::kSelected:
+        return SkColorSetA(color, 180);
+      case TabStyle::TabSelectionState::kInactive:
+        return hovered ? SkColorSetA(color, 120) : SkColorSetA(color, 40);
+      default:
+        return color;
+    }
   }
 
   switch (state) {
     case TabStyle::TabSelectionState::kActive:
     case TabStyle::TabSelectionState::kSelected:
-      return color;
+      return SkColorSetA(color, 210);
     case TabStyle::TabSelectionState::kInactive: {
-      // When the frame is transparent, using the unhovered color
-      // as the background can produce jarring effects. So we just use the
-      // hovered color.
+      // When the frame is transparent/glass, use translucent frosted colors
       SkColor inactive_color = GetTabBackgroundColor(
           state, /*hovered=*/true, frame_active, color_provider);
       if (hovered) {
-        return inactive_color;
+        return SkColorSetA(inactive_color, 120);
       }
-      return SkColorSetA(inactive_color, 0);
+      return SkColorSetA(inactive_color, 40);
     }
     default:
       NOTREACHED();

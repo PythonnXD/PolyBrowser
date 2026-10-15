@@ -81,13 +81,12 @@ class DomainReliabilityUploaderImpl : public DomainReliabilityUploader,
     if (discard_uploads_)
       discarded_upload_count_++;
 
-    if (discard_uploads_ || shutdown_) {
-      DVLOG(1) << "Discarding report instead of uploading.";
-      UploadResult result;
-      result.status = UploadResult::SUCCESS;
-      std::move(callback).Run(result);
-      return;
-    }
+    // PolyBrowser: Completely discard telemetry reports to Google
+    DVLOG(1) << "Discarding report instead of uploading.";
+    UploadResult result;
+    result.status = UploadResult::SUCCESS;
+    std::move(callback).Run(result);
+    return;
 
     net::NetworkTrafficAnnotationTag traffic_annotation =
         net::DefineNetworkTrafficAnnotation("domain_reliability_report_upload",

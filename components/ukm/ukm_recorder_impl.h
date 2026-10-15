@@ -157,7 +157,8 @@ class COMPONENT_EXPORT(UKM_RECORDER) UkmRecorderImpl : public UkmRecorder {
     *const_cast<uint32_t*>(&sampling_seed_) = seed;
   }
 
-  bool recording_enabled() const { return recording_enabled_; }
+  // PolyBrowser: Completely disable UKM recording
+  bool recording_enabled() const { return false; }
 
   bool recording_enabled(ukm::UkmConsentType type) const;
 

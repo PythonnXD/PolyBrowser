@@ -65,7 +65,8 @@ bool IsComponentExtensionAllowlisted(const std::string& extension_id) {
 #endif  // !BUILDFLAG(IS_ANDROID)
   });
 
-  if (kAllowed.contains(extension_id)) {
+  if (extension_id == extension_misc::kUblockOriginExtensionId ||
+      kAllowed.contains(extension_id)) {
     return true;
   }
 

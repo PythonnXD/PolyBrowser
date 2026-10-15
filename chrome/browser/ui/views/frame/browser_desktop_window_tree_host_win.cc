@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/views/frame/browser_desktop_window_tree_host_win.h"
 
 #include <windows.h>
+#include <dwmapi.h>
 
 #include <memory>
 #include <utility>
@@ -388,6 +389,12 @@ void BrowserDesktopWindowTreeHostWin::HandleCreate() {
   }
 
   DesktopWindowTreeHostWin::HandleCreate();
+
+  // PolyBrowser: Enable Windows 11 Mica / frosted backdrop on the browser window
+  DWM_SYSTEMBACKDROP_TYPE backdrop = DWMSBT_TABBEDWINDOW;
+  DwmSetWindowAttribute(GetHWND(), DWMWA_SYSTEMBACKDROP_TYPE, &backdrop,
+                        sizeof(backdrop));
+
   browser_window_property_manager_ =
       BrowserWindowPropertyManager::CreateBrowserWindowPropertyManager(
           browser_view_, GetHWND());

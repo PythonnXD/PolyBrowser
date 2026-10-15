@@ -151,11 +151,12 @@ bool ChromeCrashReporterClient::IsRunningUnattended() {
 }
 
 bool ChromeCrashReporterClient::GetCollectStatsConsent() {
-  return install_static::GetCollectStatsConsent();
+  // PolyBrowser: Completely disable telemetry and crash uploads to Google
+  return false;
 }
 
 bool ChromeCrashReporterClient::GetCollectStatsInSample() {
-  return install_static::GetCollectStatsInSample();
+  return false;
 }
 
 bool ChromeCrashReporterClient::ShouldMonitorCrashHandlerExpensively() {
