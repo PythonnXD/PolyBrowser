@@ -23,11 +23,6 @@ namespace {
 
 bool g_force_official_enabled_test = false;
 
-bool IsMetricsReportingEnabledForOfficialBuild(PrefService* local_state) {
-  return MetricsReportingChoiceService::IsBasicMetricsReportingEnabled(
-      local_state);
-}
-
 }  // namespace
 
 // static

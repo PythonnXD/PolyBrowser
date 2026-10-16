@@ -189,20 +189,6 @@ class RefCountedWaitableEvent
   int response_code_ = -1;
 };
 
-// The URL load complete callback signals an instance of
-// RefCountedWaitableEvent when the load completes.
-void OnURLLoadComplete(std::unique_ptr<network::SimpleURLLoader> url_loader,
-                       scoped_refptr<RefCountedWaitableEvent> event,
-                       std::optional<std::string> response_body) {
-  int response_code = -1;
-  if (url_loader->ResponseInfo() && url_loader->ResponseInfo()->headers) {
-    response_code = url_loader->ResponseInfo()->headers->response_code();
-  }
-
-  event->SignalFetchComplete(response_code,
-                             std::move(response_body).value_or(""));
-}
-
 }  // namespace
 
 // The signal for the current ping request. It can be used to cancel the request
@@ -227,69 +213,6 @@ bool FinancialPing::SetURLLoaderFactory(
   }
   return true;
 }
-
-void PingRlzServer(std::string url,
-                   scoped_refptr<RefCountedWaitableEvent> event) {
-  // Copy the pointer to stack because g_URLLoaderFactory may be set to NULL
-  // in different thread. The instance is guaranteed to exist while
-  // the method is running.
-  network::mojom::URLLoaderFactory* url_loader_factory =
-      g_URLLoaderFactory.load(std::memory_order_acquire);
-
-  // Browser shutdown will cause the factory to be reset to NULL.
-  // ShutdownCheck will catch this.
-  if (!url_loader_factory) {
-    event->SignalFetchComplete(-1, "");
-    return;
-  }
-
-  net::NetworkTrafficAnnotationTag traffic_annotation =
-      net::DefineNetworkTrafficAnnotation("rlz_ping", R"(
-        semantics {
-          sender: "RLZ Ping"
-          description:
-            "Used for measuring the effectiveness of a promotion. See the "
-            "Chrome Privacy Whitepaper for complete details."
-          trigger:
-            "1- At Chromium first run.\n"
-            "2- When Chromium is re-activated by a new promotion.\n"
-            "3- Once a week thereafter as long as Chromium is used.\n"
-          data:
-            "1- Non-unique cohort tag of when Chromium was installed.\n"
-            "2- Unique machine id on desktop platforms.\n"
-            "3- Whether Google is the default omnibox search.\n"
-            "4- Whether google.com is the default home page."
-          destination: GOOGLE_OWNED_SERVICE
-        }
-        policy {
-          cookies_allowed: NO
-          setting: "This feature cannot be disabled in settings."
-          policy_exception_justification: "Not implemented."
-        })");
-  auto resource_request = std::make_unique<network::ResourceRequest>();
-  resource_request->url = GURL(url);
-  resource_request->load_flags = net::LOAD_DISABLE_CACHE;
-  resource_request->credentials_mode = network::mojom::CredentialsMode::kOmit;
-
-  auto url_loader = network::SimpleURLLoader::Create(
-      std::move(resource_request), traffic_annotation);
-
-  constexpr int kMaxNetworkRetries = 3;
-  url_loader->SetRetryOptions(
-      kMaxNetworkRetries,
-      network::SimpleURLLoader::RetryMode::RETRY_ON_5XX |
-          network::SimpleURLLoader::RETRY_ON_NETWORK_CHANGE |
-          network::SimpleURLLoader::RETRY_ON_NAME_NOT_RESOLVED);
-
-  // Pass ownership of the loader to the bound function. Otherwise the load will
-  // be canceled when the SimpleURLLoader object is destroyed.
-  auto* url_loader_ptr = url_loader.get();
-  url_loader_ptr->DownloadToStringOfUnboundedSizeUntilCrashAndDie(
-      url_loader_factory,
-      base::BindOnce(&OnURLLoadComplete, std::move(url_loader),
-                     std::move(event)));
-}
-
 FinancialPing::PingResponse FinancialPing::PingServer(const char* request,
                                                       std::string* response) {
   // PolyBrowser: Disable RLZ pings to Google
@@ -298,43 +221,6 @@ FinancialPing::PingResponse FinancialPing::PingServer(const char* request,
   }
   return PING_FAILURE;
 }
-
-  // Use a waitable event to cause this function to block, to match the
-  // wininet implementation.
-  auto event = base::MakeRefCounted<RefCountedWaitableEvent>();
-  scoped_refptr<RefCountedWaitableEvent>& event_ref = GetPingResultEvent();
-  event_ref = event;
-
-  // PingRlzServer must be run in a separate sequence so that the TimedWait()
-  // call below does not block the URL fetch response from being handled by
-  // the URL delegate.
-  scoped_refptr<base::SequencedTaskRunner> background_runner(
-      base::ThreadPool::CreateSequencedTaskRunner(
-          {base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN,
-           base::TaskPriority::BEST_EFFORT}));
-  background_runner->PostTask(FROM_HERE,
-                              base::BindOnce(&PingRlzServer, url, event));
-
-  bool is_signaled;
-  {
-    base::ScopedAllowBaseSyncPrimitives allow_base_sync_primitives;
-    is_signaled = event->TimedWait(base::Minutes(5));
-  }
-
-  event_ref.reset();
-  if (!is_signaled)
-    return PING_FAILURE;
-
-  if (event->GetResponseCode() == -1) {
-    return PING_SHUTDOWN;
-  } else if (event->GetResponseCode() != 200) {
-    return PING_FAILURE;
-  }
-
-  *response = event->TakeResponse();
-  return PING_SUCCESSFUL;
-}
-
 bool FinancialPing::IsPingTime(Product product, bool no_delay) {
   ScopedRlzValueStoreLock lock;
   RlzValueStore* store = lock.GetStore();
