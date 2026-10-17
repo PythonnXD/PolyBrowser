@@ -4,6 +4,7 @@
 
 import '//resources/cr_components/searchbox/searchbox_input.js';
 
+// @ts-ignore
 import {html, nothing} from '//resources/lit/v3_0/lit.rollup.js';
 
 import type {NtpSearchboxElement} from './ntp_searchbox.js';
@@ -86,7 +87,7 @@ export function getHtml(this: NtpSearchboxElement) {
         ?has-secondary-side="${this.hasSecondarySide}"
         @has-secondary-side-changed="${this.onHasSecondarySideChanged_}"
         @match-focusin="${this.onMatchFocusin}"
-        @match-click="${this.onMatcherClick}"
+        @match-click="${this.onMatchClick}"
         ?hidden="${!this.dropdownIsVisible}">
     </cr-searchbox-dropdown>
   </div>

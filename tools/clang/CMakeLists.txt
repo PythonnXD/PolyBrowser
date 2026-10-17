@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.5...3.20)
 project(ChromeExtras)
 enable_testing()
 
@@ -14,7 +14,7 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 if (APPLE)
   set(CMAKE_INSTALL_NAME_DIR "@rpath")
   set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
-else(UNIX)
+else()
   set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib")
 endif()
 

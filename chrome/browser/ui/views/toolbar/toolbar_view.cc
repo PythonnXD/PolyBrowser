@@ -1514,6 +1514,22 @@ void ToolbarView::Layout(PassKey) {
   // Call super implementation to ensure layout manager and child layouts
   // happen.
   LayoutSuperclass<AccessiblePaneView>(this);
+
+  // PolyBrowser: Center the Smart Search Field (LocationBarView) Safari-style
+  // within the toolbar while respecting left navigation and right action buttons.
+  if (display_mode_ == DisplayMode::kNormal && location_bar_view_ &&
+      location_bar_view_->GetVisible()) {
+    const gfx::Rect avail = location_bar_view_->bounds();
+    const int target_width =
+        std::clamp(static_cast<int>(width() * 0.54f), 420, 760);
+    if (avail.width() > target_width) {
+      const int ideal_x = (width() - target_width) / 2;
+      const int clamped_x =
+          std::clamp(ideal_x, avail.x(), avail.right() - target_width);
+      location_bar_view_->SetBounds(clamped_x, avail.y(), target_width,
+                                    avail.height());
+    }
+  }
 }
 
 void ToolbarView::OnThemeChanged() {

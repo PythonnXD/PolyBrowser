@@ -44,7 +44,7 @@ import {SubmitButtonIconType} from '//resources/cr_components/composebox/compose
       @focusin="${this.onSearchboxContainerFocusin_}"
       @focusout="${this.onSearchboxContainerFocusout_}">
     <ntp-searchbox id="searchbox" ?is-dark="${this.isThemeDark_()}"
-        placeholder-text="Type to search Polytoria"
+        placeholder-text="$i18n{searchBoxPlaceholder}"
         ?color-source-is-baseline="${this.colorSourceIsBaseline}"
         @open-composebox="${this.onOpenComposebox_}"
         @open-lens-search="${this.onOpenLensSearch_}"
@@ -96,6 +96,249 @@ import {SubmitButtonIconType} from '//resources/cr_components/composebox/compose
       </ntp-lens-upload-dialog>
     ` : ''}
   </div>
+  <div id="polyDashboard">
+    <div id="polyDashboardToolbar">
+      <div class="poly-brand-pill">
+        <span class="poly-brand-dot"></span>
+        <span>PolyBrowser Workspace</span>
+      </div>
+      <div class="poly-toolbar-actions">
+        <button class="poly-toolbar-btn"
+            @click="${this.onToggleAddPinForm_}"
+            ?data-active="${this.showAddPinForm_}">
+          + Pin Page
+        </button>
+        <button class="poly-toolbar-btn"
+            @click="${this.onTogglePolyCustomize_}"
+            ?data-active="${this.showPolyCustomize_}">
+          Customize Grid (Columns &times; Rows)
+        </button>
+      </div>
+    </div>
+
+    ${this.showAddPinForm_ ? html`
+      <div id="polyAddPinPanel" class="poly-mica-panel">
+        <div class="poly-panel-header">
+          <span class="poly-panel-title">Pin a Page to Pinned pages</span>
+          <button class="poly-icon-close" @click="${this.onToggleAddPinForm_}">&times;</button>
+        </div>
+        <div class="poly-pin-form-row">
+          <input class="poly-input" type="text" placeholder="Page title (e.g. Polytoria)"
+              .value="${this.newPinTitle_}"
+              @input="${this.onNewPinTitleInput_}">
+          <input class="poly-input" type="text" placeholder="URL (e.g. https://polytoria.com)"
+              .value="${this.newPinUrl_}"
+              @input="${this.onNewPinUrlInput_}"
+              @keydown="${this.onNewPinKeydown_}">
+          <button class="poly-primary-btn" @click="${this.onSavePinnedPage_}">Save Pin</button>
+        </div>
+      </div>
+    ` : ''}
+
+    ${this.showPolyCustomize_ ? html`
+      <div id="polyCustomizePanel" class="poly-mica-panel">
+        <div class="poly-panel-header">
+          <span class="poly-panel-title">Customize Section Grids (Columns &times; Rows)</span>
+          <div class="poly-panel-header-actions">
+            <button class="poly-reset-btn" @click="${this.onResetPolyGridDefaults_}">Reset Defaults</button>
+            <button class="poly-icon-close" @click="${this.onTogglePolyCustomize_}">&times;</button>
+          </div>
+        </div>
+        <div class="poly-customize-grid">
+          <div class="poly-customize-card">
+            <div class="poly-customize-card-title">Recent pages</div>
+            <div class="poly-customize-control">
+              <span>Columns (${this.recentCols_})</span>
+              <div class="poly-stepper">
+                <button @click="${() => this.adjustGrid_('recent', 'cols', -1)}">&minus;</button>
+                <span>${this.recentCols_}</span>
+                <button @click="${() => this.adjustGrid_('recent', 'cols', 1)}">+</button>
+              </div>
+            </div>
+            <div class="poly-customize-control">
+              <span>Rows (${this.recentRows_})</span>
+              <div class="poly-stepper">
+                <button @click="${() => this.adjustGrid_('recent', 'rows', -1)}">&minus;</button>
+                <span>${this.recentRows_}</span>
+                <button @click="${() => this.adjustGrid_('recent', 'rows', 1)}">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="poly-customize-card">
+            <div class="poly-customize-card-title">Pinned pages</div>
+            <div class="poly-customize-control">
+              <span>Columns (${this.pinnedCols_})</span>
+              <div class="poly-stepper">
+                <button @click="${() => this.adjustGrid_('pinned', 'cols', -1)}">&minus;</button>
+                <span>${this.pinnedCols_}</span>
+                <button @click="${() => this.adjustGrid_('pinned', 'cols', 1)}">+</button>
+              </div>
+            </div>
+            <div class="poly-customize-control">
+              <span>Rows (${this.pinnedRows_})</span>
+              <div class="poly-stepper">
+                <button @click="${() => this.adjustGrid_('pinned', 'rows', -1)}">&minus;</button>
+                <span>${this.pinnedRows_}</span>
+                <button @click="${() => this.adjustGrid_('pinned', 'rows', 1)}">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="poly-customize-card">
+            <div class="poly-customize-card-title">History pages</div>
+            <div class="poly-customize-control">
+              <span>Columns (${this.historyCols_})</span>
+              <div class="poly-stepper">
+                <button @click="${() => this.adjustGrid_('history', 'cols', -1)}">&minus;</button>
+                <span>${this.historyCols_}</span>
+                <button @click="${() => this.adjustGrid_('history', 'cols', 1)}">+</button>
+              </div>
+            </div>
+            <div class="poly-customize-control">
+              <span>Rows (${this.historyRows_})</span>
+              <div class="poly-stepper">
+                <button @click="${() => this.adjustGrid_('history', 'rows', -1)}">&minus;</button>
+                <span>${this.historyRows_}</span>
+                <button @click="${() => this.adjustGrid_('history', 'rows', 1)}">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ` : ''}
+
+    <section id="polyRecentSection" class="poly-mica-section">
+      <div class="poly-section-header">
+        <div class="poly-section-title-group">
+          <h2 class="poly-section-title">Recent pages</h2>
+          <span class="poly-section-badge">${this.recentCols_} &times; ${this.recentRows_}</span>
+        </div>
+        <div class="poly-inline-grid-controls">
+          <span class="poly-control-label">Cols</span>
+          <button class="poly-mini-btn" title="Decrease columns"
+              @click="${() => this.adjustGrid_('recent', 'cols', -1)}">&minus;</button>
+          <span class="poly-control-val">${this.recentCols_}</span>
+          <button class="poly-mini-btn" title="Increase columns"
+              @click="${() => this.adjustGrid_('recent', 'cols', 1)}">+</button>
+          <span class="poly-control-divider"></span>
+          <span class="poly-control-label">Rows</span>
+          <button class="poly-mini-btn" title="Decrease rows"
+              @click="${() => this.adjustGrid_('recent', 'rows', -1)}">&minus;</button>
+          <span class="poly-control-val">${this.recentRows_}</span>
+          <button class="poly-mini-btn" title="Increase rows"
+              @click="${() => this.adjustGrid_('recent', 'rows', 1)}">+</button>
+        </div>
+      </div>
+      <div class="poly-grid"
+          style="--poly-cols: ${this.recentCols_}; --poly-rows: ${this.recentRows_};">
+        ${this.getVisibleRecentPages_().map(item => html`
+          <a class="poly-page-btn recent" href="${item.url}"
+              @click="${(e: MouseEvent) => this.onPolyPageClick_(e, item)}">
+            <div class="poly-tile-favicon">
+              <img src="${this.getFaviconUrl_(item.url)}" alt="">
+            </div>
+            <div class="poly-tile-meta">
+              <div class="poly-tile-title">${item.title}</div>
+              <div class="poly-tile-domain">${this.getDomain_(item.url)}</div>
+            </div>
+            <div class="poly-tile-actions">
+              <button class="poly-tile-action-btn" title="Pin page"
+                  @click="${(e: MouseEvent) => this.onPinPageClick_(e, item)}">&#9733;</button>
+              <button class="poly-tile-action-btn remove" title="Remove"
+                  @click="${(e: MouseEvent) => this.onRemoveRecentPage_(e, item.url)}">&times;</button>
+            </div>
+          </a>
+        `)}
+      </div>
+    </section>
+
+    <section id="polyPinnedSection" class="poly-mica-section">
+      <div class="poly-section-header">
+        <div class="poly-section-title-group">
+          <h2 class="poly-section-title">Pinned pages</h2>
+          <span class="poly-section-badge">${this.pinnedCols_} &times; ${this.pinnedRows_}</span>
+        </div>
+        <div class="poly-inline-grid-controls">
+          <span class="poly-control-label">Cols</span>
+          <button class="poly-mini-btn" title="Decrease columns"
+              @click="${() => this.adjustGrid_('pinned', 'cols', -1)}">&minus;</button>
+          <span class="poly-control-val">${this.pinnedCols_}</span>
+          <button class="poly-mini-btn" title="Increase columns"
+              @click="${() => this.adjustGrid_('pinned', 'cols', 1)}">+</button>
+          <span class="poly-control-divider"></span>
+          <span class="poly-control-label">Rows</span>
+          <button class="poly-mini-btn" title="Decrease rows"
+              @click="${() => this.adjustGrid_('pinned', 'rows', -1)}">&minus;</button>
+          <span class="poly-control-val">${this.pinnedRows_}</span>
+          <button class="poly-mini-btn" title="Increase rows"
+              @click="${() => this.adjustGrid_('pinned', 'rows', 1)}">+</button>
+        </div>
+      </div>
+      <div class="poly-grid"
+          style="--poly-cols: ${this.pinnedCols_}; --poly-rows: ${this.pinnedRows_};">
+        ${this.getVisiblePinnedPages_().map(item => html`
+          <a class="poly-page-btn pinned" href="${item.url}"
+              @click="${(e: MouseEvent) => this.onPolyPageClick_(e, item)}">
+            <div class="poly-tile-favicon">
+              <img src="${this.getFaviconUrl_(item.url)}" alt="">
+            </div>
+            <div class="poly-tile-meta">
+              <div class="poly-tile-title">${item.title}</div>
+              <div class="poly-tile-domain">${this.getDomain_(item.url)}</div>
+            </div>
+            <div class="poly-tile-actions">
+              <button class="poly-tile-action-btn remove" title="Unpin page"
+                  @click="${(e: MouseEvent) => this.onUnpinPage_(e, item.url)}">&times;</button>
+            </div>
+          </a>
+        `)}
+      </div>
+    </section>
+
+    <section id="polyHistorySection" class="poly-mica-section">
+      <div class="poly-section-header">
+        <div class="poly-section-title-group">
+          <h2 class="poly-section-title">History pages</h2>
+          <span class="poly-section-badge">${this.historyCols_} &times; ${this.historyRows_}</span>
+        </div>
+        <div class="poly-inline-grid-controls">
+          <span class="poly-control-label">Cols</span>
+          <button class="poly-mini-btn" title="Decrease columns"
+              @click="${() => this.adjustGrid_('history', 'cols', -1)}">&minus;</button>
+          <span class="poly-control-val">${this.historyCols_}</span>
+          <button class="poly-mini-btn" title="Increase columns"
+              @click="${() => this.adjustGrid_('history', 'cols', 1)}">+</button>
+          <span class="poly-control-divider"></span>
+          <span class="poly-control-label">Rows</span>
+          <button class="poly-mini-btn" title="Decrease rows"
+              @click="${() => this.adjustGrid_('history', 'rows', -1)}">&minus;</button>
+          <span class="poly-control-val">${this.historyRows_}</span>
+          <button class="poly-mini-btn" title="Increase rows"
+              @click="${() => this.adjustGrid_('history', 'rows', 1)}">+</button>
+        </div>
+      </div>
+      <div class="poly-grid"
+          style="--poly-cols: ${this.historyCols_}; --poly-rows: ${this.historyRows_};">
+        ${this.getVisibleHistoryPages_().map(item => html`
+          <a class="poly-page-btn history" href="${item.url}"
+              @click="${(e: MouseEvent) => this.onPolyPageClick_(e, item)}">
+            <div class="poly-tile-favicon">
+              <img src="${this.getFaviconUrl_(item.url)}" alt="">
+            </div>
+            <div class="poly-tile-meta">
+              <div class="poly-tile-title">${item.title}</div>
+              <div class="poly-tile-domain">${this.getDomain_(item.url)}</div>
+            </div>
+            <div class="poly-tile-actions">
+              <button class="poly-tile-action-btn" title="Pin page"
+                  @click="${(e: MouseEvent) => this.onPinPageClick_(e, item)}">&#9733;</button>
+              <button class="poly-tile-action-btn remove" title="Remove from History list"
+                  @click="${(e: MouseEvent) => this.onRemoveHistoryPage_(e, item.url)}">&times;</button>
+            </div>
+          </a>
+        `)}
+      </div>
+    </section>
+  </div>
   ${this.lazyRender_ && this.ntpNextFeaturesEnabled_
   && this.isActionChipsVisible_ && this.composeboxEnabled ? html`
     <ntp-action-chips
@@ -115,7 +358,7 @@ import {SubmitButtonIconType} from '//resources/cr_components/composebox/compose
   ` : ''}
   ${this.lazyRender_ ? html`
     ${this.shortcutsEnabled_ ? html`
-      <cr-most-visited id="mostVisited" .theme="${this.theme_?.mostVisited || null}"
+      <cr-most-visited id="mostVisited" hidden .theme="${this.theme_?.mostVisited || null}"
           single-row reflow-on-overflow
           ?expandable-tiles-enabled="${this.ntpNextFeaturesEnabled_}"
           max-tiles-in-collapsed-state="${this.maxTilesInCollapsedState_}"

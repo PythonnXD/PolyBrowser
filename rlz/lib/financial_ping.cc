@@ -222,30 +222,8 @@ FinancialPing::PingResponse FinancialPing::PingServer(const char* request,
   return PING_FAILURE;
 }
 bool FinancialPing::IsPingTime(Product product, bool no_delay) {
-  ScopedRlzValueStoreLock lock;
-  RlzValueStore* store = lock.GetStore();
-  if (!store || !store->HasAccess(RlzValueStore::kReadAccess))
-    return false;
-
-  std::optional<int64_t> last_ping = store->ReadPingTime(product);
-  if (!last_ping) {
-    return true;
-  }
-
-  uint64_t now = GetSystemTimeAsInt64();
-  int64_t interval = now - *last_ping;
-
-  // If interval is negative, clock was probably reset. So ping.
-  if (interval < 0)
-    return true;
-
-  // Check if this product has any unreported events.
-  std::optional<std::string> cgi = GetProductEventsAsCgi(product);
-  if (no_delay && cgi) {
-    return true;
-  }
-
-  return interval >= (cgi ? kEventsPingInterval : kNoEventsPingInterval);
+  // PolyBrowser: Never schedule RLZ telemetry pings
+  return false;
 }
 
 

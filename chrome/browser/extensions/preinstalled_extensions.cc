@@ -203,11 +203,6 @@ void Provider::SetPrefs(base::DictValue prefs) {
   // extensions; they are installed from the webstore and don't get access to
   // component only APIs. Must be used with ManifestLocation::kInternal to allow
   // CWS to download certain extensions.
-  // PolyBrowser: Auto-install uBlock Origin
-  if (perform_new_installation_) {
-    AddExtension(extension_misc::kUblockOriginExtensionId, prefs);
-  }
-
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
   if (perform_new_installation_) {
     AddExtension(extension_misc::kDocsOfflineExtensionId, prefs);

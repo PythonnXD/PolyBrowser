@@ -23,8 +23,8 @@
   --cr-searchbox-min-width: var(--ntp-search-box-width);
   --cr-searchbox-results-search-icon-size: 20px;
   --ntp-theme-text-shadow: none;
-  --ntp-one-google-bar-height: 56px;
-  --ntp-search-box-width: 337px;
+  --ntp-one-google-bar-height: 28px;
+  --ntp-search-box-width: min(820px, 90vw);
   --ntp-menu-shadow:
     var(--color-new-tab-page-menu-inner-shadow) 0 1px 2px 0,
     var(--color-new-tab-page-menu-outer-shadow) 0 2px 6px 2px;
@@ -36,12 +36,12 @@
   --ntp-protected-icon-background-color-hovered: rgba(255, 255, 255, 0.1);
   --ntp-scrim-opacity_: 1;
 
-<if expr="is_android">
-  /* Use Google Sans Text for the NTP realbox on Android. The @font-face
+  /* <if expr="is_android">
+   * Use Google Sans Text for the NTP realbox on Android. The @font-face
    * rules in text_defaults_md.css register the font names, and
-   * AndroidFontLookupImpl downloads them from GMSCore. */
-  font-family: 'Google Sans Text', 'Google Sans', Arial, sans-serif;
-</if>
+   * AndroidFontLookupImpl downloads them from GMSCore.
+   * font-family: 'Google Sans Text', 'Google Sans', Arial, sans-serif;
+   * </if> */
 }
 
 /**
@@ -70,18 +70,18 @@
  */
 :host([realbox-can-show-secondary-side][realbox-had-secondary-side]),
 :host([realbox-can-show-secondary-side]) {
-  --ntp-search-box-width: 746px;
+  --ntp-search-box-width: min(820px, 90vw);
 }
 
 @media (min-width: 560px) {
   :host {
-    --ntp-search-box-width: 449px;
+    --ntp-search-box-width: min(820px, 90vw);
   }
 }
 
 @media (min-width: 672px) {
   :host {
-    --ntp-search-box-width: 561px;
+    --ntp-search-box-width: min(820px, 90vw);
   }
 }
 
@@ -176,7 +176,7 @@ cr-most-visited {
 }
 
 #logo {
-  margin-bottom: var(--ntp-logo-margin-bottom, 38px);
+  display: none;
 }
 
 :host([show-composebox_]) #logo,
@@ -188,9 +188,9 @@ cr-most-visited {
 #searchboxContainer {
   --cr-focus-outline-color: var(--color-searchbox-results-icon-focused-outline);
   display: inherit;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   position: relative;
-  z-index: 2;
+  z-index: 20;
 }
 
 #modules:not([hidden]) {
@@ -257,8 +257,11 @@ ntp-searchbox[shown] {
 
 #linkIcon {
   -webkit-mask-image: url(icons/link_old.svg);
+  mask-image: url(icons/link_old.svg);
   -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
   -webkit-mask-size: 100%;
+  mask-size: 100%;
   background-color: var(--color-new-tab-page-attribution-foreground);
   height: 16px;
   margin-inline-end: 8px;
@@ -546,6 +549,7 @@ ntp-lens-upload-dialog {
 :host-context([webui-rounded-icons]) {
   #linkIcon {
     -webkit-mask-image: url(icons/link.svg);
+    mask-image: url(icons/link.svg);
   }
 }
 
@@ -554,3 +558,533 @@ ntp-lens-upload-dialog {
   inset-inline-start: 0;
   position: fixed;
 }
+
+/* ============================================================================
+ * PolyBrowser Dark Mode Windows 11 Mica Dashboard & Hover Animations
+ * ============================================================================ */
+
+#polyDashboard {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 820px;
+  padding-bottom: 36px;
+  width: min(820px, 90vw);
+  z-index: 1;
+}
+
+#polyDashboardToolbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px;
+}
+
+.poly-brand-pill {
+  align-items: center;
+  background: rgba(31, 35, 46, 0.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: rgba(243, 244, 246, 0.85);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 8px;
+  letter-spacing: 0.02em;
+  padding: 6px 14px;
+}
+
+.poly-brand-dot {
+  background: linear-gradient(135deg, #ff5951 0%, #ff8278 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(255, 89, 81, 0.65);
+  height: 8px;
+  width: 8px;
+}
+
+.poly-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.poly-toolbar-btn {
+  background: rgba(31, 35, 46, 0.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #e5e7eb;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 13px;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms ease;
+}
+
+.poly-toolbar-btn:hover,
+.poly-toolbar-btn[data-active] {
+  background: rgba(45, 50, 66, 0.88);
+  border-color: rgba(255, 89, 81, 0.45);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transform: translateY(-1px);
+}
+
+.poly-mica-panel {
+  animation: polyPanelIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  background: linear-gradient(180deg, rgba(30, 34, 46, 0.86) 0%, rgba(22, 25, 34, 0.90) 100%);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+@keyframes polyPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.poly-panel-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.poly-panel-title {
+  color: #f3f4f6;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.poly-panel-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.poly-reset-btn {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #d1d5db;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 10px;
+  transition: background-color 150ms ease;
+}
+
+.poly-reset-btn:hover {
+  background: rgba(255, 89, 81, 0.2);
+  border-color: rgba(255, 89, 81, 0.45);
+  color: #ffffff;
+}
+
+.poly-icon-close {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.poly-icon-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.poly-pin-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.poly-input {
+  background: rgba(16, 18, 25, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #f3f4f6;
+  flex: 1 1 200px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  padding: 8px 12px;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.poly-input:focus {
+  border-color: rgba(255, 89, 81, 0.65);
+  box-shadow: 0 0 0 2px rgba(255, 89, 81, 0.22);
+}
+
+.poly-primary-btn {
+  background: linear-gradient(135deg, #ff5951 0%, #e0433c 100%);
+  border: none;
+  border-radius: 9px;
+  color: #ffffff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.poly-primary-btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.poly-customize-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.poly-customize-card {
+  background: rgba(18, 20, 28, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.poly-customize-card-title {
+  color: #f3f4f6;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.poly-customize-control {
+  align-items: center;
+  color: #9ca3af;
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+}
+
+.poly-stepper {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.poly-stepper button {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: #f3f4f6;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  height: 22px;
+  width: 22px;
+}
+
+.poly-stepper button:hover {
+  background: rgba(255, 89, 81, 0.3);
+}
+
+.poly-stepper span {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* Stacked Recent pages, Pinned pages, and History pages Mica cards */
+.poly-mica-section {
+  background: linear-gradient(
+    180deg,
+    rgba(29, 32, 43, 0.76) 0%,
+    rgba(22, 25, 34, 0.82) 100%
+  );
+  backdrop-filter: blur(26px) saturate(175%);
+  -webkit-backdrop-filter: blur(26px) saturate(175%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  transition: border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.poly-mica-section:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.poly-section-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.poly-section-title-group {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.poly-section-title {
+  color: #f3f4f6;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.poly-section-badge {
+  background: rgba(255, 89, 81, 0.16);
+  border: 1px solid rgba(255, 89, 81, 0.32);
+  border-radius: 999px;
+  color: #ff948e;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.poly-inline-grid-controls {
+  align-items: center;
+  background: rgba(16, 18, 25, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px 7px;
+}
+
+.poly-control-label {
+  color: #9ca3af;
+  font-size: 11px;
+  margin-inline-end: 2px;
+}
+
+.poly-control-val {
+  color: #f3f4f6;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 14px;
+  text-align: center;
+}
+
+.poly-control-divider {
+  background: rgba(255, 255, 255, 0.12);
+  height: 12px;
+  margin: 0 4px;
+  width: 1px;
+}
+
+.poly-mini-btn {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  border-radius: 5px;
+  color: #e5e7eb;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  height: 18px;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 150ms ease, transform 150ms ease;
+  width: 18px;
+}
+
+.poly-mini-btn:hover {
+  background: rgba(255, 89, 81, 0.38);
+  color: #ffffff;
+  transform: scale(1.08);
+}
+
+.poly-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(var(--poly-cols, 4), minmax(0, 1fr));
+}
+
+/* Tile buttons for Recent pages, Pinned pages, and History pages with hover animation */
+.poly-page-btn {
+  align-items: center;
+  background: rgba(38, 43, 56, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+  color: #f3f4f6;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  min-height: 54px;
+  overflow: hidden;
+  padding: 9px 12px;
+  position: relative;
+  text-decoration: none;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms ease,
+    border-color 200ms ease;
+}
+
+.poly-page-btn::before {
+  background: linear-gradient(
+    115deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.09) 50%,
+    transparent 80%
+  );
+  content: '';
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-100%);
+  transition:
+    transform 460ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms ease;
+}
+
+.poly-page-btn:hover {
+  background: rgba(50, 56, 74, 0.88);
+  border-color: rgba(255, 89, 81, 0.45);
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 89, 81, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transform: translateY(-4px) scale(1.02);
+}
+
+.poly-page-btn:hover::before {
+  opacity: 1;
+  transform: translateX(100%);
+}
+
+.poly-page-btn:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+.poly-tile-favicon {
+  align-items: center;
+  background: rgba(17, 19, 26, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 9px;
+  display: flex;
+  flex-shrink: 0;
+  height: 32px;
+  justify-content: center;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-color 200ms ease;
+  width: 32px;
+}
+
+.poly-page-btn:hover .poly-tile-favicon {
+  border-color: rgba(255, 89, 81, 0.4);
+  transform: scale(1.1) rotate(-3deg);
+}
+
+.poly-tile-favicon img {
+  height: 18px;
+  width: 18px;
+}
+
+.poly-tile-meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.poly-tile-title {
+  color: #f3f4f6;
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.poly-tile-domain {
+  color: #9ca3af;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.poly-tile-actions {
+  align-items: center;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.poly-page-btn:hover .poly-tile-actions,
+.poly-page-btn:focus-within .poly-tile-actions {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.poly-tile-action-btn {
+  align-items: center;
+  background: rgba(17, 19, 26, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #d1d5db;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  height: 22px;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 150ms ease, color 150ms ease;
+  width: 22px;
+}
+
+.poly-tile-action-btn:hover {
+  background: rgba(255, 89, 81, 0.32);
+  border-color: rgba(255, 89, 81, 0.55);
+  color: #ffffff;
+}
+

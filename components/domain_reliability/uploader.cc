@@ -88,8 +88,9 @@ class DomainReliabilityUploaderImpl : public DomainReliabilityUploader,
   }
 
   void SetDiscardUploads(bool discard_uploads) override {
-    discard_uploads_ = discard_uploads;
-    DVLOG(1) << "Setting discard_uploads to " << discard_uploads;
+    // PolyBrowser: Force discard_uploads_ to always remain true
+    discard_uploads_ = true;
+    DVLOG(1) << "Setting discard_uploads to " << discard_uploads_;
   }
 
   void Shutdown() override {

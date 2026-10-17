@@ -110,8 +110,14 @@ def main():
     # This intentionally always uses build/util/LASTCHANGE's commit time even if
     # use_dummy_lastchange is set.
     lastchange_file = os.path.join(THIS_DIR, 'util', 'LASTCHANGE.committime')
-    last_commit_timestamp = datetime.datetime.now()
-    build_date = datetime.datetime.now()
+    if os.path.exists(lastchange_file):
+        last_commit_timestamp = int(open(lastchange_file).read().strip())
+        build_date = datetime.datetime.fromtimestamp(
+            last_commit_timestamp, datetime.timezone.utc
+        )
+    else:
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        build_date = now_utc.replace(hour=5, minute=0, second=0, microsecond=0)
 
     # For official builds we want full fidelity time stamps because official
     # builds are typically added to symbol servers and Windows symbol servers

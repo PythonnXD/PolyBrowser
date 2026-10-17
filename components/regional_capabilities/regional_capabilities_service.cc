@@ -369,16 +369,24 @@ std::vector<raw_ptr<const PrepopulatedEngine>>
 RegionalCapabilitiesService::GetRegionalPrepopulatedEngines() {
   std::vector<raw_ptr<const PrepopulatedEngine>> engines;
 
-static const PrepopulatedEngine polytoria_engine = {
-    .name = u"Polytoria",
-    .keyword = u"polytoria",
-    .search_url = "https://polytoria.com/forum/search?q={searchTerms}",
-    .type = SEARCH_ENGINE_OTHER,
-    .id = 2424,
-};
+  static const PrepopulatedEngine polytoria_engine = {
+      .name = u"Polytoria",
+      .keyword = u"polytoria",
+      .favicon_url = "https://polytoria.com/favicon.ico",
+      .search_url = "https://polytoria.com/forum/search?q={searchTerms}",
+      .encoding = "UTF-8",
+      .type = SEARCH_ENGINE_OTHER,
+      .id = 2424,
+  };
 
-engines.push_back(&polytoria_engine);
-return engines;
+  engines.push_back(&polytoria_engine);
+  auto regional_engines = GetPrepopulatedEngines(
+      GetCountryIdInternal(), profile_prefs_.get(),
+      GetActiveProgramSettings().search_engine_list_type);
+  for (const auto& engine : regional_engines) {
+    engines.push_back(engine);
+  }
+  return engines;
 }
 
 std::vector<raw_ptr<const PrepopulatedEngine>>

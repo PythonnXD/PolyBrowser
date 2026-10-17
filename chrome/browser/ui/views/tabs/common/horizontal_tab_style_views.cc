@@ -88,253 +88,105 @@ SkPath HorizontalTabStyleViews::GetPath(TabStyle::PathType path_type,
                                    tab_style()->GetSeparatorSize().width()) *
                                   scale;
 
-  // Selected, hover, and inactive tab fills are a detached squarcle tab.
-  if (path_type == TabStyle::PathType::kHighlight ||
-      path_type == TabStyle::PathType::kHitTest) {
-    float top_left_corner_radius = content_corner_radius;
-    float top_right_corner_radius = content_corner_radius;
-    float bottom_left_corner_radius = content_corner_radius;
-    float bottom_right_corner_radius = content_corner_radius;
-    float tab_height = GetLayoutConstant(LayoutConstant::kTabHeight) * scale;
+  // PolyBrowser: Safari-style detached floating rounded pill tabs for all states
+  float pill_radius = std::min(content_corner_radius, 8.0f * scale);
+  float top_left_corner_radius = pill_radius;
+  float top_right_corner_radius = pill_radius;
+  float bottom_left_corner_radius = pill_radius;
+  float bottom_right_corner_radius = pill_radius;
+  float tab_height = GetLayoutConstant(LayoutConstant::kTabHeight) * scale;
 
-    // The hit test extends the full height to make it easier to select tabs.
-    if (path_type != TabStyle::PathType::kHitTest) {
-      tab_height -= GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
-      tab_height -=
-          GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap) * scale;
-    }
-
-    // Don't round the bottom corners to avoid creating dead space between tabs.
-    if (path_type == TabStyle::PathType::kHitTest) {
-      bottom_left_corner_radius = 0;
-      bottom_right_corner_radius = 0;
-    }
-
-    float left = aligned_bounds.x() + extension_corner_radius;
-    float top = aligned_bounds.y() +
-                GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
-
-    float right = aligned_bounds.right() - extension_corner_radius;
-    const int bottom = top + tab_height;
-
-    BrowserFrameView* const browser_frame_view =
-        delegate_->GetBrowserFrameView();
-    const bool is_frame_condensed =
-        browser_frame_view ? browser_frame_view->IsFrameCondensed() : false;
-    // For maximized and full screen windows, extend the tab hit test to the top
-    // of the tab, encompassing the top padding. This makes it easy to click on
-    // tabs by moving the mouse to the top of the screen.
-    if (path_type == TabStyle::PathType::kHitTest && is_frame_condensed) {
-      top -= GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
-      // Don't round the top corners to avoid creating dead space between tabs.
-      top_left_corner_radius = 0;
-      top_right_corner_radius = 0;
-    }
-
-    // While the tab is closing do not add extra space as it degrades the close
-    // tab animation.
-    if (!delegate_->IsClosing()) {
-      // If the size of the space for the path is smaller than the size of a
-      // favicon, if we are building a path for the hit test, or if we are
-      // building a path for a split tab, expand to take the entire width of the
-      // separator margins AND the separator.
-      const bool limited_tab_space =
-          (right - left) < (gfx::kFaviconSize * scale);
-      const bool expand_into_left_separator =
-          limited_tab_space || path_type == TabStyle::PathType::kHitTest ||
-          delegate_->IsRightSplitTab();
-      const bool expand_into_right_separator =
-          limited_tab_space || path_type == TabStyle::PathType::kHitTest ||
-          delegate_->IsLeftSplitTab();
-      if (expand_into_left_separator) {
-        left -= separator_overlap / 2.0;
-      }
-      if (expand_into_right_separator) {
-        right += separator_overlap / 2.0;
-      }
-    }
-
-    if (delegate_->IsSplit()) {
-      if (delegate_->IsLeftSplitTab()) {
-        top_right_corner_radius = 0;
-        bottom_right_corner_radius = 0;
-      } else if (delegate_->IsRightSplitTab()) {
-        top_left_corner_radius = 0;
-        bottom_left_corner_radius = 0;
-      }
-    }
-
-    // Radii are clockwise from top left.
-    const SkVector radii[4] = {
-        SkVector(top_left_corner_radius, top_left_corner_radius),
-        SkVector(top_right_corner_radius, top_right_corner_radius),
-        SkVector(bottom_right_corner_radius, bottom_right_corner_radius),
-        SkVector(bottom_left_corner_radius, bottom_left_corner_radius)};
-
-    SkPathBuilder path;
-    path.addRRect(SkRRect::MakeRectRadii(
-        SkRect::MakeLTRB(left, top, right, bottom), radii));
-
-    // Convert path to be relative to the tab origin.
-    gfx::PointF origin(delegate_->GetView()->origin());
-    origin.Scale(scale);
-    path.offset(-origin.x(), -origin.y());
-
-    // Possibly convert back to DIPs.
-    if (flags.render_units == TabStyle::RenderUnits::kDips && scale != 1.0f) {
-      path.transform(SkMatrix::Scale(1.0f / scale, 1.0f / scale));
-    }
-
-    return path.detach();
+  // The hit test extends the full height to make it easier to select tabs.
+  if (path_type != TabStyle::PathType::kHitTest) {
+    tab_height -= GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
+    tab_height -=
+        GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap) * scale;
+    // Float the Safari pill tab slightly above the toolbar
+    tab_height -= 3.0f * scale;
   }
 
-  // Compute `extension` as the width outside the separators.  This is a fixed
-  // value equal to the normal corner radius.
-  const float extension = extension_corner_radius;
-  float top_left_corner_radius = content_corner_radius;
-  float top_right_corner_radius = content_corner_radius;
-
-  // Calculate the bounds of the actual path.
-  const float left = aligned_bounds.x();
-  const float right = aligned_bounds.right();
-  float tab_top = aligned_bounds.y() +
-                  GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
-  float tab_left = left + extension;
-  float tab_right = right - extension;
-
-  // Overlap the toolbar below us so that gaps don't occur when rendering at
-  // non-integral display scale factors.
-  const float extended_bottom = aligned_bounds.bottom();
-  const float bottom_extension =
-      GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap) * scale;
-  float tab_bottom = extended_bottom - bottom_extension;
-
-  // Path-specific adjustments:
-  const float stroke_adjustment = stroke_thickness * scale;
-  if (path_type == TabStyle::PathType::kActiveTab ||
-      path_type == TabStyle::PathType::kBorder) {
-    if (!delegate_->IsRightSplitTab()) {
-      tab_left += 0.5f * stroke_adjustment;
-    }
-    if (!delegate_->IsLeftSplitTab()) {
-      tab_right -= 0.5f * stroke_adjustment;
-    }
-    tab_top += 0.5f * stroke_adjustment;
-    content_corner_radius -= 0.5f * stroke_adjustment;
-    tab_bottom -= 0.5f * stroke_adjustment;
-    extension_corner_radius -= 0.5f * stroke_adjustment;
+  // Don't round the bottom corners to avoid creating dead space between tabs.
+  if (path_type == TabStyle::PathType::kHitTest) {
+    bottom_left_corner_radius = 0;
+    bottom_right_corner_radius = 0;
   }
 
-  float left_extension_corner_radius = extension_corner_radius;
-  if (delegate_->IsLeftSplitTab()) {
-    top_right_corner_radius = 0;
-    // Assign half of the tab overlap to each of the split tabs.
-    tab_right = tab_right + extension - separator_overlap / 2.0;
-    extension_corner_radius = 0;
-  } else if (delegate_->IsRightSplitTab()) {
+  float left = aligned_bounds.x() + extension_corner_radius;
+  float top = aligned_bounds.y() +
+              GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
+
+  float right = aligned_bounds.right() - extension_corner_radius;
+  float bottom = top + tab_height;
+
+  if (path_type == TabStyle::PathType::kBorder) {
+    const float half_stroke = 0.5f * stroke_thickness * scale;
+    left += half_stroke;
+    top += half_stroke;
+    right -= half_stroke;
+    bottom -= half_stroke;
+    top_left_corner_radius = std::max(0.0f, top_left_corner_radius - half_stroke);
+    top_right_corner_radius = std::max(0.0f, top_right_corner_radius - half_stroke);
+    bottom_left_corner_radius = std::max(0.0f, bottom_left_corner_radius - half_stroke);
+    bottom_right_corner_radius = std::max(0.0f, bottom_right_corner_radius - half_stroke);
+  }
+
+  BrowserFrameView* const browser_frame_view =
+      delegate_->GetBrowserFrameView();
+  const bool is_frame_condensed =
+      browser_frame_view ? browser_frame_view->IsFrameCondensed() : false;
+  // For maximized and full screen windows, extend the tab hit test to the top
+  // of the tab, encompassing the top padding. This makes it easy to click on
+  // tabs by moving the mouse to the top of the screen.
+  if (path_type == TabStyle::PathType::kHitTest && is_frame_condensed) {
+    top -= GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
+    // Don't round the top corners to avoid creating dead space between tabs.
     top_left_corner_radius = 0;
-    tab_left = tab_left - extension + separator_overlap / 2.0;
-    left_extension_corner_radius = 0;
+    top_right_corner_radius = 0;
   }
+
+  // While the tab is closing do not add extra space as it degrades the close
+  // tab animation.
+  if (!delegate_->IsClosing()) {
+    // If the size of the space for the path is smaller than the size of a
+    // favicon, if we are building a path for the hit test, or if we are
+    // building a path for a split tab, expand to take the entire width of the
+    // separator margins AND the separator.
+    const bool limited_tab_space =
+        (right - left) < (gfx::kFaviconSize * scale);
+    const bool expand_into_left_separator =
+        limited_tab_space || path_type == TabStyle::PathType::kHitTest ||
+        delegate_->IsRightSplitTab();
+    const bool expand_into_right_separator =
+        limited_tab_space || path_type == TabStyle::PathType::kHitTest ||
+        delegate_->IsLeftSplitTab();
+    if (expand_into_left_separator) {
+      left -= separator_overlap / 2.0;
+    }
+    if (expand_into_right_separator) {
+      right += separator_overlap / 2.0;
+    }
+  }
+
+  if (delegate_->IsSplit()) {
+    if (delegate_->IsLeftSplitTab()) {
+      top_right_corner_radius = 0;
+      bottom_right_corner_radius = 0;
+    } else if (delegate_->IsRightSplitTab()) {
+      top_left_corner_radius = 0;
+      bottom_left_corner_radius = 0;
+    }
+  }
+
+  // Radii are clockwise from top left.
+  const SkVector radii[4] = {
+      SkVector(top_left_corner_radius, top_left_corner_radius),
+      SkVector(top_right_corner_radius, top_right_corner_radius),
+      SkVector(bottom_right_corner_radius, bottom_right_corner_radius),
+      SkVector(bottom_left_corner_radius, bottom_left_corner_radius)};
 
   SkPathBuilder path;
-  // Avoid mallocs at every new path verb by preallocating an
-  // empirically-determined amount of space in the verb and point buffers.
-  const int kMaxPathPoints = 20;
-  path.incReserve(kMaxPathPoints);
-
-  // We will go clockwise from the lower left. We start in the overlap region,
-  // preventing a gap between toolbar and tabstrip.
-  // TODO(dfried): verify that the we actually want to start the stroke for
-  // the exterior path outside the region; we might end up rendering an
-  // extraneous descending pixel on displays with odd scaling and nonzero
-  // stroke width.
-
-  if (path_type == TabStyle::PathType::kBorder && delegate_->IsSplit() &&
-      !delegate_->IsLeftSplitTab()) {
-    // Start with the top left side of the shape.
-    path.moveTo(left, tab_top);
-  } else {
-    // Start with the left side of the shape.
-    path.moveTo(left, extended_bottom);
-
-    // Draw the left edge of the extension.
-    //   ╭─────────╮
-    //   │ Content │
-    // ┏─╯         ╰─┐
-    if (tab_bottom != extended_bottom) {
-      if (flags.should_paint_extension) {
-        path.lineTo(left, tab_bottom);
-      } else {
-        path.moveTo(left, tab_bottom);
-      }
-    }
-
-    // Draw the bottom-left corner.
-    //   ╭─────────╮
-    //   │ Content │
-    // ┌━╝         ╰─┐
-    path.lineTo(tab_left - left_extension_corner_radius, tab_bottom);
-    path.arcTo(
-        SkVector(left_extension_corner_radius, left_extension_corner_radius), 0,
-        SkPathBuilder::kSmall_ArcSize, SkPathDirection::kCCW,
-        SkPoint(tab_left, tab_bottom - left_extension_corner_radius));
-
-    // Draw the ascender and top-left curve.
-    //   ╔─────────╮
-    //   ┃ Content │
-    // ┌─╯         ╰─┐
-    path.lineTo(tab_left, tab_top + top_left_corner_radius);
-    path.arcTo(SkVector(top_left_corner_radius, top_left_corner_radius), 0,
-               SkPathBuilder::kSmall_ArcSize, SkPathDirection::kCW,
-               SkPoint(tab_left + top_left_corner_radius, tab_top));
-  }
-
-  // Draw the top crossbar.
-  //   ╭━━━━━━━━━╮
-  //   │ Content │
-  // ┌─╯         ╰─┐
-  path.lineTo(tab_right - top_right_corner_radius, tab_top);
-
-  if (path_type == TabStyle::PathType::kBorder && delegate_->IsSplit() &&
-      !delegate_->IsRightSplitTab()) {
-    // Finish to the top right corner.
-    path.lineTo(right, tab_top);
-  } else {
-    // Draw the top-right curve.
-    //   ╭─────────╗
-    //   │ Content │
-    // ┌─╯         ╰─┐
-    path.arcTo(SkVector(top_right_corner_radius, top_right_corner_radius), 0,
-               SkPathBuilder::kSmall_ArcSize, SkPathDirection::kCW,
-               SkPoint(tab_right, tab_top + top_right_corner_radius));
-
-    // Draw the descender and bottom-right corner.
-    //   ╭─────────╮
-    //   │ Content ┃
-    // ┌─╯         ╚━┐
-    path.lineTo(tab_right, tab_bottom - extension_corner_radius);
-    path.arcTo(SkVector(extension_corner_radius, extension_corner_radius), 0,
-               SkPathBuilder::kSmall_ArcSize, SkPathDirection::kCCW,
-               SkPoint(tab_right + extension_corner_radius, tab_bottom));
-    if (tab_bottom != extended_bottom) {
-      path.lineTo(right, tab_bottom);
-    }
-
-    // Draw anything remaining: the descender, the bottom right horizontal
-    // stroke, or the right edge of the extension, depending on which
-    // conditions fired above.
-    //   ╭─────────╮
-    //   │ Content │
-    // ┌─╯         ╰─┓
-    if (flags.should_paint_extension) {
-      path.lineTo(right, extended_bottom);
-    }
-  }
-
-  if (path_type != TabStyle::PathType::kBorder) {
-    path.close();
-  }
+  path.addRRect(SkRRect::MakeRectRadii(
+      SkRect::MakeLTRB(left, top, right, bottom), radii));
 
   // Convert path to be relative to the tab origin.
   gfx::PointF origin(delegate_->GetView()->origin());
@@ -535,97 +387,8 @@ TabStyle::SeparatorOpacities HorizontalTabStyleViews::GetSeparatorOpacities(
 
 float HorizontalTabStyleViews::GetSeparatorOpacity(bool for_layout,
                                                    bool leading) const {
-  // Do not show separators if the tab strip is in a decluttered state.
-  if (features::IsTabStripDeclutterEnabled() &&
-      delegate_->GetTabCount() >=
-          TabStyle::kTabStripDeclutterMinTabsForSeparatorHide) {
-    return 0.0f;
-  }
-
-  const auto has_visible_background =
-      [](const TabStyleViewDelegate* const delegate) {
-        return delegate->IsActive() || delegate->IsSelected() ||
-               delegate->IsHovering() ||
-               (delegate->IsPinned() &&
-                tabs::IsNewHorizontalPinnedTabStylingEnabled());
-      };
-
-  // These tab states all have visible backgrounds. Separators must not
-  // be shown between tabs if that is the case;
-  if (has_visible_background(delegate_.get())) {
-    return 0.0f;
-  }
-
-  // Check the adjacent tab/group header to see if there's a visible shapes.
-  const TabStyleViewDelegate* const adjacent_tab =
-      delegate_->GetAdjacentTab(leading);
-
-  const TabStyleViewDelegate* const left_tab =
-      leading ? adjacent_tab : delegate_.get();
-  const TabStyleViewDelegate* const right_tab =
-      leading ? delegate_.get() : adjacent_tab;
-
-  // Separator should never be shown between split tabs.
-  if (right_tab && right_tab->IsSplit() && left_tab && left_tab->IsSplit() &&
-      right_tab->GetSplit().value() == left_tab->GetSplit().value()) {
-    return 0.0f;
-  }
-
-  const bool adjacent_to_header =
-      right_tab && right_tab->GetGroup().has_value() &&
-      (!left_tab || left_tab->GetGroup() != right_tab->GetGroup());
-
-  const float shown_separator_opacity =
-      GetHoverInterpolatedSeparatorOpacity(for_layout, adjacent_tab);
-
-  // Show the separator unless this tab is the first in the group and is next
-  // to it's own header.
-  if (adjacent_to_header) {
-    return (delegate_->GetGroup().has_value() && leading)
-               ? 0.0f
-               : shown_separator_opacity;
-  }
-
-  if (base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
-    // When unification is enabled, tabs render trailing separators by default
-    // to avoid double separators between tabs. Leading separators are only
-    // rendered in certain scenarios.
-    if (leading) {
-      // Between the pinned and unpinned tab containers when new pinned
-      // tab styling is disabled should show leading
-      if (!tabs::IsNewHorizontalPinnedTabStylingEnabled() && adjacent_tab &&
-          adjacent_tab->IsPinned() && !has_visible_background(adjacent_tab)) {
-        return shown_separator_opacity;
-      }
-
-      // When the preceding item is a group header, show a leading separator.
-      if (adjacent_tab && adjacent_tab->IsGroupCollapsed() &&
-          adjacent_tab->GetGroup() != delegate_->GetGroup() &&
-          !has_visible_background(adjacent_tab)) {
-        return shown_separator_opacity;
-      }
-
-      return 0.0f;
-    }
-  } else {
-    // If there isn't an adjacent tab, the tab is at the beginning or end of the
-    // tab strip. For the first tab, we shouldn't show the leading separator.
-    // For the last tab, we should show the separator between the new tab button
-    // and the tab strip IF the tab isn't selected, hovered, or active. If there
-    // is a combo button with a non-transparent background in place of the new
-    // tab button, we should not show the trailing separator.
-    if (!adjacent_tab) {
-      return leading ? 0.0f : shown_separator_opacity;
-    }
-  }
-
-  // Do not show when the adjacent tab is displaying a visible shape.
-  if (adjacent_tab && has_visible_background(adjacent_tab)) {
-    return 0.0f;
-  }
-
-  // Otherwise, default to showing the separator.
-  return shown_separator_opacity;
+  // PolyBrowser: Hide vertical tab dividers since tabs are distinct Safari floating pills
+  return 0.0f;
 }
 
 float HorizontalTabStyleViews::GetHoverInterpolatedSeparatorOpacity(
@@ -669,15 +432,8 @@ int HorizontalTabStyleViews::GetStrokeThickness() const {
     return TabGroupUnderline::kStrokeThickness;
   }
 
-  if (delegate_->IsActive()) {
-    return delegate_->GetStrokeThickness();
-  }
-
-  if (delegate_->IsPinned() && tabs::IsNewHorizontalPinnedTabStylingEnabled()) {
-    return 1;
-  }
-
-  return 0;
+  // PolyBrowser: 1px specular border on Safari floating pill tabs
+  return 1;
 }
 
 SkPath HorizontalTabStyleViews::GetOverlinePath(float scale) const {
@@ -688,27 +444,12 @@ SkPath HorizontalTabStyleViews::GetOverlinePath(float scale) const {
 bool HorizontalTabStyleViews::ShouldPaintTabBackgroundColor(
     TabStyle::TabSelectionState selection_state,
     bool has_custom_background) const {
-  if (delegate_->IsPinned() && tabs::IsNewHorizontalPinnedTabStylingEnabled() &&
-      !delegate_->IsGlassFrame()) {
-    return true;
-  }
-
-  // In the active and selected cases, always paint the tab background. The fill
-  // image may be transparent.
-  if (selection_state == TabStyle::TabSelectionState::kActive ||
-      selection_state == TabStyle::TabSelectionState::kSelected) {
-    return true;
-  }
-
-  if (has_custom_background) {
+  if (has_custom_background &&
+      selection_state == TabStyle::TabSelectionState::kInactive) {
     return false;
   }
-
-  if (delegate_->IsGlassFrame()) {
-    return false;
-  }
-
-  return delegate_->ShouldPaintTabBackgroundColor();
+  // PolyBrowser: Paint translucent pill background for both active and inactive tabs
+  return true;
 }
 
 SkColor HorizontalTabStyleViews::GetTabSeparatorColor() const {
@@ -756,15 +497,9 @@ void HorizontalTabStyleViews::PaintTabBackground(
 
   PaintTabBackgroundFill(canvas, hovered, fill_id);
 
-  const auto* widget = delegate_->GetView()->GetWidget();
-  DCHECK(widget);
   const SkColor tab_stroke_color =
-      (delegate_->IsPinned() && !delegate_->IsActive() &&
-       tabs::IsNewHorizontalPinnedTabStylingEnabled())
-          ? GetTabSeparatorColor()
-          : widget->GetColorProvider()->GetColor(
-                widget->ShouldPaintAsActive() ? kColorTabStrokeFrameActive
-                                              : kColorTabStrokeFrameInactive);
+      delegate_->IsActive() ? SkColorSetARGB(0x38, 0xFF, 0xFF, 0xFF)
+                            : SkColorSetARGB(0x18, 0xFF, 0xFF, 0xFF);
 
   PaintBackgroundStroke(canvas, group_color.value_or(tab_stroke_color));
   PaintSeparators(canvas);

@@ -18,6 +18,8 @@ import type {ComposeboxState} from 'chrome://resources/cr_components/composebox/
 import {VoiceSearchAction as ComposeVoiceSearchAction} from 'chrome://resources/cr_components/composebox/composebox.js';
 import type {ComposeboxVoiceSearchElement, VoicePermissionPromptState} from 'chrome://resources/cr_components/composebox/composebox_voice_search.js';
 import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
+import {browserProxyFactory as mostVisitedBrowserProxyFactory} from 'chrome://resources/cr_components/most_visited/most_visited.mojom-webui.js';
+import type {MostVisitedInfo} from 'chrome://resources/cr_components/most_visited/most_visited.mojom-webui.js';
 import type {SearchAnimatedGlowElement} from 'chrome://resources/cr_components/search/animated_glow.js';
 import type {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
@@ -76,6 +78,50 @@ interface CanShowPromoWithBrowserCommandData {
   messageType: string;
   commandId: Command;
 }
+
+export interface PolyPageItem {
+  title: string;
+  url: string;
+  timestamp?: number;
+}
+
+const POLY_STORAGE_KEY_GRID = 'poly_ntp_grid_v1';
+const POLY_STORAGE_KEY_RECENT = 'poly_ntp_recent_v1';
+const POLY_STORAGE_KEY_PINNED = 'poly_ntp_pinned_v1';
+const POLY_STORAGE_KEY_HISTORY = 'poly_ntp_history_v1';
+
+const DEFAULT_RECENT_PAGES: PolyPageItem[] = [
+  {title: 'Polytoria Home', url: 'https://polytoria.com'},
+  {title: 'Polytoria Places', url: 'https://polytoria.com/places'},
+  {title: 'Polytoria Store', url: 'https://polytoria.com/store'},
+  {title: 'Polytoria Forum', url: 'https://polytoria.com/forum'},
+  {title: 'Polytoria Creator Docs', url: 'https://docs.polytoria.com'},
+  {title: 'Polytoria Guilds', url: 'https://polytoria.com/guilds'},
+  {title: 'Polytoria Leaderboards', url: 'https://polytoria.com/leaderboards'},
+  {title: 'GitHub', url: 'https://github.com'},
+];
+
+const DEFAULT_PINNED_PAGES: PolyPageItem[] = [
+  {title: 'Polytoria', url: 'https://polytoria.com'},
+  {title: 'Polytoria Docs', url: 'https://docs.polytoria.com'},
+  {title: 'Polytoria Create', url: 'https://polytoria.com/create'},
+  {title: 'YouTube', url: 'https://youtube.com'},
+  {title: 'GitHub', url: 'https://github.com'},
+  {title: 'Discord', url: 'https://discord.com'},
+  {title: 'Reddit', url: 'https://reddit.com'},
+  {title: 'Wikipedia', url: 'https://wikipedia.org'},
+];
+
+const DEFAULT_HISTORY_PAGES: PolyPageItem[] = [
+  {title: 'Polytoria Forum Search', url: 'https://polytoria.com/forum/search'},
+  {title: 'Polytoria Blog', url: 'https://blog.polytoria.com'},
+  {title: 'MDN Web Docs', url: 'https://developer.mozilla.org'},
+  {title: 'Stack Overflow', url: 'https://stackoverflow.com'},
+  {title: 'Hacker News', url: 'https://news.ycombinator.com'},
+  {title: 'Cloudflare', url: 'https://cloudflare.com'},
+  {title: 'uBlock Origin Wiki', url: 'https://github.com/gorhill/uBlock/wiki'},
+  {title: 'Browser History', url: 'chrome://history'},
+];
 
 /**
  * Elements on the NTP. This enum must match the numbering for NTPElement in
@@ -372,6 +418,20 @@ export class AppElement extends AppElementBase {
       energyEffectAnimationEnabled_: {type: Boolean, reflect: true},
       energyEffectVariant_: {type: String, reflect: true},
       showCustomizeButton_: {type: Boolean},
+
+      recentCols_: {type: Number},
+      recentRows_: {type: Number},
+      pinnedCols_: {type: Number},
+      pinnedRows_: {type: Number},
+      historyCols_: {type: Number},
+      historyRows_: {type: Number},
+      showPolyCustomize_: {type: Boolean},
+      showAddPinForm_: {type: Boolean},
+      newPinTitle_: {type: String},
+      newPinUrl_: {type: String},
+      recentPages_: {type: Array},
+      pinnedPages_: {type: Array},
+      historyPages_: {type: Array},
     };
   }
 
@@ -502,6 +562,20 @@ export class AppElement extends AppElementBase {
       loadTimeData.getBoolean('contextMenuAnimationLimitingEnabled');
   protected accessor searchboxCallbackRouter_: SearchboxPageCallbackRouter;
 
+  protected accessor recentCols_: number = 4;
+  protected accessor recentRows_: number = 1;
+  protected accessor pinnedCols_: number = 4;
+  protected accessor pinnedRows_: number = 1;
+  protected accessor historyCols_: number = 4;
+  protected accessor historyRows_: number = 1;
+  protected accessor showPolyCustomize_: boolean = false;
+  protected accessor showAddPinForm_: boolean = false;
+  protected accessor newPinTitle_: string = '';
+  protected accessor newPinUrl_: string = '';
+  protected accessor recentPages_: PolyPageItem[] = [...DEFAULT_RECENT_PAGES];
+  protected accessor pinnedPages_: PolyPageItem[] = [...DEFAULT_PINNED_PAGES];
+  protected accessor historyPages_: PolyPageItem[] = [...DEFAULT_HISTORY_PAGES];
+
   private voiceSearchActivatedByKeyboard_: boolean = false;
   private accessor selectedCustomizeDialogPage_: string|null = null;
   private accessor modulesLoadedStatus_: ModuleLoadStatus =
@@ -518,6 +592,7 @@ export class AppElement extends AppElementBase {
   private setWallpaperSearchButtonVisibilityListener_: number|null = null;
   private setActionChipsVisibilityListenerId_: number|null = null;
   private footerVisibilityUpdatedListener_: number|null = null;
+  private mostVisitedListenerId_: number|null = null;
   private eventTracker_: EventTracker = new EventTracker();
   private shouldPrintPerformance_: boolean = false;
   private backgroundImageLoadStartEpoch_: number = 0;
@@ -577,6 +652,7 @@ export class AppElement extends AppElementBase {
     ColorChangeUpdater.forDocument().start();
 
     window.navigator.virtualKeyboard.overlaysContent = true;
+    this.loadPolyStateFromStorage_();
   }
 
   override connectedCallback() {
@@ -697,6 +773,14 @@ export class AppElement extends AppElementBase {
     }
 
     this.initializeContextMenuAnimationState_();
+
+    const mvProxy = mostVisitedBrowserProxyFactory.getInstance();
+    this.mostVisitedListenerId_ =
+        mvProxy.callbackRouter.setMostVisitedInfo.addListener(
+            (info: MostVisitedInfo) => {
+              this.onPolyMostVisitedInfo_(info);
+            });
+    mvProxy.handler.updateMostVisitedInfo();
   }
 
   override disconnectedCallback() {
@@ -715,6 +799,11 @@ export class AppElement extends AppElementBase {
     this.callbackRouter_.removeListener(
         this.setActionChipsVisibilityListenerId_!);
     this.callbackRouter_.removeListener(this.footerVisibilityUpdatedListener_!);
+    if (this.mostVisitedListenerId_ !== null) {
+      mostVisitedBrowserProxyFactory.getInstance()
+          .callbackRouter.removeListener(this.mostVisitedListenerId_);
+      this.mostVisitedListenerId_ = null;
+    }
     this.eventTracker_.removeAll();
   }
 
@@ -1862,6 +1951,287 @@ export class AppElement extends AppElementBase {
 
   private hasRealboxOverride(action?: FuseboxAction): boolean {
     return !!action && action?.searchboxOverride === SearchboxOverride.kRealbox;
+  }
+
+  private loadPolyStateFromStorage_() {
+    try {
+      const gridRaw = window.localStorage.getItem(POLY_STORAGE_KEY_GRID);
+      if (gridRaw) {
+        const parsed = JSON.parse(gridRaw);
+        this.recentCols_ = this.clamp_(Number(parsed.recentCols) || 4, 1, 8);
+        this.recentRows_ = this.clamp_(Number(parsed.recentRows) || 1, 1, 6);
+        this.pinnedCols_ = this.clamp_(Number(parsed.pinnedCols) || 4, 1, 8);
+        this.pinnedRows_ = this.clamp_(Number(parsed.pinnedRows) || 1, 1, 6);
+        this.historyCols_ = this.clamp_(Number(parsed.historyCols) || 4, 1, 8);
+        this.historyRows_ = this.clamp_(Number(parsed.historyRows) || 1, 1, 6);
+      }
+      const recentRaw = window.localStorage.getItem(POLY_STORAGE_KEY_RECENT);
+      if (recentRaw) {
+        const list = JSON.parse(recentRaw);
+        if (Array.isArray(list) && list.length > 0) {
+          this.recentPages_ = list;
+        }
+      }
+      const pinnedRaw = window.localStorage.getItem(POLY_STORAGE_KEY_PINNED);
+      if (pinnedRaw) {
+        const list = JSON.parse(pinnedRaw);
+        if (Array.isArray(list) && list.length > 0) {
+          this.pinnedPages_ = list;
+        }
+      }
+      const historyRaw = window.localStorage.getItem(POLY_STORAGE_KEY_HISTORY);
+      if (historyRaw) {
+        const list = JSON.parse(historyRaw);
+        if (Array.isArray(list) && list.length > 0) {
+          this.historyPages_ = list;
+        }
+      }
+    } catch {
+      // Ignore storage errors and keep defaults.
+    }
+  }
+
+  private savePolyGridToStorage_() {
+    try {
+      window.localStorage.setItem(
+          POLY_STORAGE_KEY_GRID,
+          JSON.stringify({
+            recentCols: this.recentCols_,
+            recentRows: this.recentRows_,
+            pinnedCols: this.pinnedCols_,
+            pinnedRows: this.pinnedRows_,
+            historyCols: this.historyCols_,
+            historyRows: this.historyRows_,
+          }));
+    } catch {
+      // Ignore storage errors.
+    }
+  }
+
+  private savePolyPagesToStorage_() {
+    try {
+      window.localStorage.setItem(
+          POLY_STORAGE_KEY_RECENT, JSON.stringify(this.recentPages_));
+      window.localStorage.setItem(
+          POLY_STORAGE_KEY_PINNED, JSON.stringify(this.pinnedPages_));
+      window.localStorage.setItem(
+          POLY_STORAGE_KEY_HISTORY, JSON.stringify(this.historyPages_));
+    } catch {
+      // Ignore storage errors.
+    }
+  }
+
+  private clamp_(val: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, val));
+  }
+
+  private onPolyMostVisitedInfo_(info: MostVisitedInfo) {
+    if (!info || !Array.isArray(info.tiles) || info.tiles.length === 0) {
+      return;
+    }
+    const mojoItems: PolyPageItem[] = info.tiles
+        .filter(t => t && t.url && t.url.url)
+        .map(t => ({
+          title: t.title || this.getDomain_(t.url.url),
+          url: t.url.url,
+        }));
+    if (mojoItems.length === 0) {
+      return;
+    }
+    this.recentPages_ = this.mergeUniquePages_(mojoItems, this.recentPages_);
+    this.historyPages_ = this.mergeUniquePages_(
+        [...mojoItems].reverse(), this.historyPages_);
+    this.savePolyPagesToStorage_();
+  }
+
+  private mergeUniquePages_(
+      primary: PolyPageItem[], secondary: PolyPageItem[]): PolyPageItem[] {
+    const seen = new Set<string>();
+    const out: PolyPageItem[] = [];
+    for (const item of [...primary, ...secondary]) {
+      if (!item || !item.url) {
+        continue;
+      }
+      const key = item.url.replace(/\/+$/, '').toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(item);
+      }
+    }
+    return out.slice(0, 48);
+  }
+
+  private fillGridItems_(
+      items: PolyPageItem[], fallbackPool: PolyPageItem[], count: number,
+      label: string): PolyPageItem[] {
+    const merged = this.mergeUniquePages_(items, fallbackPool);
+    const result = merged.slice(0, count);
+    while (result.length < count) {
+      const idx = result.length + 1;
+      result.push({
+        title: `${label} #${idx}`,
+        url: 'https://polytoria.com',
+      });
+    }
+    return result;
+  }
+
+  protected getVisibleRecentPages_(): PolyPageItem[] {
+    const count = Math.max(1, this.recentCols_ * this.recentRows_);
+    return this.fillGridItems_(
+        this.recentPages_,
+        [...DEFAULT_RECENT_PAGES, ...DEFAULT_HISTORY_PAGES],
+        count, 'Recent Page');
+  }
+
+  protected getVisiblePinnedPages_(): PolyPageItem[] {
+    const count = Math.max(1, this.pinnedCols_ * this.pinnedRows_);
+    return this.fillGridItems_(
+        this.pinnedPages_,
+        [...DEFAULT_PINNED_PAGES, ...DEFAULT_RECENT_PAGES],
+        count, 'Pinned Page');
+  }
+
+  protected getVisibleHistoryPages_(): PolyPageItem[] {
+    const count = Math.max(1, this.historyCols_ * this.historyRows_);
+    return this.fillGridItems_(
+        this.historyPages_,
+        [...DEFAULT_HISTORY_PAGES, ...DEFAULT_RECENT_PAGES],
+        count, 'History Page');
+  }
+
+  protected getFaviconUrl_(url: string): string {
+    return `chrome://favicon2/?size=24&scaleFactor=2x&showFallbackMonogram=&pageUrl=${
+        encodeURIComponent(url)}`;
+  }
+
+  protected getDomain_(url: string): string {
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname.replace(/^www\./, '') || url;
+    } catch {
+      return url;
+    }
+  }
+
+  protected adjustGrid_(
+      section: 'recent'|'pinned'|'history',
+      axis: 'cols'|'rows',
+      delta: number) {
+    if (section === 'recent') {
+      if (axis === 'cols') {
+        this.recentCols_ = this.clamp_(this.recentCols_ + delta, 1, 8);
+      } else {
+        this.recentRows_ = this.clamp_(this.recentRows_ + delta, 1, 6);
+      }
+    } else if (section === 'pinned') {
+      if (axis === 'cols') {
+        this.pinnedCols_ = this.clamp_(this.pinnedCols_ + delta, 1, 8);
+      } else {
+        this.pinnedRows_ = this.clamp_(this.pinnedRows_ + delta, 1, 6);
+      }
+    } else {
+      if (axis === 'cols') {
+        this.historyCols_ = this.clamp_(this.historyCols_ + delta, 1, 8);
+      } else {
+        this.historyRows_ = this.clamp_(this.historyRows_ + delta, 1, 6);
+      }
+    }
+    this.savePolyGridToStorage_();
+  }
+
+  protected onTogglePolyCustomize_() {
+    this.showPolyCustomize_ = !this.showPolyCustomize_;
+    if (this.showPolyCustomize_) {
+      this.showAddPinForm_ = false;
+    }
+  }
+
+  protected onToggleAddPinForm_() {
+    this.showAddPinForm_ = !this.showAddPinForm_;
+    if (this.showAddPinForm_) {
+      this.showPolyCustomize_ = false;
+    }
+  }
+
+  protected onResetPolyGridDefaults_() {
+    this.recentCols_ = 4;
+    this.recentRows_ = 1;
+    this.pinnedCols_ = 4;
+    this.pinnedRows_ = 1;
+    this.historyCols_ = 4;
+    this.historyRows_ = 1;
+    this.savePolyGridToStorage_();
+  }
+
+  protected onNewPinTitleInput_(e: Event) {
+    this.newPinTitle_ = (e.target as HTMLInputElement).value;
+  }
+
+  protected onNewPinUrlInput_(e: Event) {
+    this.newPinUrl_ = (e.target as HTMLInputElement).value;
+  }
+
+  protected onNewPinKeydown_(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      this.onSavePinnedPage_();
+    }
+  }
+
+  protected onSavePinnedPage_() {
+    let rawUrl = this.newPinUrl_.trim();
+    if (!rawUrl) {
+      return;
+    }
+    if (!rawUrl.includes('://')) {
+      rawUrl = `https://${rawUrl}`;
+    }
+    const title = this.newPinTitle_.trim() || this.getDomain_(rawUrl);
+    const newItem: PolyPageItem = {title, url: rawUrl, timestamp: Date.now()};
+    this.pinnedPages_ = this.mergeUniquePages_([newItem], this.pinnedPages_);
+    this.newPinTitle_ = '';
+    this.newPinUrl_ = '';
+    this.showAddPinForm_ = false;
+    this.savePolyPagesToStorage_();
+  }
+
+  protected onPolyPageClick_(_e: MouseEvent, item: PolyPageItem) {
+    const updated: PolyPageItem = {
+      title: item.title,
+      url: item.url,
+      timestamp: Date.now(),
+    };
+    this.recentPages_ = this.mergeUniquePages_([updated], this.recentPages_);
+    this.historyPages_ = this.mergeUniquePages_([updated], this.historyPages_);
+    this.savePolyPagesToStorage_();
+  }
+
+  protected onPinPageClick_(e: MouseEvent, item: PolyPageItem) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.pinnedPages_ = this.mergeUniquePages_([item], this.pinnedPages_);
+    this.savePolyPagesToStorage_();
+  }
+
+  protected onUnpinPage_(e: MouseEvent, url: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.pinnedPages_ = this.pinnedPages_.filter(p => p.url !== url);
+    this.savePolyPagesToStorage_();
+  }
+
+  protected onRemoveRecentPage_(e: MouseEvent, url: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.recentPages_ = this.recentPages_.filter(p => p.url !== url);
+    this.savePolyPagesToStorage_();
+  }
+
+  protected onRemoveHistoryPage_(e: MouseEvent, url: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.historyPages_ = this.historyPages_.filter(p => p.url !== url);
+    this.savePolyPagesToStorage_();
   }
 }
 

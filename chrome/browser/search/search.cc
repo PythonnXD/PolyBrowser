@@ -195,9 +195,9 @@ struct NewTabURLDetails {
       }
     }
 #else
-    const GURL local_url(default_is_google
-                             ? chrome::ChromeUINewTabPageURLAsGURL()
-                             : GURL(chrome::kChromeUINewTabPageThirdPartyURL));
+    // PolyBrowser: Always use the full chrome://new-tab-page even when a
+    // non-Google default search engine (such as Polytoria) is active.
+    const GURL local_url(chrome::ChromeUINewTabPageURLAsGURL());
     if (default_is_google) {
       return NewTabURLDetails(local_url, NEW_TAB_URL_VALID);
     }

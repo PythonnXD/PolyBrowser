@@ -321,11 +321,11 @@ void ThemeService::RegisterProfilePrefs(
   registry->RegisterIntegerPref(themes::kPolicyThemeColor, SK_ColorTRANSPARENT);
   registry->RegisterIntegerPref(
       prefs::kDeprecatedBrowserColorSchemeDoNotUse,
-      std::to_underlying(ThemeService::BrowserColorScheme::kSystem),
+      std::to_underlying(ThemeService::BrowserColorScheme::kDark),
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
   registry->RegisterIntegerPref(
       prefs::kBrowserColorScheme,
-      std::to_underlying(ThemeService::BrowserColorScheme::kSystem));
+      std::to_underlying(ThemeService::BrowserColorScheme::kDark));
   registry->RegisterIntegerPref(
       prefs::kDeprecatedUserColorDoNotUse, SK_ColorTRANSPARENT,
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);

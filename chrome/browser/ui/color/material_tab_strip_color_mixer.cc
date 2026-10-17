@@ -25,16 +25,18 @@ void AddMaterialTabStripColorMixer(ui::ColorProvider* provider,
   // color.
   ui::ColorMixer& mixer = provider->AddMixer();
   mixer[kColorDetachedTabBackgroundActiveFrameActive] = {
-      dark_mode ? ui::kColorSysSurfaceVariant : ui::kColorSysBase};
-  mixer[kColorTabBackgroundActiveFrameActive] = {ui::kColorSysBase};
+      dark_mode ? SkColorSetRGB(0x2F, 0x33, 0x41) : ui::kColorSysBase};
+  mixer[kColorTabBackgroundActiveFrameActive] = {
+      dark_mode ? SkColorSetRGB(0x2F, 0x33, 0x41) : ui::kColorSysBase};
   mixer[kColorTabBackgroundActiveFrameInactive] = {
       kColorTabBackgroundActiveFrameActive};
 
-  mixer[kColorTabBackgroundInactiveFrameActive] = {ui::kColorSysHeader};
+  mixer[kColorTabBackgroundInactiveFrameActive] = {
+      dark_mode ? SkColorSetRGB(0x23, 0x26, 0x31) : ui::kColorSysHeader};
   mixer[kColorTabBackgroundInactiveFrameInactive] = {
-      ui::kColorSysHeaderInactive};
+      dark_mode ? SkColorSetRGB(0x1F, 0x22, 0x2C) : ui::kColorSysHeaderInactive};
   mixer[kColorTabBackgroundInactiveHoverFrameActive] = {
-      ui::kColorSysStateHeaderHover};
+      dark_mode ? SkColorSetRGB(0x29, 0x2D, 0x3A) : ui::kColorSysStateHeaderHover};
   mixer[kColorTabStripComboButtonSeparator] = {ui::kColorSysDivider};
   mixer[kColorTabStripControlButtonInkDrop] = {ui::kColorSysStateHeaderHover};
   mixer[kColorTabStripControlButtonInkDropFrameInactive] = {
@@ -46,7 +48,7 @@ void AddMaterialTabStripColorMixer(ui::ColorProvider* provider,
 
   // TODO(tbergquist): Use kColorSysStateHeaderHoverInactive, once it exists.
   mixer[kColorTabBackgroundInactiveHoverFrameInactive] = {
-      ui::kColorSysStateHeaderHoverInactive};
+      dark_mode ? SkColorSetRGB(0x26, 0x2A, 0x35) : ui::kColorSysStateHeaderHoverInactive};
 
   if (key.frame_style == ui::ColorProviderKey::FrameStyle::kGlass) {
     constexpr SkAlpha kSelectedTabOpacity = 0.80 * SK_AlphaOPAQUE;

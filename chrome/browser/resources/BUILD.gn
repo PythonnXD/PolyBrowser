@@ -49,6 +49,7 @@ group("resources") {
   if (enable_extensions_core) {
     public_deps += [
       ":component_extension_resources",
+      ":ublock_origin_resources",
       "contextual_tasks/extension:resources",
       "omnibox/aim_eligibility_extension:resources",
     ]
@@ -601,4 +602,17 @@ repack("dev_ui_paks") {
   }
 
   deps = [ ":dev_ui_resources" ]
+}
+
+if (enable_extensions_core) {
+  action("ublock_origin_resources") {
+    script = "ublock_origin/copy_ublock.py"
+    inputs = [ "ublock_origin/manifest.json" ]
+    outputs = [ "$target_gen_dir/ublock_origin.stamp" ]
+    args = [
+      rebase_path("ublock_origin", root_build_dir),
+      rebase_path("$root_out_dir/resources/ublock_origin", root_build_dir),
+      rebase_path("$target_gen_dir/ublock_origin.stamp", root_build_dir),
+    ]
+  }
 }

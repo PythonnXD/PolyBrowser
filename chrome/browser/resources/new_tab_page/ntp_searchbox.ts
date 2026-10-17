@@ -28,7 +28,6 @@ import {assert} from '//resources/js/assert.js';
 import {loadTimeData} from '//resources/js/load_time_data.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
-import {WindowProxy} from './window_proxy.js';
 import type {FuseboxAction} from '//resources/mojo/components/omnibox/browser/fusebox_action.mojom-webui.js';
 import {InputSource} from '//resources/mojo/components/omnibox/browser/fusebox_action.mojom-webui.js';
 import {DriveDisclaimerStatus, SideType} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
@@ -56,10 +55,8 @@ export interface NtpSearchboxElement {
   };
 }
 
-import {SearchboxSelectionMixin} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
-
-const NtpSearchboxElementBase = SearchboxMixin(
-    SearchboxSelectionMixin(I18nMixinLit(WebUiListenerMixinLit(CrLitElement))));
+const NtpSearchboxElementBase =
+    SearchboxMixin(I18nMixinLit(WebUiListenerMixinLit(CrLitElement)));
 
 /** A search box for the NTP that behaves like the Omnibox. */
 export class NtpSearchboxElement extends NtpSearchboxElementBase implements
@@ -270,21 +267,21 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
   // Voice search is listening if there is no error and voice search overlay
   // is open (and active).
   accessor isListening: boolean = false;
-  protected accessor tabSuggestions_: TabInfo[] = [];
-  protected accessor inputState_: InputState|null = null;
-  protected accessor tabSuggestionsState_: TabSuggestionsState =
+  accessor tabSuggestions_: TabInfo[] = [];
+  accessor inputState_: InputState|null = null;
+  accessor tabSuggestionsState_: TabSuggestionsState =
       TabSuggestionsState.NOT_STARTED;
-  protected accessor searchboxIcon_: string =
+  accessor searchboxIcon_: string =
       loadTimeData.getString('searchboxDefaultIcon');
-  protected accessor searchboxVoiceSearchEnabled_: boolean =
+  accessor searchboxVoiceSearchEnabled_: boolean =
       loadTimeData.getBoolean('searchboxVoiceSearch');
-  protected accessor searchboxLensSearchEnabled_: boolean =
+  accessor searchboxLensSearchEnabled_: boolean =
       loadTimeData.getBoolean('searchboxLensSearch');
   protected accessor ntpRealboxDynamicAiModeButtonEnabled_: boolean =
       loadTimeData.getBoolean('ntpRealboxDynamicAiModeButton');
   protected accessor useWebkitSearchIcons_: boolean = false;
   protected accessor hasUserInput_: boolean = false;
-  protected dragAndDropHandler: DragAndDropHandler|null = null;
+  dragAndDropHandler: DragAndDropHandler|null = null;
   protected callbackRouter_: PageCallbackRouter;
 
   private placeholderCycler_: PlaceholderTextCycler|null = null;
@@ -361,17 +358,6 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     }
   }
 
-  onMatcherClick(event: string|null) {
-    const searchParams = new URLSearchParams();
-    searchParams.append('q', event ?? '');
-    searchParams.append('gs_ivs', '1');
-    searchParams.append('sourceid', 'chrome');
-    const queryUrl =
-        new URL('/forum/search', 'https://polytoria.com');
-    queryUrl.search = searchParams.toString();
-    WindowProxy.getInstance().navigate(queryUrl.href);
-  }
-
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
 
@@ -432,7 +418,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     }
   }
 
-  protected shouldShowVoiceLens_(isEnabled: boolean): boolean {
+  shouldShowVoiceLens_(isEnabled: boolean): boolean {
     return isEnabled && this.isInputEmpty() &&
         !(this.dropdownIsVisible && this.composeButtonEnabled);
   }
@@ -455,7 +441,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     super.handleKeyNavigation(e);
   }
 
-  protected onInputFocusin_() {
+  onInputFocusin_() {
     this.pageHandler_.onFocusChanged(true);
     this.placeholderCycler_?.stop();
   }
@@ -575,12 +561,12 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     this.dispatchEvent(new Event('open-voice-search'));
   }
 
-  protected onFileChange_(e: CustomEvent<{files: FileList}>) {
+  onFileChange_(e: CustomEvent<{files: FileList}>) {
     this.processFiles_(
         e.detail.files, ComposeboxContextAddedMethod.CONTEXT_MENU);
   }
 
-  protected onSmartTabSharingActiveChanged_(
+  onSmartTabSharingActiveChanged_(
       _e: CustomEvent<{active: boolean}>) {
     // <if expr="not is_android">
     this.smartTabSharingActive = _e.detail.active;
@@ -591,11 +577,11 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     // </if>
   }
 
-  protected onShareTabsFlyoutOpenChanged_(e: CustomEvent<{open: boolean}>) {
+  onShareTabsFlyoutOpenChanged_(e: CustomEvent<{open: boolean}>) {
     this.shareTabsFlyoutOpen = e.detail.open;
   }
 
-  protected onAddTabContext_(e: CustomEvent<{
+  onAddTabContext_(e: CustomEvent<{
     id: number,
     title: string,
     url: Url,
@@ -646,7 +632,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     }
   }
 
-  protected async onGetTabPreview_(e: CustomEvent<{
+  async onGetTabPreview_(e: CustomEvent<{
     tabId: number,
     onPreviewFetched: (previewDataUrl: string) => void,
   }>) {
@@ -655,13 +641,13 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     e.detail.onPreviewFetched(previewDataUrl || '');
   }
 
-  protected onContextMenuClosed_() {
+  onContextMenuClosed_() {
     this.contextMenuOpened_ = false;
     this.tabSuggestionsState_ = TabSuggestionsState.NOT_STARTED;
     this.blur();
   }
 
-  protected onRequestTabSuggestionsLoad() {
+  onRequestTabSuggestionsLoad() {
     this.refreshTabSuggestions_(/*forceRefresh=*/ true);
   }
 
@@ -674,7 +660,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     }
   }
 
-  protected onContextMenuOpened_() {
+  onContextMenuOpened_() {
     this.contextMenuOpened_ = true;
     this.refreshTabSuggestions_(/*forceRefresh=*/ true);
 
@@ -706,7 +692,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     }
   }
 
-  protected async onOpenDriveUpload_() {
+  async onOpenDriveUpload_() {
     // Check if the user has accepted the Drive disclaimer. This handles
     // the edge case where a user sees the drive option in the menu, but
     // then revokes Drive permissions.
@@ -736,32 +722,32 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     }
   }
 
-  protected onContextMenuEntrypointClick_() {
+  onContextMenuEntrypointClick_() {
     this.pageHandler().activateMetricsFunnel('PlusButton');
     this.dispatchEvent(new Event('context-menu-entrypoint-click'));
   }
 
-  protected onContextMenuEntrypointHover_() {
+  onContextMenuEntrypointHover_() {
     this.refreshTabSuggestions_(/*forceRefresh=*/ true);
   }
 
-  protected onToolClick_(e: CustomEvent<{toolMode: ToolMode}>) {
+  onToolClick_(e: CustomEvent<{toolMode: ToolMode}>) {
     this.openComposebox_([], e.detail.toolMode);
   }
 
-  protected onDeepSearchClick_() {
+  onDeepSearchClick_() {
     this.openComposebox_([], ToolMode.kDeepSearch);
   }
 
-  protected onCreateImageClick_() {
+  onCreateImageClick_() {
     this.openComposebox_([], ToolMode.kImageGen);
   }
 
-  protected onModelClick_(e: CustomEvent<{model: ModelMode}>) {
+  onModelClick_(e: CustomEvent<{model: ModelMode}>) {
     this.openComposebox_([], ToolMode.kUnspecified, e.detail.model);
   }
 
-  protected onComposeClick_(e: CustomEvent<ClickEventDetail>) {
+  onComposeClick_(e: CustomEvent<ClickEventDetail>) {
     // TODO(crbug.com/463667769): Call submitQuery here since RealboxHandler is
     // now a `ContextualSearchboxHandler`.
     this.pageHandler().activateMetricsFunnel('AiModeButton');
@@ -806,7 +792,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
         !this.isInputEmpty());
   }
 
-  protected useCompactLayout_(): boolean {
+  useCompactLayout_(): boolean {
     return this.searchboxLayoutMode === 'Compact';
   }
 
@@ -844,12 +830,12 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     this.setInputText('');
   }
 
-  protected onSearchboxInputPasted_() {
+  onSearchboxInputPasted_() {
     chrome.histograms.recordCount('NewTabPage.Realbox.Paste', 1);
     chrome.histograms.recordUserAction('NewTabPage.Realbox.Paste');
   }
 
-  protected onSearchboxInputFilesPasted_(e: CustomEvent<{files: FileList}>) {
+  onSearchboxInputFilesPasted_(e: CustomEvent<{files: FileList}>) {
     this.processFiles_(e.detail.files, ComposeboxContextAddedMethod.COPY_PASTE);
   }
 
@@ -875,22 +861,22 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     this.openComposebox_(Array.from(files, (file) => ({file})));
   }
 
-  protected onSearchboxInputTextUpdated_(
+  onSearchboxInputTextUpdated_(
       e: CustomEvent<{value: string, isComposing: boolean}>) {
     this.hasUserInput_ = !!e.detail.value.trim();
     this.onSearchboxInputTextUpdated(e);
   }
 
-  protected onLensSearchClick_() {
+  onLensSearchClick_() {
     this.dropdownIsVisible = false;
     this.dispatchEvent(new Event('open-lens-search'));
   }
 
-  protected onHadSecondarySideChanged_(e: CustomEvent<{value: boolean}>) {
+  onHadSecondarySideChanged_(e: CustomEvent<{value: boolean}>) {
     this.hadSecondarySide = e.detail.value;
   }
 
-  protected onHasSecondarySideChanged_(e: CustomEvent<{value: boolean}>) {
+  onHasSecondarySideChanged_(e: CustomEvent<{value: boolean}>) {
     this.hasSecondarySide = e.detail.value;
   }
 
@@ -898,7 +884,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
   // Helpers
   //============================================================================
 
-  protected inputHasMatches_(): boolean {
+  inputHasMatches_(): boolean {
     return !!this.result && !!this.result.matches &&
         this.result.matches.length > 0;
   }
@@ -923,7 +909,7 @@ export class NtpSearchboxElement extends NtpSearchboxElementBase implements
     return true;
   }
 
-  protected computePlaceholderText_(placeholderText: string): string {
+  computePlaceholderText_(placeholderText: string): string {
     return placeholderText || '';
   }
 

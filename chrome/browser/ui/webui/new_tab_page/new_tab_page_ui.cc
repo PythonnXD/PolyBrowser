@@ -830,6 +830,20 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(
                     prefs::kLensDesktopNTPSearchEnabled),
                 .session_allows_drag_and_drop = session_allows_drag_and_drop}));
 
+  // PolyBrowser: Dynamically set "Search everything with <Default SE Name>"
+  std::u16string dse_name = u"Polytoria";
+  if (TemplateURLService* turl_service =
+          TemplateURLServiceFactory::GetForProfile(profile)) {
+    if (const TemplateURL* dse = turl_service->GetDefaultSearchProvider()) {
+      if (!dse->short_name().empty()) {
+        dse_name = dse->short_name();
+      }
+    }
+  }
+  source->AddString("defaultSearchEngineName", dse_name);
+  source->AddString("searchBoxPlaceholder",
+                    base::StrCat({u"Search everything with ", dse_name}));
+
   webui::SetupWebUIDataSource(source, kNewTabPageResources,
                               IDR_NEW_TAB_PAGE_NEW_TAB_PAGE_HTML);
 
@@ -1451,6 +1465,19 @@ void NewTabPageUI::OnLoad() {
 
   // Set up the NTP promo, if any.
   update.Set("browserPromoType", GetNtpPromoType());
+
+  std::u16string dse_name = u"Polytoria";
+  if (TemplateURLService* turl_service =
+          TemplateURLServiceFactory::GetForProfile(profile_)) {
+    if (const TemplateURL* dse = turl_service->GetDefaultSearchProvider()) {
+      if (!dse->short_name().empty()) {
+        dse_name = dse->short_name();
+      }
+    }
+  }
+  update.Set("defaultSearchEngineName", dse_name);
+  update.Set("searchBoxPlaceholder",
+             base::StrCat({u"Search everything with ", dse_name}));
 
   content::WebUIDataSource::Update(profile_, chrome::kChromeUINewTabPageHost,
                                    std::move(update));

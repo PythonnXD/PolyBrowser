@@ -390,7 +390,10 @@ void BrowserDesktopWindowTreeHostWin::HandleCreate() {
 
   DesktopWindowTreeHostWin::HandleCreate();
 
-  // PolyBrowser: Enable Windows 11 Mica / frosted backdrop on the browser window
+  // PolyBrowser: Enable Windows 11 Dark Mode Mica / frosted backdrop on the browser window
+  BOOL use_dark_mode = TRUE;
+  DwmSetWindowAttribute(GetHWND(), DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &use_dark_mode, sizeof(use_dark_mode));
   DWM_SYSTEMBACKDROP_TYPE backdrop = DWMSBT_TABBEDWINDOW;
   DwmSetWindowAttribute(GetHWND(), DWMWA_SYSTEMBACKDROP_TYPE, &backdrop,
                         sizeof(backdrop));

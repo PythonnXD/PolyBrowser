@@ -223,6 +223,46 @@ bool IsNormalSession() {
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+struct LoadedBundledExtension {
+  base::FilePath root_directory;
+  std::optional<base::DictValue> manifest;
+};
+
+LoadedBundledExtension LoadBundledUblockOriginOnFileThread() {
+  CHECK(GetExtensionFileTaskRunner()->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M161);
+  base::FilePath ublock_dir;
+  if (base::PathService::Get(chrome::DIR_RESOURCES, &ublock_dir)) {
+    ublock_dir = ublock_dir.Append(FILE_PATH_LITERAL("ublock_origin"));
+  }
+  if (ublock_dir.empty() || !base::PathExists(ublock_dir)) {
+    base::FilePath src_root;
+    if (base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &src_root)) {
+      ublock_dir = src_root.Append(FILE_PATH_LITERAL("chrome"))
+                       .Append(FILE_PATH_LITERAL("browser"))
+                       .Append(FILE_PATH_LITERAL("resources"))
+                       .Append(FILE_PATH_LITERAL("ublock_origin"));
+    }
+  }
+  LoadedBundledExtension result;
+  result.root_directory = ublock_dir;
+  if (ublock_dir.empty() || !base::PathExists(ublock_dir)) {
+    return result;
+  }
+  std::string error;
+  result.manifest = file_util::LoadManifest(
+      ublock_dir, extensions::kManifestFilename, &error);
+  if (!result.manifest) {
+    LOG(ERROR) << "Failed to load bundled uBlock Origin manifest: " << error;
+    return result;
+  }
+  extension_l10n_util::LocalizeExtension(
+      ublock_dir, &result.manifest.value(),
+      extension_l10n_util::GzippedMessagesPermission::kAllowForTrustedSource,
+      &error);
+  return result;
+}
+
 }  // namespace
 
 ComponentLoader::ComponentExtensionInfo::ComponentExtensionInfo(
@@ -791,6 +831,20 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
   AddAimEligibilityExtension();
   AddGlicExtension();
   AddContextualTasksExtension();
+
+  if (!skip_session_components) {
+    GetExtensionFileTaskRunner()->PostTaskAndReplyWithResult(
+        FROM_HERE, base::BindOnce(&LoadBundledUblockOriginOnFileThread),
+        base::BindOnce(
+            [](base::WeakPtr<ComponentLoader> loader,
+               LoadedBundledExtension loaded) {
+              if (loader && loaded.manifest.has_value()) {
+                loader->Add(std::move(*loaded.manifest),
+                            loaded.root_directory);
+              }
+            },
+            weak_factory_.GetWeakPtr()));
+  }
 
 // http://crbug.com/41070702
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS)

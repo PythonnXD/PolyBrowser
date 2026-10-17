@@ -524,7 +524,25 @@ void AddMaterialChromeColorMixer(ui::ColorProvider* provider,
       ui::kColorSysOnSurfaceSubtle};
 
   // Toolbar colors.
-  mixer[kColorToolbar] = {ui::kColorSysBase};
+  const bool dark_mode =
+      key.color_mode == ui::ColorProviderKey::ColorMode::kDark;
+  mixer[kColorToolbar] = {dark_mode ? SkColorSetRGB(0x1C, 0x1E, 0x26)
+                                    : ui::kColorSysBase};
+  if (dark_mode) {
+    mixer[ui::kColorFrameActive] = {SkColorSetRGB(0x18, 0x1A, 0x22)};
+    mixer[ui::kColorFrameInactive] = {SkColorSetRGB(0x15, 0x17, 0x1E)};
+    mixer[kColorBookmarkBarBackground] = {SkColorSetRGB(0x1C, 0x1E, 0x26)};
+    mixer[kColorLocationBarBackground] = {SkColorSetRGB(0x13, 0x15, 0x1B)};
+    mixer[kColorLocationBarBackgroundHovered] = {
+        SkColorSetRGB(0x17, 0x1A, 0x22)};
+    mixer[kColorOmniboxResultsBackground] = {SkColorSetRGB(0x1A, 0x1D, 0x25)};
+    mixer[kColorOmniboxResultsBackgroundHovered] = {
+        SkColorSetRGB(0x23, 0x27, 0x32)};
+    mixer[kColorOmniboxResultsBackgroundSelected] = {
+        SkColorSetRGB(0x28, 0x2D, 0x3A)};
+    mixer[kColorNewTabPageBackground] = {SkColorSetRGB(0x14, 0x16, 0x1D)};
+    mixer[kColorWebContentsBackground] = {SkColorSetRGB(0x14, 0x16, 0x1D)};
+  }
   mixer[kColorToolbarButtonBackgroundHighlightedDefault] = {
       ui::kColorSysStateHoverOnSubtle};
   mixer[kColorToolbarButtonBorder] = {ui::kColorSysOutline};

@@ -74,9 +74,9 @@ inline constexpr char kTextEditorAppId[] = "mmfbcljfglbokpmkimbfghdkjmjhdgbg";
 inline constexpr char kInAppPaymentsSupportAppId[] =
     "nmmhkkegccagdldgiimedpiccmgmieda";
 
-// The extension id of the uBlock Origin extension.
+// The extension id of the bundled uBlock Origin component extension.
 inline constexpr char kUblockOriginExtensionId[] =
-    "cjpalhdlnbpafiamejdnhcphjbkeiagm";
+    "fkgkibajhfbepljeaefdnfnegdcjomkh";
 
 // The extension id of Perfetto UI extension.
 inline constexpr char kPerfettoUIExtensionId[] =

@@ -174,13 +174,8 @@ bool IsEnhancedProtectionEnabled(const PrefService& prefs) {
 }
 
 ExtendedReportingLevel GetExtendedReportingLevel(const PrefService& prefs) {
-  if (IsExtendedReportingDeprecated()) {
-    // If it is enabled and the currently the deprecation flag is on,
-    // it means this is an ESB user.
-    return IsEnhancedProtectionEnabled(prefs) ? SBER_LEVEL_ENHANCED_PROTECTION
-                                              : SBER_LEVEL_OFF;
-  }
-  return IsExtendedReportingEnabled(prefs) ? SBER_LEVEL_SCOUT : SBER_LEVEL_OFF;
+  // PolyBrowser: Disable SafeBrowsing extended telemetry reporting while keeping SafeBrowsing security protection active
+  return SBER_LEVEL_OFF;
 }
 
 bool IsExtendedReportingOptInAllowed(const PrefService& prefs) {
@@ -189,12 +184,8 @@ bool IsExtendedReportingOptInAllowed(const PrefService& prefs) {
 }
 
 bool IsExtendedReportingEnabled(const PrefService& prefs) {
-  if (IsExtendedReportingDeprecated()) {
-    return IsEnhancedProtectionEnabled(prefs);
-  }
-  return (IsSafeBrowsingEnabled(prefs) &&
-          prefs.GetBoolean(prefs::kSafeBrowsingScoutReportingEnabled)) ||
-         IsEnhancedProtectionEnabled(prefs);
+  // PolyBrowser: Disable SafeBrowsing extended telemetry reporting
+  return false;
 }
 
 bool IsExtendedReportingPolicyManaged(const PrefService& prefs) {
@@ -225,7 +216,7 @@ bool AreDeepScansAllowedByPolicy(const PrefService& prefs) {
 }
 
 bool IsSafeBrowsingSurveysEnabled(const PrefService& prefs) {
-  return prefs.GetBoolean(prefs::kSafeBrowsingSurveysEnabled);
+  return false;
 }
 
 bool IsSafeBrowsingProceedAnywayDisabled(const PrefService& prefs) {
@@ -350,7 +341,7 @@ void RegisterProfilePrefs(PrefRegistrySimple* registry) {
       prefs::kExtensionTelemetrySearchHijackingSerpLandingCount, 0);
   registry->RegisterBooleanPref(prefs::kHashPrefixRealTimeChecksAllowedByPolicy,
                                 true);
-  registry->RegisterBooleanPref(prefs::kSafeBrowsingSurveysEnabled, true);
+  registry->RegisterBooleanPref(prefs::kSafeBrowsingSurveysEnabled, false);
   registry->RegisterBooleanPref(prefs::kSafeBrowsingDeepScanningEnabled, true);
   registry->RegisterBooleanPref(
       prefs::kSafeBrowsingScoutReportingEnabledWhenDeprecated, false);

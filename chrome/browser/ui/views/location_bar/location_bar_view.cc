@@ -538,8 +538,7 @@ int LocationBarView::GetBorderRadius() const {
 
 // static
 int LocationBarView::ComputeBorderRadius(gfx::Size size) {
-  return ChromeLayoutProvider::Get()->GetCornerRadiusMetric(
-      views::Emphasis::kMaximum, size);
+  return 10;
 }
 
 // static
@@ -1438,6 +1437,11 @@ void LocationBarView::RefreshBackground() {
     // but still contains in-progress user input, a unique border color will be
     // applied.
     border_color = color_provider->GetColor(kColorLocationBarBorderOnMismatch);
+  } else {
+    // PolyBrowser: Safari Smart Search Field 1px specular border
+    border_color = is_caret_visible
+                       ? color_provider->GetColor(ui::kColorFocusableBorderFocused)
+                       : SkColorSetARGB(0x28, 0xFF, 0xFF, 0xFF);
   }
 
   if (is_popup_mode_) {

@@ -15,8 +15,9 @@
 }
 
 #content {
-  background-color: var(--color-searchbox-results-background);
-  border-radius: calc(0.5 * var(--cr-searchbox-height));
+  animation: polyDropdownExtend 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  background-color: var(--color-searchbox-results-background, rgba(22, 25, 34, 0.96));
+  border-radius: 16px;
   box-shadow: var(--cr-searchbox-shadow);
   display: flex;
   gap: 16px;
@@ -24,6 +25,18 @@
   overflow: hidden;
   padding-bottom: var(--cr-searchbox-results-padding-bottom, 8px);
   padding-top: var(--cr-searchbox-height);
+  transform-origin: top center;
+}
+
+@keyframes polyDropdownExtend {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scaleY(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
 }
 
 @media (forced-colors: active) {
@@ -38,6 +51,10 @@
 
 cr-searchbox-match {
   color: var(--color-searchbox-results-foreground);
+}
+
+cr-searchbox-match + cr-searchbox-match {
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 cr-searchbox-match:-webkit-any(:focus-within, [selected]) {
@@ -84,13 +101,19 @@ cr-searchbox-match:-webkit-any(:focus-within, [selected]) {
   min-width: 0;
 }
 
-:host-context([is-lens-searchbox_]) .primary-side::before {
+.primary-side::before {
   content: '';
   position: relative;
   height: 1px;
-  background-color: var(--color-searchbox-dropdown-divider);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.14) 8%,
+    rgba(255, 255, 255, 0.14) 92%,
+    transparent 100%
+  );
   top: 0;
-  width: calc(var(--cr-searchbox-width) - 24px);
+  width: calc(100% - 24px);
   display: block;
   inset-inline-start: 12px;
   margin-block-end: 4px;
