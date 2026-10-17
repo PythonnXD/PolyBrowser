@@ -1,4 +1,4 @@
-# PolyBrowser (Still in early development 😭)
+# ![PolyBrowser](chrome/app/theme/default_200_percent/chromium/product_logo_32.png) PolyBrowser (Still in early development 😭)
 
 ## PolyBrowser is basically a chromium browser. This project is for a joke, it's not really a serious web browser (or maybe)
 We are trying to remove every Google related shits possible, also our first time trying to build a web browser so don't blame us
