@@ -85,6 +85,22 @@ export interface PolyPageItem {
   timestamp?: number;
 }
 
+interface TileSpringState {
+  x: number;
+  vx: number;
+  tx: number;
+  y: number;
+  vy: number;
+  ty: number;
+  scale: number;
+  vScale: number;
+  tScale: number;
+  damping: number;
+  response: number;
+  rafId: number | null;
+  lastTime: number;
+}
+
 const POLY_STORAGE_KEY_GRID = 'poly_ntp_grid_v1';
 const POLY_STORAGE_KEY_RECENT = 'poly_ntp_recent_v1';
 const POLY_STORAGE_KEY_PINNED = 'poly_ntp_pinned_v1';
@@ -599,6 +615,7 @@ export class AppElement extends AppElementBase {
   private backgroundImageLoadStart_: number = 0;
   private showWebstoreToastListenerId_: number|null = null;
   private pendingUndoToasts_: Array<{message: string, undo: () => void}> = [];
+  private tileSprings_ = new WeakMap<HTMLElement, TileSpringState>();
 
   constructor() {
     performance.mark('app-creation-start');
@@ -2101,8 +2118,154 @@ export class AppElement extends AppElementBase {
   }
 
   protected getFaviconUrl_(url: string): string {
-    return `chrome://favicon2/?size=24&scaleFactor=2x&showFallbackMonogram=&pageUrl=${
+    return `chrome://favicon2/?size=32&scaleFactor=2x&showFallbackMonogram=&pageUrl=${
         encodeURIComponent(url)}`;
+  }
+
+  private isReducedMotion_(): boolean {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  private rubberband_(
+      overshoot: number, dimension: number, constant = 0.55): number {
+    if (dimension <= 0) {
+      return 0;
+    }
+    return (overshoot * dimension * constant) /
+        (dimension + constant * Math.abs(overshoot));
+  }
+
+  private getOrCreateTileSpring_(el: HTMLElement): TileSpringState {
+    let state = this.tileSprings_.get(el);
+    if (!state) {
+      state = {
+        x: 0,
+        vx: 0,
+        tx: 0,
+        y: 0,
+        vy: 0,
+        ty: 0,
+        scale: 1,
+        vScale: 0,
+        tScale: 1,
+        damping: 1.0,
+        response: 0.35,
+        rafId: null,
+        lastTime: 0,
+      };
+      this.tileSprings_.set(el, state);
+    }
+    return state;
+  }
+
+  private retargetTileSpring_(
+      el: HTMLElement,
+      tx: number,
+      ty: number,
+      tScale: number,
+      damping: number,
+      response: number) {
+    if (this.isReducedMotion_()) {
+      el.style.transform = '';
+      return;
+    }
+    const state = this.getOrCreateTileSpring_(el);
+    state.tx = tx;
+    state.ty = ty;
+    state.tScale = tScale;
+    state.damping = damping;
+    state.response = response;
+
+    if (state.rafId !== null) {
+      return;
+    }
+    state.lastTime = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.032, Math.max(0.001, (now - state.lastTime) / 1000));
+      state.lastTime = now;
+
+      const omega = (2 * Math.PI) / Math.max(0.08, state.response);
+      const c = 2 * state.damping * omega;
+      const k = omega * omega;
+
+      const ax = -k * (state.x - state.tx) - c * state.vx;
+      state.vx += ax * dt;
+      state.x += state.vx * dt;
+
+      const ay = -k * (state.y - state.ty) - c * state.vy;
+      state.vy += ay * dt;
+      state.y += state.vy * dt;
+
+      const aScale = -k * (state.scale - state.tScale) - c * state.vScale;
+      state.vScale += aScale * dt;
+      state.scale += state.vScale * dt;
+
+      el.style.transform = `translate3d(${state.x.toFixed(2)}px, ${
+          state.y.toFixed(2)}px, 0) scale(${state.scale.toFixed(4)})`;
+
+      const settled = Math.abs(state.x - state.tx) < 0.08 &&
+          Math.abs(state.vx) < 0.4 && Math.abs(state.y - state.ty) < 0.08 &&
+          Math.abs(state.vy) < 0.4 &&
+          Math.abs(state.scale - state.tScale) < 0.0008 &&
+          Math.abs(state.vScale) < 0.004;
+
+      if (settled) {
+        state.x = state.tx;
+        state.y = state.ty;
+        state.scale = state.tScale;
+        state.vx = 0;
+        state.vy = 0;
+        state.vScale = 0;
+        state.rafId = null;
+        if (state.tx === 0 && state.ty === 0 && state.tScale === 1) {
+          el.style.transform = '';
+        } else {
+          el.style.transform = `translate3d(${state.x.toFixed(2)}px, ${
+              state.y.toFixed(2)}px, 0) scale(${state.scale.toFixed(4)})`;
+        }
+        return;
+      }
+      state.rafId = window.requestAnimationFrame(tick);
+    };
+    state.rafId = window.requestAnimationFrame(tick);
+  }
+
+  protected onTilePointerMove_(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
+    el.style.setProperty('--pointer-x', `${relX.toFixed(1)}px`);
+    el.style.setProperty('--pointer-y', `${relY.toFixed(1)}px`);
+
+    if (e.buttons > 0) {
+      return;
+    }
+    const dx = relX - rect.width * 0.5;
+    const dy = relY - rect.height * 0.5;
+    const pullX = this.rubberband_(dx, rect.width * 0.5, 0.14);
+    const pullY = this.rubberband_(dy, rect.height * 0.5, 0.14) - 3.5;
+    this.retargetTileSpring_(el, pullX, pullY, 1.032, 0.88, 0.32);
+  }
+
+  protected onTilePointerDown_(e: PointerEvent) {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('.poly-tile-action-btn')) {
+      return;
+    }
+    const el = e.currentTarget as HTMLElement;
+    // Instant response on pointer-down (Apple Fluid Interfaces §1 & §4)
+    this.retargetTileSpring_(el, 0, 1, 0.96, 1.0, 0.16);
+  }
+
+  protected onTilePointerUp_(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    this.retargetTileSpring_(el, 0, -3.5, 1.028, 0.78, 0.36);
+  }
+
+  protected onTilePointerLeave_(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    this.retargetTileSpring_(el, 0, 0, 1, 0.82, 0.38);
   }
 
   protected getDomain_(url: string): string {

@@ -89,14 +89,29 @@
 }
 
 .container:not(.actions):hover {
-  background-color: var(--color-searchbox-results-background-hovered, rgba(255, 255, 255, 0.07));
-  transform: translateX(3px);
+  background-color: var(--color-searchbox-results-background-hovered, rgba(255, 255, 255, 0.08));
+  transform: translateX(2px);
+}
+
+.container:not(.actions):active {
+  transform: scale(0.992);
+  transition: transform 80ms ease-out;
 }
 
 :host(:is(:focus-visible, [selected]))  .container:not(.actions) {
   background-color: var(--color-searchbox-results-background-selected,
-      var(--color-searchbox-results-background-hovered, rgba(255, 89, 81, 0.16)));
-  transform: translateX(3px);
+      var(--color-searchbox-results-background-hovered, rgba(255, 89, 81, 0.18)));
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .container,
+  .container:not(.actions):hover,
+  .container:not(.actions):active,
+  :host(:is(:focus-visible, [selected])) .container:not(.actions) {
+    transform: none !important;
+    transition: background-color 150ms ease;
+  }
 }
 
 @media (forced-colors: active) {

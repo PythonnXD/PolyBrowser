@@ -9,16 +9,26 @@
       body {
         margin: 0;
         min-height: 100vh;
-        background-color: #11131a;
+        background-color: #0c0e14;
         background-image:
-          radial-gradient(ellipse 80% 60% at 18% 12%, rgba(56, 108, 212, 0.14) 0%, transparent 65%),
-          radial-gradient(ellipse 70% 55% at 82% 18%, rgba(255, 89, 89, 0.11) 0%, transparent 60%),
-          radial-gradient(ellipse 90% 70% at 50% 90%, rgba(45, 55, 82, 0.22) 0%, transparent 70%),
-          linear-gradient(180deg, #151821 0%, #0e1017 100%);
+          radial-gradient(ellipse 75% 55% at 20% 10%, rgba(64, 120, 242, 0.16) 0%, transparent 65%),
+          radial-gradient(ellipse 65% 50% at 82% 14%, rgba(255, 89, 81, 0.12) 0%, transparent 62%),
+          radial-gradient(ellipse 85% 65% at 50% 95%, rgba(42, 54, 88, 0.24) 0%, transparent 72%),
+          linear-gradient(180deg, #131620 0%, #0b0d13 100%);
         background-attachment: fixed;
-        color: #f1f5f9;
-        font-family: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        color: rgba(255, 255, 255, 0.92);
+        font: 100%/1.45 -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI Variable Display', 'Segoe UI Variable Text', system-ui, sans-serif;
+        font-optical-sizing: auto;
         -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      @media (prefers-reduced-transparency: reduce) {
+        html,
+        body {
+          background-image: none;
+          background-color: #101218;
+        }
       }
 
       #backgroundImage {
